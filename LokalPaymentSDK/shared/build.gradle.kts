@@ -61,11 +61,11 @@ kotlin {
             implementation(libs.kotlinx.coroutines.test)
         }
         androidMain.dependencies {
-            // api, not implementation: AndroidRazorpayCheckoutClient
-            // implements Razorpay's own PaymentResultWithDataListener
-            // directly, so it's part of this class's public supertype —
-            // consumers need it on their compile classpath too.
-            api(libs.razorpay.checkout)
+            // implementation, not api: Razorpay is now fully encapsulated behind
+            // the internal RazorpayCheckoutActivity proxy — no public SDK type
+            // exposes a Razorpay class, so consumers don't need it on their
+            // compile classpath (it's still there transitively at runtime).
+            implementation(libs.razorpay.checkout)
         }
     }
 }

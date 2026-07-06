@@ -15,10 +15,6 @@ android {
         versionName = "1.0"
     }
 
-    buildFeatures {
-        compose = true
-    }
-
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -31,22 +27,10 @@ android {
     }
 }
 
-kotlin {
-    compilerOptions {
-        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
-    }
-}
-
 dependencies {
-    implementation(libs.lokalpaymentsdk.shared)
-
-    implementation(libs.androidx.core.ktx)
+    // Application shell: hosts the shared UI from :composeApp via its own
+    // launcher MainActivity. activity-compose provides setContent and pulls the
+    // Compose runtime needed to call App().
+    implementation(project(":composeApp"))
     implementation(libs.androidx.activity.compose)
-    implementation(libs.androidx.lifecycle.runtime.ktx)
-
-    implementation(platform(libs.androidx.compose.bom))
-    implementation(libs.androidx.compose.ui)
-    implementation(libs.androidx.compose.ui.tooling.preview)
-    implementation(libs.androidx.compose.material3)
-    debugImplementation(libs.androidx.compose.ui.tooling)
 }

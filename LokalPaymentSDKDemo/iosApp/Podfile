@@ -2,5 +2,12 @@ platform :ios, '16.0'
 use_frameworks!
 
 target 'iosApp' do
-  pod 'Shared', :path => '../../LokalPaymentSDK/shared'
+  # The Compose Multiplatform demo framework. The Lokal Payment SDK is compiled
+  # into this framework via its Maven dependency, so we no longer pull `pod 'Shared'`.
+  pod 'composeApp', :path => '../composeApp'
+
+  # Razorpay's Obj-C binary must be linked at the app target: the SDK's iOS klib
+  # only carries the Kotlin cinterop bindings (via Maven), not the framework.
+  # Pinned to the version the cinterop was generated against.
+  pod 'razorpay-pod', '1.4.3'
 end

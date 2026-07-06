@@ -1,23 +1,23 @@
 PODS:
+  - composeApp (1.0)
   - razorpay-pod (1.4.3)
-  - Shared (0.0.1):
-    - razorpay-pod (= 1.4.3)
 
 DEPENDENCIES:
-  - Shared (from `../shared`)
+  - composeApp (from `../composeApp`)
+  - razorpay-pod (= 1.4.3)
 
 SPEC REPOS:
   trunk:
     - razorpay-pod
 
 EXTERNAL SOURCES:
-  Shared:
-    :path: "../shared"
+  composeApp:
+    :path: "../composeApp"
 
 SPEC CHECKSUMS:
+  composeApp: aa6d103d4b97b3f51f3cf0c8c76bc2d84e83c7b8
   razorpay-pod: af9d52abe715ed5cc3eed9fdf6fd74340443d0b9
-  Shared: cb7c7b487b2926531e7e871d6d1cf70810f5acdb
 
-PODFILE CHECKSUM: 6bea16efa129e46e5bc7c0d85e964568440ac4d0
+PODFILE CHECKSUM: 76f0ab9c75a5cb1df3be734789973f3f3f0fad04
 
 COCOAPODS: 1.16.2

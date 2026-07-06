@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Proxy Activity that fronts Razorpay Checkout. Merged into the host app
+         so the SDK is self-contained: consumers don't register anything. -->
+    <application>
+        <activity
+            android:name="com.getlokalapp.paymentsdk.razorpay.RazorpayCheckoutActivity"
+            android:exported="false"
+            android:configChanges="orientation|keyboardHidden|screenSize|screenLayout|smallestScreenSize"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+    </application>
+
+</manifest>

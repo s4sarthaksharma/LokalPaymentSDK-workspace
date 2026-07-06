@@ -9,7 +9,6 @@
 /* Begin PBXBuildFile section */
 		535FFEC2787CB0D5FA2BFCDE /* Pods_iosApp.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BD47A04E7EE9E304EF924663 /* Pods_iosApp.framework */; };
 		B0000000000000000000FFF1 /* iOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0000000000000000000EEE1 /* iOSApp.swift */; };
-		B0000000000000000000FFF2 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0000000000000000000EEE2 /* ContentView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -17,7 +16,6 @@
 		7E50DC302EA3303A769F6523 /* Pods-iosApp.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-iosApp.debug.xcconfig"; path = "Target Support Files/Pods-iosApp/Pods-iosApp.debug.xcconfig"; sourceTree = "<group>"; };
 		B0000000000000000000EEE0 /* iosApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = iosApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B0000000000000000000EEE1 /* iOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iOSApp.swift; sourceTree = "<group>"; };
-		B0000000000000000000EEE2 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		BD47A04E7EE9E304EF924663 /* Pods_iosApp.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_iosApp.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -57,7 +55,6 @@
 			isa = PBXGroup;
 			children = (
 				B0000000000000000000EEE1 /* iOSApp.swift */,
-				B0000000000000000000EEE2 /* ContentView.swift */,
 			);
 			path = iosApp;
 			sourceTree = "<group>";
@@ -90,6 +87,7 @@
 				B0000000000000000000CCC1 /* Frameworks */,
 				B0000000000000000000CCC2 /* Resources */,
 				D97C468F4ACECD59E72E6293 /* [CP] Embed Pods Frameworks */,
+				7A83CEFFE518FA2945DDFEB8 /* [CP] Copy Pods Resources */,
 			);
 			buildRules = (
 			);
@@ -144,6 +142,23 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		7A83CEFFE518FA2945DDFEB8 /* [CP] Copy Pods Resources */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-iosApp/Pods-iosApp-resources-${CONFIGURATION}-input-files.xcfilelist",
+			);
+			name = "[CP] Copy Pods Resources";
+			outputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-iosApp/Pods-iosApp-resources-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-iosApp/Pods-iosApp-resources.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
 		A098E9B2CCA5DB61E6C4F429 /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -191,7 +206,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				B0000000000000000000FFF1 /* iOSApp.swift in Sources */,
-				B0000000000000000000FFF2 /* ContentView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -320,7 +334,7 @@
 				DEVELOPMENT_TEAM = F5PU37JWUY;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CADisableMinimumFrameDurationOnPhone = YES;
+				INFOPLIST_FILE = iosApp/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -334,7 +348,7 @@
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-framework",
-					Shared,
+					ComposeApp,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.getlokalapp.paymentsdk;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -355,7 +369,7 @@
 				DEVELOPMENT_TEAM = F5PU37JWUY;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CADisableMinimumFrameDurationOnPhone = YES;
+				INFOPLIST_FILE = iosApp/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -369,7 +383,7 @@
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-framework",
-					Shared,
+					ComposeApp,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.getlokalapp.paymentsdk;
 				PRODUCT_NAME = "$(TARGET_NAME)";
