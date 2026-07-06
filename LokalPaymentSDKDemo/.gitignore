@@ -1,0 +1,54 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Local config
+local.properties
+*.log
+
+# IDE
+.idea/
+*.iml
+.fleet/
+
+# macOS
+.DS_Store
+
+# Kotlin
+.kotlin/
+
+# iOS / Xcode
+iosApp/build/
+iosApp/DerivedData/
+**/xcuserdata/
+Pods/
+*.xcuserstate
+*.moved-aside
+*.xccheckout
+*.xcscmblueprint
+*.dSYM
+*.dSYM.zip
+playground.xcworkspace
+timeline.xctimeline
+
+# Swift Package Manager
+.swiftpm/
+.build/
+
+# Android
+*.apk
+*.aab
+*.ap_
+*.dex
+/captures
+.cxx/
+*.hprof
+
+# Signing / secrets
+*.jks
+*.keystore
+key.properties
+.env
+.env.*
+*.pem
