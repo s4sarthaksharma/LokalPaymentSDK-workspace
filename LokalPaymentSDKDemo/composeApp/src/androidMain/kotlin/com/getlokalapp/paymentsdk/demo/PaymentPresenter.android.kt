@@ -3,7 +3,7 @@ package com.getlokalapp.paymentsdk.demo
 import androidx.activity.compose.LocalActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
-import com.getlokalapp.paymentsdk.PaymentPresenter
+import com.getlokalapp.paymentsdk.razorpay.PaymentPresenter
 
 @Composable
 actual fun rememberPaymentPresenter(): PaymentPresenter {

@@ -3,7 +3,7 @@ package com.getlokalapp.paymentsdk.demo
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
-import com.getlokalapp.paymentsdk.PaymentPresenter
+import com.getlokalapp.paymentsdk.razorpay.PaymentPresenter
 import com.getlokalapp.paymentsdk.razorpay.RazorpayCheckoutSdk
 
 /**

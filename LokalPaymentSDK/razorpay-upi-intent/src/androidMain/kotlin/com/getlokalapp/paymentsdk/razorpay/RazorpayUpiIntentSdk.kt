@@ -3,21 +3,20 @@ package com.getlokalapp.paymentsdk.razorpay
 import android.app.Activity
 import com.getlokalapp.paymentsdk.LokalPaymentSdk
 import com.getlokalapp.paymentsdk.PaymentGatewayHandler
-import com.getlokalapp.paymentsdk.model.PaymentError
 import com.getlokalapp.paymentsdk.model.PaymentGateway
 import com.getlokalapp.paymentsdk.model.PaymentResult
-import com.getlokalapp.paymentsdk.model.parseCreateOrderResponse
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.serialization.json.JsonObject
 
 /**
  * Registers itself with [LokalPaymentSdk] to handle
  * [PaymentGateway.RAZORPAY_INTENT] as soon as it's constructed — Android-only
  * (see this module's build.gradle.kts for why). Unlike RazorpayCheckoutSdk,
  * the host supplies its own [Activity] directly rather than a
- * [com.getlokalapp.paymentsdk.PaymentPresenter]: this module has no iOS
- * counterpart, so the multiplatform presenter abstraction doesn't buy
+ * PaymentPresenter (`:razorpay-checkout`'s multiplatform UI handle): this
+ * module has no iOS counterpart, so that presenter abstraction doesn't buy
  * anything here. [activity] is only ever used to launch this SDK's own
  * internal proxy Activity ([RazorpayUpiIntentActivity]), which owns the
  * WebView Razorpay requires and handles its own onActivityResult — there's
@@ -35,30 +34,15 @@ class RazorpayUpiIntentSdk(private val activity: Activity) : PaymentGatewayHandl
     }
 
     /**
-     * Runs a payment for the given create-order response and emits exactly one
+     * Runs a payment for the routed `gateway_config` blob and emits exactly one
      * terminal [PaymentResult] (Success / Cancelled / Failure) before completing.
+     * LokalPaymentSdk has already parsed the create-order envelope and routed by
+     * gateway, so there's no response to re-parse or gateway to re-check here.
      *
-     * @param orderResponseJson the raw create-order response body from the host's backend
+     * @param gatewayConfig the opaque `gateway_config` blob for RAZORPAY_INTENT
      */
-    override fun pay(orderResponseJson: String): Flow<PaymentResult> = callbackFlow {
-        val response = parseCreateOrderResponse(orderResponseJson)
-        val responseGateway = PaymentGateway.fromValue(response.gateway)
-
-        if (responseGateway != PaymentGateway.RAZORPAY_INTENT) {
-            trySend(
-                PaymentResult.Failure(
-                    PaymentError(
-                        code = "unsupported_gateway",
-                        message = "Unsupported gateway ${responseGateway ?: response.gateway}; " +
-                            "RazorpayUpiIntentSdk only handles RAZORPAY_INTENT.",
-                    ),
-                ),
-            )
-            close()
-            return@callbackFlow
-        }
-
-        val config = response.toRazorpayUpiIntentConfig()
+    override fun pay(gatewayConfig: JsonObject): Flow<PaymentResult> = callbackFlow {
+        val config = gatewayConfig.toRazorpayUpiIntentConfig()
         val client = AndroidRazorpayUpiIntentClient(activity)
         client.setPaymentResultListener(object : RazorpayUpiIntentResultListener {
             override fun onPaymentSuccess(paymentId: String, orderId: String?, signature: String) {

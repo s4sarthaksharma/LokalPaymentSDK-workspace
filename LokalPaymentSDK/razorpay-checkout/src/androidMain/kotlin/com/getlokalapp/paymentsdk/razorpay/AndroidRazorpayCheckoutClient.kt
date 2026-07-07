@@ -1,7 +1,8 @@
 package com.getlokalapp.paymentsdk.razorpay
 
 import android.content.Intent
-import com.getlokalapp.paymentsdk.PaymentPresenter
+
+internal actual fun createRazorpayCheckoutClient(): RazorpayCheckoutClient = AndroidRazorpayCheckoutClient()
 
 /**
  * Drives Razorpay Checkout on Android by launching [RazorpayCheckoutActivity],
@@ -10,7 +11,7 @@ import com.getlokalapp.paymentsdk.PaymentPresenter
  * so the SDK owns that Activity rather than pushing the requirement onto the
  * host — the host just supplies any Activity via the PaymentPresenter.
  */
-class AndroidRazorpayCheckoutClient : RazorpayCheckoutClient {
+internal class AndroidRazorpayCheckoutClient : RazorpayCheckoutClient {
 
     private var listener: RazorpayPaymentResultListener? = null
 

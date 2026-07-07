@@ -18,6 +18,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.getlokalapp.paymentsdk.LokalPaymentSdk
+import com.getlokalapp.paymentsdk.model.LokalPaymentResult
+import com.getlokalapp.paymentsdk.model.PaymentGateway
 import com.getlokalapp.paymentsdk.model.PaymentResult
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
@@ -77,13 +79,18 @@ fun App() {
             // leaves composition — see rememberRazorpayCheckoutSdk's kdoc.
             rememberRazorpayCheckoutSdk()
             // Android-only (see rememberUpiIntentPaymentHandler's kdoc) —
-            // null on iOS, which hides the UPI Intent button below. Also
-            // registers itself with LokalPaymentSdk when non-null.
-            val upiIntentHandler = rememberUpiIntentPaymentHandler()
+            // a no-op on iOS. Registers itself with LokalPaymentSdk when
+            // supported; the button below is shown based on that
+            // registration, not this return value.
+            rememberUpiIntentPaymentHandler()
             val scope = rememberCoroutineScope()
 
             var status by remember { mutableStateOf("LokalPayment SDK ${LokalPaymentSdk.VERSION}") }
             var inFlight by remember { mutableStateOf(false) }
+            // Registration above already finished synchronously by this point,
+            // and nothing unregisters while App() stays composed — so this is
+            // safe to compute once and cache, rather than on every recomposition.
+            val registeredGateways = remember { LokalPaymentSdk.registeredGateways() }
 
             // Both buttons call this with a different sample response —
             // which gateway handles the payment is decided entirely by the
@@ -105,14 +112,16 @@ fun App() {
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Text(text = status)
-                Button(
-                    enabled = !inFlight,
-                    onClick = { pay(SAMPLE_CREATE_ORDER_RESPONSE) },
-                    modifier = Modifier.padding(top = 16.dp),
-                ) {
-                    Text("Pay with Razorpay")
+                if (PaymentGateway.RAZORPAY_CHECKOUT in registeredGateways) {
+                    Button(
+                        enabled = !inFlight,
+                        onClick = { pay(SAMPLE_CREATE_ORDER_RESPONSE) },
+                        modifier = Modifier.padding(top = 16.dp),
+                    ) {
+                        Text("Pay with Razorpay")
+                    }
                 }
-                if (upiIntentHandler != null) {
+                if (PaymentGateway.RAZORPAY_INTENT in registeredGateways) {
                     Button(
                         enabled = !inFlight,
                         onClick = { pay(SAMPLE_UPI_INTENT_CREATE_ORDER_RESPONSE) },
@@ -126,8 +135,28 @@ fun App() {
     }
 }
 
-private fun render(result: PaymentResult): String = when (result) {
-    is PaymentResult.Success -> "Success: ${result.paymentId}"
-    is PaymentResult.Cancelled -> "Cancelled: ${result.reason}"
-    is PaymentResult.Failure -> "Error [${result.error.code}]: ${result.error.message}"
+// Dumps the entire object the SDK hands back — the routing gateway from the
+// LokalPaymentResult envelope plus every field of the inner PaymentResult.
+private fun render(payment: LokalPaymentResult): String {
+    val header = "gateway = ${payment.gateway ?: "UNKNOWN"}"
+    val body = when (val result = payment.result) {
+        is PaymentResult.Success -> """
+            Success
+            paymentId = ${result.paymentId}
+            orderId   = ${result.orderId ?: "—"}
+            signature = ${result.signature}
+        """.trimIndent()
+
+        is PaymentResult.Cancelled -> """
+            Cancelled
+            reason = ${result.reason}
+        """.trimIndent()
+
+        is PaymentResult.Failure -> """
+            Failure
+            code    = ${result.error.code ?: "—"}
+            message = ${result.error.message}
+        """.trimIndent()
+    }
+    return "$header\n$body"
 }

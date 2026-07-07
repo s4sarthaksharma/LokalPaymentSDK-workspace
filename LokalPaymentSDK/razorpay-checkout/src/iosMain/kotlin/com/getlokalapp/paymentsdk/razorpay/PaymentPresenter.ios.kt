@@ -1,4 +1,4 @@
-package com.getlokalapp.paymentsdk
+package com.getlokalapp.paymentsdk.razorpay
 
 import platform.UIKit.UIViewController
 

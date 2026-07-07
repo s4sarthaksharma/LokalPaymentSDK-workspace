@@ -2,7 +2,6 @@ package com.getlokalapp.paymentsdk.razorpay
 
 import cocoapods.razorpay_pod.RazorpayCheckout
 import cocoapods.razorpay_pod.RazorpayPaymentCompletionProtocolWithDataProtocol
-import com.getlokalapp.paymentsdk.PaymentPresenter
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.darwin.NSObject
 import platform.posix.int32_t
@@ -19,7 +18,10 @@ private const val KEY_RAZORPAY_ORDER_ID = "razorpay_order_id"
 private const val KEY_RAZORPAY_SIGNATURE = "razorpay_signature"
 
 @OptIn(ExperimentalForeignApi::class)
-class IOSRazorpayCheckoutClient : RazorpayCheckoutClient {
+internal actual fun createRazorpayCheckoutClient(): RazorpayCheckoutClient = IOSRazorpayCheckoutClient()
+
+@OptIn(ExperimentalForeignApi::class)
+internal class IOSRazorpayCheckoutClient : RazorpayCheckoutClient {
 
     private var listener: RazorpayPaymentResultListener? = null
     private var razorpay: RazorpayCheckout? = null

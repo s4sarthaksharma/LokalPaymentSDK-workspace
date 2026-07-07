@@ -1,11 +1,13 @@
 package com.getlokalapp.paymentsdk
 
+import com.getlokalapp.paymentsdk.model.LokalPaymentResult
 import com.getlokalapp.paymentsdk.model.PaymentError
 import com.getlokalapp.paymentsdk.model.PaymentGateway
 import com.getlokalapp.paymentsdk.model.PaymentResult
 import com.getlokalapp.paymentsdk.model.parseCreateOrderResponse
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 
 /**
  * Entry point for the shared Lokal Payment SDK.
@@ -46,26 +48,40 @@ object LokalPaymentSdk {
     }
 
     /**
+     * Snapshot of gateways currently registered — i.e. the gateway SDK
+     * classes the host has actually constructed right now. This changes as
+     * handlers register/dispose (e.g. across an Activity recreation), so
+     * treat it as a live query, not a fixed capability list. Useful for a
+     * host that wants to check what's available (e.g. to show/hide a button)
+     * without holding onto every handler instance itself.
+     */
+    fun registeredGateways(): Set<PaymentGateway> = handlers.keys.toSet()
+
+    /**
      * Runs a payment for the given create-order response and emits exactly one
-     * terminal [PaymentResult] (Success / Cancelled / Failure) before completing.
+     * terminal [LokalPaymentResult] — the gateway-agnostic [PaymentResult] plus
+     * the resolved gateway — before completing.
      *
      * @param orderResponseJson the raw create-order response body from the host's backend
      */
-    fun pay(orderResponseJson: String): Flow<PaymentResult> {
+    fun pay(orderResponseJson: String): Flow<LokalPaymentResult> {
         val response = parseCreateOrderResponse(orderResponseJson)
         val gateway = PaymentGateway.fromValue(response.gateway)
         val handler = handlers[gateway]
             ?: return flowOf(
-                PaymentResult.Failure(
-                    PaymentError(
-                        code = "unsupported_gateway",
-                        message = "No PaymentGatewayHandler registered for gateway " +
-                            "${gateway ?: response.gateway}. Did you forget to include " +
-                            "and construct that gateway's SDK class?",
+                LokalPaymentResult(
+                    gateway = gateway,
+                    result = PaymentResult.Failure(
+                        PaymentError(
+                            code = "unsupported_gateway",
+                            message = "No PaymentGatewayHandler registered for gateway " +
+                                "${gateway ?: response.gateway}. Did you forget to include " +
+                                "and construct that gateway's SDK class?",
+                        ),
                     ),
                 ),
             )
-        return handler.pay(orderResponseJson)
+        return handler.pay(response.gatewayConfig).map { LokalPaymentResult(gateway, it) }
     }
 
     const val VERSION: String = "0.0.1"

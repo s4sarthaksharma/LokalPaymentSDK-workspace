@@ -2,14 +2,12 @@ package com.getlokalapp.paymentsdk.razorpay
 
 import com.getlokalapp.paymentsdk.LokalPaymentSdk
 import com.getlokalapp.paymentsdk.PaymentGatewayHandler
-import com.getlokalapp.paymentsdk.PaymentPresenter
-import com.getlokalapp.paymentsdk.model.PaymentError
 import com.getlokalapp.paymentsdk.model.PaymentGateway
 import com.getlokalapp.paymentsdk.model.PaymentResult
-import com.getlokalapp.paymentsdk.model.parseCreateOrderResponse
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.serialization.json.JsonObject
 
 /**
  * Registers itself with [LokalPaymentSdk] to handle
@@ -27,25 +25,8 @@ class RazorpayCheckoutSdk(private val presenter: PaymentPresenter) : PaymentGate
         LokalPaymentSdk.register(this)
     }
 
-    override fun pay(orderResponseJson: String): Flow<PaymentResult> = callbackFlow {
-        val response = parseCreateOrderResponse(orderResponseJson)
-        val responseGateway = PaymentGateway.fromValue(response.gateway)
-
-        if (responseGateway != PaymentGateway.RAZORPAY_CHECKOUT) {
-            trySend(
-                PaymentResult.Failure(
-                    PaymentError(
-                        code = "unsupported_gateway",
-                        message = "Unsupported gateway ${responseGateway ?: response.gateway}; " +
-                            "RazorpayCheckoutSdk only handles RAZORPAY_CHECKOUT.",
-                    ),
-                ),
-            )
-            close()
-            return@callbackFlow
-        }
-
-        val config = response.toRazorpayCheckoutConfig()
+    override fun pay(gatewayConfig: JsonObject): Flow<PaymentResult> = callbackFlow {
+        val config = gatewayConfig.toRazorpayCheckoutConfig()
         val client = createRazorpayCheckoutClient()
         client.setPaymentResultListener(object : RazorpayPaymentResultListener {
             override fun onPaymentSuccess(paymentId: String, orderId: String?, signature: String) {

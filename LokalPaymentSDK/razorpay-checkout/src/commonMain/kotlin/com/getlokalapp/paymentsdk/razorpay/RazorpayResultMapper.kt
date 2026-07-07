@@ -5,6 +5,15 @@ import com.getlokalapp.paymentsdk.model.PaymentError
 import com.getlokalapp.paymentsdk.model.PaymentResult
 
 /**
+ * Razorpay's own checkout error codes, as passed to
+ * RazorpayPaymentResultListener.onPaymentError. Verified against
+ * matrimony-kmp's production Razorpay Checkout integration.
+ */
+internal object RazorpayErrorCodes {
+    const val PAYMENT_CANCELLED = 0
+}
+
+/**
  * Normalizes the raw Razorpay listener callbacks into a PaymentResult.
  * This is the "one layer up" classification that RazorpayPaymentResultListener's
  * doc deliberately keeps out of the platform clients — a user dismissing the
