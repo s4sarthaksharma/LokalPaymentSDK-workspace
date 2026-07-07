@@ -39,18 +39,25 @@ kotlin {
             isStatic = true
         }
 
-        // Intentionally NO pod("razorpay-pod") here. The Maven `shared` iOS
-        // klibs already bundle the Razorpay cinterop; re-declaring the pod would
-        // generate a second cinterop for the same `cocoapods.razorpay_pod`
-        // package and clash. The actual Razorpay.framework binary is supplied to
-        // the app target via iosApp/Podfile instead.
+        // Intentionally NO pod("razorpay-pod") here. The Maven
+        // `razorpay-checkout` iOS klibs already bundle the Razorpay cinterop;
+        // re-declaring the pod would generate a second cinterop for the same
+        // `cocoapods.razorpay_pod` package and clash. The actual
+        // Razorpay.framework binary is supplied to the app target via
+        // iosApp/Podfile instead.
     }
 
     sourceSets {
         commonMain.dependencies {
-            // KMP root coordinate: resolves to the .aar on Android and the iOS
-            // klibs (+ Razorpay cinterop) on iOS via Gradle Module Metadata.
+            // KMP root coordinates: shared resolves to the .aar on Android and
+            // the iOS klibs on iOS; razorpay-checkout additionally bundles the
+            // Razorpay cinterop on iOS. razorpay-upi-intent now also publishes
+            // an iOS variant (a stub — see its build.gradle.kts/iosMain), just
+            // so it resolves here; RazorpayUpiIntentSdk itself is still only
+            // usable from androidMain.
             implementation(libs.lokalpaymentsdk.shared)
+            implementation(libs.lokalpaymentsdk.razorpay.checkout)
+            implementation(libs.lokalpaymentsdk.razorpay.upi.intent)
             implementation(libs.kotlinx.coroutines.core)
 
             implementation(compose.runtime)

@@ -5,8 +5,9 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 
 /**
- * What the host app passes into LokalPaymentSdk after calling its own
- * backend to create an order — the SDK never makes that call itself.
+ * What the host app passes into a gateway module's pay() (e.g.
+ * RazorpayCheckoutSdk.pay()) after calling its own backend to create an
+ * order — the SDK never makes that call itself.
  * gatewayConfig stays opaque here — it's only parsed once matched
  * against `gateway` (e.g. RazorpayCheckoutConfig for
  * PaymentGateway.RAZORPAY_CHECKOUT). Mirrors a gateway/gateway_config

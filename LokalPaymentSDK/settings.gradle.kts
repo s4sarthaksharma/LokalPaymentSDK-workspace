@@ -32,3 +32,5 @@ dependencyResolutionManagement {
 }
 
 include(":shared")
+include(":razorpay-checkout")
+include(":razorpay-upi-intent")

@@ -18,7 +18,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.getlokalapp.paymentsdk.LokalPaymentSdk
-import com.getlokalapp.paymentsdk.demo.SAMPLE_CREATE_ORDER_RESPONSE
 import com.getlokalapp.paymentsdk.model.PaymentResult
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
@@ -47,19 +46,58 @@ private val SAMPLE_CREATE_ORDER_RESPONSE = """
     }
 """.trimIndent()
 
+// Illustrative only (gateway 3 = RAZORPAY_INTENT) — a real UPI Intent
+// gateway_config also carries which UPI app to hand off to, decided by the
+// host's own backend/UI, not shown here.
+private val SAMPLE_UPI_INTENT_CREATE_ORDER_RESPONSE = """
+{
+  "gateway": 3,
+  "gateway_config": {
+    "razorpay_key": "rzp_live_RRHjf8hhNwEqrS",
+    "data": {
+      "order_id": "order_TAWpZGsiCtjdyF",
+      "currency": "INR",
+      "amount": 19900,
+      "contact": "1233214422",
+      "upi_app_package_name": "com.phonepe.app",
+      "method": "upi",
+      "email": "someone@example.com",
+      "_[flow]": "intent"
+    },
+    "order_row_id": 3299386
+  }
+}
+""".trimIndent()
+
 @Composable
 fun App() {
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
-            val sdk = remember { LokalPaymentSdk() }
-            // Read the presenter during composition — on iOS the underlying
-            // LocalUIViewController must be resolved here, not inside a later
-            // coroutine.
-            val presenter = rememberPaymentPresenter()
+            // Registers itself with LokalPaymentSdk and unregisters when this
+            // leaves composition — see rememberRazorpayCheckoutSdk's kdoc.
+            rememberRazorpayCheckoutSdk()
+            // Android-only (see rememberUpiIntentPaymentHandler's kdoc) —
+            // null on iOS, which hides the UPI Intent button below. Also
+            // registers itself with LokalPaymentSdk when non-null.
+            val upiIntentHandler = rememberUpiIntentPaymentHandler()
             val scope = rememberCoroutineScope()
 
             var status by remember { mutableStateOf("LokalPayment SDK ${LokalPaymentSdk.VERSION}") }
             var inFlight by remember { mutableStateOf(false) }
+
+            // Both buttons call this with a different sample response —
+            // which gateway handles the payment is decided entirely by the
+            // "gateway" field inside orderResponseJson, exactly as it would
+            // be decided by the host's own backend in production.
+            fun pay(orderResponseJson: String) {
+                scope.launch {
+                    inFlight = true
+                    LokalPaymentSdk.pay(orderResponseJson)
+                        .catch { status = "Error: ${it.message}" }
+                        .collect { status = render(it) }
+                    inFlight = false
+                }
+            }
 
             Column(
                 modifier = Modifier.fillMaxSize().padding(16.dp),
@@ -69,18 +107,19 @@ fun App() {
                 Text(text = status)
                 Button(
                     enabled = !inFlight,
-                    onClick = {
-                        scope.launch {
-                            inFlight = true
-                            sdk.pay(SAMPLE_CREATE_ORDER_RESPONSE, presenter)
-                                .catch { status = "Error: ${it.message}" }
-                                .collect { status = render(it) }
-                            inFlight = false
-                        }
-                    },
+                    onClick = { pay(SAMPLE_CREATE_ORDER_RESPONSE) },
                     modifier = Modifier.padding(top = 16.dp),
                 ) {
                     Text("Pay with Razorpay")
+                }
+                if (upiIntentHandler != null) {
+                    Button(
+                        enabled = !inFlight,
+                        onClick = { pay(SAMPLE_UPI_INTENT_CREATE_ORDER_RESPONSE) },
+                        modifier = Modifier.padding(top = 16.dp),
+                    ) {
+                        Text("Pay with Razorpay (UPI Intent)")
+                    }
                 }
             }
         }

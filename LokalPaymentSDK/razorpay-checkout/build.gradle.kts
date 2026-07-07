@@ -17,7 +17,7 @@ kotlin {
     }
 
     androidLibrary {
-        namespace = "com.getlokalapp.paymentsdk"
+        namespace = "com.getlokalapp.paymentsdk.checkout"
         compileSdk = libs.versions.android.compileSdk.get().toInt()
         minSdk = libs.versions.android.minSdk.get().toInt()
 
@@ -34,25 +34,39 @@ kotlin {
 
     cocoapods {
         version = "0.0.1"
-        summary = "Lokal Payment SDK shared module"
+        summary = "Lokal Payment SDK - Razorpay hosted Checkout"
         homepage = "https://github.com/getlokalapp/LokalPaymentSDK"
         ios.deploymentTarget = "16.0"
-        name = "Shared"
+        name = "RazorpayCheckout"
 
         framework {
-            baseName = "Shared"
+            baseName = "RazorpayCheckout"
             isStatic = true
+        }
+
+        pod("razorpay-pod") {
+            version = "1.4.3"
+            moduleName = "Razorpay"
+            extraOpts += listOf("-compiler-option", "-fmodules")
         }
     }
 
     sourceSets {
         commonMain.dependencies {
+            api(project(":shared"))
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
             implementation(libs.kotlinx.coroutines.test)
+        }
+        androidMain.dependencies {
+            // implementation, not api: Razorpay is fully encapsulated behind
+            // the internal RazorpayCheckoutActivity proxy — no public SDK type
+            // exposes a Razorpay class, so consumers don't need it on their
+            // compile classpath (it's still there transitively at runtime).
+            implementation(libs.razorpay.checkout)
         }
     }
 }

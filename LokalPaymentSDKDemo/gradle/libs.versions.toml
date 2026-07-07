@@ -15,10 +15,21 @@ lokalPaymentSdk = "0.0.1"
 
 [libraries]
 # The KMP root coordinate (not shared-android): commonMain depends on this so
-# both targets see the shared Kotlin API. Gradle Module Metadata resolves it to
-# the .aar on Android and the iOS klibs (+ bundled Razorpay cinterop) on iOS.
+# both targets see the shared Kotlin API (core models only — no Razorpay).
 # Published to mavenLocal by `./gradlew :shared:publishToMavenLocal` in LokalPaymentSDK.
 lokalpaymentsdk-shared = { module = "com.getlokalapp.paymentsdk:shared", version.ref = "lokalPaymentSdk" }
+
+# Razorpay hosted Checkout, as its own opt-in module. Gradle Module Metadata
+# resolves it to the .aar on Android and the iOS klibs (+ bundled Razorpay
+# cinterop) on iOS. Published to mavenLocal by
+# `./gradlew :razorpay-checkout:publishToMavenLocal` in LokalPaymentSDK.
+lokalpaymentsdk-razorpay-checkout = { module = "com.getlokalapp.paymentsdk:razorpay-checkout", version.ref = "lokalPaymentSdk" }
+
+# Razorpay UPI Intent — Android-only (no iOS target at all), so this is only
+# ever added to an androidMain source set, never commonMain. Published to
+# mavenLocal by `./gradlew :razorpay-upi-intent:publishToMavenLocal` in
+# LokalPaymentSDK.
+lokalpaymentsdk-razorpay-upi-intent = { module = "com.getlokalapp.paymentsdk:razorpay-upi-intent", version.ref = "lokalPaymentSdk" }
 
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activityCompose" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }

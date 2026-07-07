@@ -28,9 +28,10 @@ dependencyResolutionManagement {
             }
         }
         mavenCentral()
-        // LokalPaymentSDK's `shared` module is consumed from here — publish
-        // it with `./gradlew :shared:publishToMavenLocal` in the
-        // LokalPaymentSDK project after any change to the library.
+        // LokalPaymentSDK's `shared` and `razorpay-checkout` modules are
+        // consumed from here — publish them with
+        // `./gradlew :shared:publishToMavenLocal :razorpay-checkout:publishToMavenLocal`
+        // in the LokalPaymentSDK project after any change to the library.
         mavenLocal()
     }
 }
