@@ -20,9 +20,14 @@ import androidx.compose.ui.unit.dp
 import com.getlokalapp.paymentsdk.LokalPaymentSdk
 import com.getlokalapp.paymentsdk.model.LokalPaymentResult
 import com.getlokalapp.paymentsdk.model.PaymentGateway
+import com.getlokalapp.paymentsdk.model.PaymentOrder
 import com.getlokalapp.paymentsdk.model.PaymentResult
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 // A real create-order response captured from the backend. In a production
 // host this JSON comes from the app's own backend create-order call — the
@@ -71,6 +76,27 @@ private val SAMPLE_UPI_INTENT_CREATE_ORDER_RESPONSE = """
 }
 """.trimIndent()
 
+// The SDK expects a typed PaymentOrder and no longer parses JSON itself, so
+// the host does it. A real host would decode into its own backend DTOs; here
+// we pull the two fields the SDK needs straight off the JSON tree.
+// ignoreUnknownKeys-style leniency is implicit with this element API — the
+// extra sibling fields (e.g. order_row_id) are simply left unread.
+private val orderJson = Json { ignoreUnknownKeys = true }
+
+private fun parseOrder(orderResponseJson: String): PaymentOrder {
+    val root = orderJson.parseToJsonElement(orderResponseJson).jsonObject
+    val gatewayValue = root.getValue("gateway").jsonPrimitive.int
+    // Mapping the backend's gateway number to the typed PaymentGateway is now
+    // the host's job — the SDK takes an already-resolved enum. An unknown
+    // value can't produce a PaymentOrder at all, so we surface it here.
+    val gateway = PaymentGateway.fromValue(gatewayValue)
+        ?: error("Unknown gateway value from backend: $gatewayValue")
+    return PaymentOrder(
+        gateway = gateway,
+        gatewayConfig = root.getValue("gateway_config").jsonObject,
+    )
+}
+
 @Composable
 fun App() {
     MaterialTheme {
@@ -92,14 +118,21 @@ fun App() {
             // safe to compute once and cache, rather than on every recomposition.
             val registeredGateways = remember { LokalPaymentSdk.registeredGateways() }
 
-            // Both buttons call this with a different sample response —
-            // which gateway handles the payment is decided entirely by the
-            // "gateway" field inside orderResponseJson, exactly as it would
-            // be decided by the host's own backend in production.
+            // Both buttons call this with a different sample response — which
+            // gateway handles the payment is decided entirely by the "gateway"
+            // field inside orderResponseJson, exactly as it would be decided by
+            // the host's own backend in production. The host parses the
+            // response into a PaymentOrder here; the SDK takes it typed.
             fun pay(orderResponseJson: String) {
                 scope.launch {
                     inFlight = true
-                    LokalPaymentSdk.pay(orderResponseJson)
+                    val order = runCatching { parseOrder(orderResponseJson) }
+                        .getOrElse {
+                            status = "Error: ${it.message}"
+                            inFlight = false
+                            return@launch
+                        }
+                    LokalPaymentSdk.pay(order)
                         .catch { status = "Error: ${it.message}" }
                         .collect { status = render(it) }
                     inFlight = false
@@ -138,7 +171,7 @@ fun App() {
 // Dumps the entire object the SDK hands back — the routing gateway from the
 // LokalPaymentResult envelope plus every field of the inner PaymentResult.
 private fun render(payment: LokalPaymentResult): String {
-    val header = "gateway = ${payment.gateway ?: "UNKNOWN"}"
+    val header = "gateway = ${payment.gateway}"
     val body = when (val result = payment.result) {
         is PaymentResult.Success -> """
             Success

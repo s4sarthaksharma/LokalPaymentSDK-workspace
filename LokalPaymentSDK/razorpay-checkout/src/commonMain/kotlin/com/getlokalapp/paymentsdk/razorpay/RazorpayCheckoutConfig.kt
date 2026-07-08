@@ -6,7 +6,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 
 /**
- * Parsed from CreateOrderResponse.gatewayConfig when gateway is
+ * Parsed from PaymentOrder.gatewayConfig when gateway is
  * RAZORPAY_CHECKOUT. `data` is handed straight to Razorpay's own
  * Checkout.open() — the SDK never inspects its contents (amount,
  * currency, order_id, prefill, etc. all live inside it, decided

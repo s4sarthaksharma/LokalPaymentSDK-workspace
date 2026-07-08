@@ -8,6 +8,7 @@ android-targetSdk = "37"
 androidx-activityCompose = "1.13.0"
 composeMultiplatform = "1.11.1"
 kotlinxCoroutines = "1.11.0"
+kotlinxSerialization = "1.11.0"
 
 # Must match whatever version was published via
 # `./gradlew :shared:publishToMavenLocal` in LokalPaymentSDK.
@@ -33,6 +34,7 @@ lokalpaymentsdk-razorpay-upi-intent = { module = "com.getlokalapp.paymentsdk:raz
 
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activityCompose" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

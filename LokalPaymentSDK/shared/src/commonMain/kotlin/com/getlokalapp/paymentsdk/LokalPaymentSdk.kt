@@ -3,8 +3,8 @@ package com.getlokalapp.paymentsdk
 import com.getlokalapp.paymentsdk.model.LokalPaymentResult
 import com.getlokalapp.paymentsdk.model.PaymentError
 import com.getlokalapp.paymentsdk.model.PaymentGateway
+import com.getlokalapp.paymentsdk.model.PaymentOrder
 import com.getlokalapp.paymentsdk.model.PaymentResult
-import com.getlokalapp.paymentsdk.model.parseCreateOrderResponse
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -12,9 +12,10 @@ import kotlinx.coroutines.flow.map
 /**
  * Entry point for the shared Lokal Payment SDK.
  *
- * The host calls its own backend to create an order, then hands the raw
- * create-order response to [pay] — always the same call, regardless of
- * which gateway the backend picked. [pay] reads `CreateOrderResponse.gateway`
+ * The host calls its own backend to create an order, decodes that response
+ * into a [PaymentOrder], then hands it to [pay] — always the same call,
+ * regardless of which gateway the backend picked. [pay] reads
+ * `PaymentOrder.gateway`
  * and routes to whichever [PaymentGatewayHandler] is currently registered
  * for it. There's no list to build: constructing a gateway module's own SDK
  * class (e.g. `RazorpayCheckoutSdk(presenter)`) registers it automatically —
@@ -58,30 +59,28 @@ object LokalPaymentSdk {
     fun registeredGateways(): Set<PaymentGateway> = handlers.keys.toSet()
 
     /**
-     * Runs a payment for the given create-order response and emits exactly one
-     * terminal [LokalPaymentResult] — the gateway-agnostic [PaymentResult] plus
-     * the resolved gateway — before completing.
+     * Runs a payment for the given order and emits exactly one terminal
+     * [LokalPaymentResult] — the gateway-agnostic [PaymentResult] plus the
+     * resolved gateway — before completing.
      *
-     * @param orderResponseJson the raw create-order response body from the host's backend
+     * @param order the host's create-order response, already decoded into a [PaymentOrder]
      */
-    fun pay(orderResponseJson: String): Flow<LokalPaymentResult> {
-        val response = parseCreateOrderResponse(orderResponseJson)
-        val gateway = PaymentGateway.fromValue(response.gateway)
-        val handler = handlers[gateway]
+    fun pay(order: PaymentOrder): Flow<LokalPaymentResult> {
+        val handler = handlers[order.gateway]
             ?: return flowOf(
                 LokalPaymentResult(
-                    gateway = gateway,
+                    gateway = order.gateway,
                     result = PaymentResult.Failure(
                         PaymentError(
                             code = "unsupported_gateway",
                             message = "No PaymentGatewayHandler registered for gateway " +
-                                "${gateway ?: response.gateway}. Did you forget to include " +
+                                "${order.gateway}. Did you forget to include " +
                                 "and construct that gateway's SDK class?",
                         ),
                     ),
                 ),
             )
-        return handler.pay(response.gatewayConfig).map { LokalPaymentResult(gateway, it) }
+        return handler.pay(order.gatewayConfig).map { LokalPaymentResult(order.gateway, it) }
     }
 
     const val VERSION: String = "0.0.1"

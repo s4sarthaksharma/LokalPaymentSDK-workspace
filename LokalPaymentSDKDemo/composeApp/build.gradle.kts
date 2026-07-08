@@ -59,6 +59,7 @@ kotlin {
             implementation(libs.lokalpaymentsdk.razorpay.checkout)
             implementation(libs.lokalpaymentsdk.razorpay.upi.intent)
             implementation(libs.kotlinx.coroutines.core)
+            implementation(libs.kotlinx.serialization.json)
 
             implementation(compose.runtime)
             implementation(compose.foundation)

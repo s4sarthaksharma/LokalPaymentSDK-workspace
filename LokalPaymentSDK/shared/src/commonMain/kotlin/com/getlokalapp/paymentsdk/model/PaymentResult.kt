@@ -48,3 +48,23 @@ sealed class PaymentResult {
 
     data class Failure(val error: PaymentError) : PaymentResult()
 }
+
+/**
+ * What [com.getlokalapp.paymentsdk.LokalPaymentSdk.pay] emits: the
+ * gateway-agnostic [PaymentResult] plus the [gateway] it was routed to.
+ *
+ * The gateway rides on this envelope rather than on [PaymentResult] because
+ * it's routing metadata, not part of the payment outcome — only the generic
+ * entry point knows it (the backend chose the gateway; the host didn't). A
+ * host holding a specific gateway module's own SDK gets a bare
+ * [PaymentResult] and already knows the gateway.
+ *
+ * [gateway] is non-null: the host hands [pay] a typed [PaymentOrder] whose
+ * gateway is already a resolved [PaymentGateway], so there's always a gateway
+ * to name — even when [result] is a [PaymentResult.Failure] because no handler
+ * was registered for that gateway.
+ */
+data class LokalPaymentResult(
+    val gateway: PaymentGateway,
+    val result: PaymentResult,
+)
