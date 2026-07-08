@@ -1,6 +1,17 @@
 # LokalPaymentSDK — Architecture Reference & Plan
 
-Status: v1 scope decided, ready to break into implementation tasks
+> **⚠️ HISTORICAL — superseded, do not treat as current.** This was the v1
+> planning doc. The shipped design has since evolved past it (a
+> `PaymentGatewayHandler` interface, a `LokalPaymentSdk` registry, a
+> `LokalPaymentResult` envelope, a typed `PaymentOrder`, and the module split
+> — none of which this doc describes). The "v1 API sketch" (§3) and phase
+> status (§5) are **out of date**. For current state and how to add a gateway,
+> read [`adding-a-new-gateway.md`](adding-a-new-gateway.md). Kept only for the
+> rationale and gotchas it still uniquely records: the matrimony-kmp reference
+> pattern (§1), the double-open bug and cancel-vs-failure discipline (§1.4),
+> and the iOS CocoaPods interop wrinkles + unverified `orderId`/`signature`
+> extraction (§5, Phase 3).
+
 Source pattern: `matrimony-kmp` (`/Users/sarthaksharma/StudioProjects/matrimony-kmp`)
 
 This doc captures the payment architecture pattern proven in

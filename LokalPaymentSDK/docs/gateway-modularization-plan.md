@@ -1,6 +1,17 @@
 # LokalPaymentSDK — Gateway Modularization Plan
 
-Status: plan drafted, not yet executed — hand back explicitly to run it
+> **⚠️ HISTORICAL — this plan has been executed and superseded.** The module
+> split it describes (`:shared` / `:razorpay-checkout` / `:razorpay-upi-intent`)
+> shipped, but the final design diverged from this plan: it added a
+> `PaymentGatewayHandler` interface + `LokalPaymentSdk` registry (this doc
+> proposed "by convention, not a shared interface"), a `LokalPaymentResult`
+> envelope, and a typed `PaymentOrder` (this doc still had `pay()` taking raw
+> `orderResponseJson`). For current state and how to add a gateway, read
+> [`adding-a-new-gateway.md`](adding-a-new-gateway.md). Kept only as a record of
+> *why* the split happened and the `com.razorpay:customui` vs
+> `com.razorpay:checkout` artifact discovery (the UPI Intent `Razorpay` class
+> lives in a separate Maven coordinate).
+
 Source pattern: `matrimony-kmp` (`/Users/sarthaksharma/StudioProjects/matrimony-kmp`),
 `moko-permissions` (`https://klibs.io/project/icerockdev/moko-permissions`)
 

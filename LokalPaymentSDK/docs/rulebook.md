@@ -5,6 +5,12 @@ Hard constraints for this project. Unlike `architecture-reference.md`
 change's plan), this doc holds rules that apply to *all* future work here,
 regardless of which feature or module it touches.
 
+> **Adding a new payment gateway?** Read
+> [`adding-a-new-gateway.md`](adding-a-new-gateway.md) — the current-state
+> playbook + rulebook for that specific task (step-by-step recipe, the core
+> contract, both module templates, and gateway-specific hard rules). This
+> file's "No Compose" rule applies there too.
+
 ## No Compose (CMP) in the SDK — KMP/KMM only
 
 `LokalPaymentSDK` and every module inside it (`:shared`, `:razorpay-checkout`,
