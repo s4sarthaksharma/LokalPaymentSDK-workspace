@@ -2,6 +2,8 @@ package com.getlokalapp.paymentsdk.razorpay
 
 import cocoapods.razorpay_pod.RazorpayCheckout
 import cocoapods.razorpay_pod.RazorpayPaymentCompletionProtocolWithDataProtocol
+import com.getlokalapp.paymentsdk.hostcontext.topmostViewController
+import com.getlokalapp.paymentsdk.json.toPlainMap
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.darwin.NSObject
 import platform.posix.int32_t
@@ -42,7 +44,12 @@ internal class IOSRazorpayCheckoutClient : RazorpayCheckoutClient {
         }
 
     @Suppress("UNCHECKED_CAST")
-    override fun openCheckout(config: RazorpayCheckoutConfig, presenter: PaymentPresenter) {
+    override fun openCheckout(config: RazorpayCheckoutConfig) {
+        val viewController = topmostViewController()
+        if (viewController == null) {
+            listener?.onPaymentError(VIEW_CONTROLLER_UNAVAILABLE_ERROR, "razorpay_no_view_controller")
+            return
+        }
         val instance = RazorpayCheckout.initWithKey(config.razorpayKey, andDelegateWithData = paymentCompletionDelegate)
         razorpay = instance
         // razorpay-pod's cinterop generates its own UIViewController symbol
@@ -50,11 +57,17 @@ internal class IOSRazorpayCheckoutClient : RazorpayCheckoutClient {
         // same underlying Objective-C class at runtime, so this cast is safe.
         instance.open(
             config.data.toPlainMap(),
-            displayController = presenter.viewController as objcnames.classes.UIViewController,
+            displayController = viewController as objcnames.classes.UIViewController,
         )
     }
 
     override fun setPaymentResultListener(listener: RazorpayPaymentResultListener?) {
         this.listener = listener
+    }
+
+    private companion object {
+        // Non-zero so the orchestrator classifies it as a failure, not a cancel
+        // (cancel is Razorpay's own code 0).
+        const val VIEW_CONTROLLER_UNAVAILABLE_ERROR = 2
     }
 }

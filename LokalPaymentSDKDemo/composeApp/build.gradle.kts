@@ -6,6 +6,13 @@ plugins {
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.jetbrains.compose)
     id("org.jetbrains.kotlin.native.cocoapods")
+    // D4/D9/R4: hypersdk.plugin does NOT apply cleanly here — it injects its
+    // dependencies via a plain `implementation` configuration, which a
+    // com.android.kotlin.multiplatform.library module doesn't expose (KMP
+    // uses per-source-set configs like androidMainImplementation instead).
+    // Confirmed: applying it here fails with "Configuration with name
+    // 'implementation' not found." Applied to :androidApp instead, which has
+    // the conventional AGP application configurations the plugin expects.
 }
 
 kotlin {
@@ -58,6 +65,7 @@ kotlin {
             implementation(libs.lokalpaymentsdk.shared)
             implementation(libs.lokalpaymentsdk.razorpay.checkout)
             implementation(libs.lokalpaymentsdk.razorpay.upi.intent)
+            implementation(libs.lokalpaymentsdk.juspay)
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
 

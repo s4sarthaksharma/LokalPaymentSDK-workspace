@@ -11,13 +11,12 @@ import kotlinx.serialization.json.JsonObject
 
 /**
  * Registers itself with [LokalPaymentSdk] to handle
- * [PaymentGateway.RAZORPAY_CHECKOUT] as soon as it's constructed — nothing
- * else to wire up. [presenter] is fixed at construction, not passed per
- * [pay] call — one instance per checkout surface. Call [dispose] when
- * [presenter]'s underlying Activity/UIViewController goes away, so the
- * registry doesn't hold a stale reference.
+ * [PaymentGateway.RAZORPAY_CHECKOUT] as soon as it's constructed — no
+ * platform handle to grab: Android auto-tracks the current Activity and iOS
+ * looks up the topmost UIViewController fresh, both via `:shared`'s
+ * hostcontext utilities (mirrors JuspaySdk).
  */
-class RazorpayCheckoutSdk(private val presenter: PaymentPresenter) : PaymentGatewayHandler {
+class RazorpayCheckoutSdk : PaymentGatewayHandler {
 
     override val gateway: PaymentGateway = PaymentGateway.RAZORPAY_CHECKOUT
 
@@ -39,7 +38,7 @@ class RazorpayCheckoutSdk(private val presenter: PaymentPresenter) : PaymentGate
                 close()
             }
         })
-        client.openCheckout(config, presenter)
+        client.openCheckout(config)
 
         awaitClose { client.setPaymentResultListener(null) }
     }

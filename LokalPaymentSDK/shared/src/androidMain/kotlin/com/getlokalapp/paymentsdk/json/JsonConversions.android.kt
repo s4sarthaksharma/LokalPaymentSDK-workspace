@@ -1,4 +1,4 @@
-package com.getlokalapp.paymentsdk.razorpay
+package com.getlokalapp.paymentsdk.json
 
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -12,11 +12,13 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Razorpay's Android Checkout.open() takes org.json.JSONObject, not
- * kotlinx. Serialization's JsonObject — this bridges the opaque
- * gatewayConfig blob across without the SDK ever parsing its contents.
+ * Bridges an opaque gateway_config/payload blob from kotlinx.serialization's
+ * JsonObject to org.json.JSONObject — what every Android gateway SDK
+ * (Razorpay Checkout.open(), HyperServiceHolder.initiate()/process(), ...)
+ * actually takes. Shared across gateway modules so the isString fix below
+ * doesn't have to be duplicated (or missed) in each one.
  */
-internal fun JsonObject.toOrgJson(): JSONObject {
+fun JsonObject.toOrgJson(): JSONObject {
     val result = JSONObject()
     for ((key, value) in this) {
         result.put(key, value.toOrgJsonValue())
@@ -32,6 +34,12 @@ private fun JsonElement.toOrgJsonValue(): Any = when (this) {
 }
 
 private fun JsonPrimitive.toOrgJsonPrimitive(): Any {
+    // isString must be checked first: JsonPrimitive.longOrNull/doubleOrNull/
+    // booleanOrNull parse `content` regardless of whether the original JSON
+    // literal was quoted, so a numeric-looking string (e.g. a customerId of
+    // "308184") would otherwise silently become a Long — some gateway SDKs
+    // (e.g. Juspay's HyperSDK, error jp_003) reject that as a type mismatch.
+    if (isString) return content
     booleanOrNull?.let { return it }
     longOrNull?.let { return it }
     doubleOrNull?.let { return it }

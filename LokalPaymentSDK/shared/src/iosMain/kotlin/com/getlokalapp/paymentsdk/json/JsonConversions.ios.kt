@@ -1,4 +1,4 @@
-package com.getlokalapp.paymentsdk.razorpay
+package com.getlokalapp.paymentsdk.json
 
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -10,12 +10,14 @@ import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.longOrNull
 
 /**
- * Razorpay's iOS Checkout.open() takes a plain Kotlin Map, which
- * Kotlin/Native bridges to NSDictionary at the Objective-C boundary —
- * this converts the opaque gatewayConfig blob without the SDK ever
- * parsing its contents.
+ * Bridges an opaque gateway_config/payload blob from kotlinx.serialization's
+ * JsonObject to a plain Kotlin Map, which Kotlin/Native bridges to
+ * NSDictionary at the Objective-C boundary — what every iOS gateway SDK
+ * (Razorpay Checkout.open(), HyperServices.initiate()/process(), ...)
+ * actually takes. Shared across gateway modules so it doesn't have to be
+ * duplicated in each one.
  */
-internal fun JsonObject.toPlainMap(): Map<Any?, Any?> =
+fun JsonObject.toPlainMap(): Map<Any?, Any?> =
     entries.associate { (key, value) -> key to value.toPlainValue() }
 
 private fun JsonElement.toPlainValue(): Any? = when (this) {

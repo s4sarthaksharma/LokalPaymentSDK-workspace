@@ -28,9 +28,8 @@ internal class PendingCheckout(
 /**
  * Internal proxy Activity that satisfies Razorpay's requirement that the
  * Activity invoking Checkout.open() implement its result listener. Keeping this
- * interface here means host apps pass any Activity as the PaymentPresenter and
- * never implement a gateway interface themselves. Runs translucent so only
- * Razorpay's own sheet is visible.
+ * interface here means host apps never implement a gateway interface
+ * themselves. Runs translucent so only Razorpay's own sheet is visible.
  */
 internal class RazorpayCheckoutActivity : Activity(), PaymentResultWithDataListener {
 

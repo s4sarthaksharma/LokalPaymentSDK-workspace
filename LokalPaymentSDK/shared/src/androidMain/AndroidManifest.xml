@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Auto-init: registers ActivityTracker with zero host code. Merged
+         into the host app automatically, so every gateway module that
+         depends on :shared gets the current-Activity tracker for free. -->
+    <application>
+        <provider
+            android:name="com.getlokalapp.paymentsdk.hostcontext.ActivityTrackerInitProvider"
+            android:authorities="${applicationId}.getlokalapp.paymentsdk.hostcontext.initprovider"
+            android:exported="false" />
+    </application>
+
+</manifest>

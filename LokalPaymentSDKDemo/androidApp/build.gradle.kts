@@ -1,6 +1,18 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.compose.compiler)
+    alias(libs.plugins.juspay.hypersdk)
+}
+
+// D4/D9/R4: applied here, not :composeApp — hypersdk.plugin needs a
+// conventional AGP application module's `implementation` configuration (see
+// composeApp/build.gradle.kts's comment for why it fails there). Borrowing
+// matrimony-kmp's real, already-registered clientId/sdkVersion so this demo
+// actually builds and exercises the real Juspay flow — swap for this host's
+// own clientId once one is issued.
+hyperSdkPlugin {
+    clientId = "lokalmatrimony"
+    sdkVersion = "2.2.8-rc.01"
 }
 
 android {

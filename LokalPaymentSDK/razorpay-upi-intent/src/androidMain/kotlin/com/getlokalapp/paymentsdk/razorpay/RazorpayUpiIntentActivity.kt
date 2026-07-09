@@ -4,18 +4,11 @@ import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import android.webkit.WebView
+import com.getlokalapp.paymentsdk.hostcontext.ActivityTracker
+import com.getlokalapp.paymentsdk.json.toOrgJson
 import com.razorpay.PaymentData
 import com.razorpay.PaymentResultWithDataListener
 import com.razorpay.Razorpay
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonNull
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.booleanOrNull
-import kotlinx.serialization.json.doubleOrNull
-import kotlinx.serialization.json.longOrNull
-import org.json.JSONArray
 import org.json.JSONObject
 
 /**
@@ -41,15 +34,22 @@ internal class PendingUpiIntentCheckout(
  * [RazorpayUpiIntentActivity], an internal proxy that owns the WebView
  * Razorpay requires and implements its result listener — mirrors
  * `:razorpay-checkout`'s AndroidRazorpayCheckoutClient for hosted Checkout.
- * Unlike that client, this one implements no shared interface — this
- * module has no iOS counterpart or factory indirection to satisfy — so it
- * lives alongside the rest of the Android-only proxy machinery it drives.
+ * The Activity to launch it from comes from [ActivityTracker] (`:shared`'s
+ * hostcontext utility) at call time, not a host-supplied handle. Unlike
+ * AndroidRazorpayCheckoutClient, this one implements no shared interface —
+ * this module has no iOS counterpart or factory indirection to satisfy — so
+ * it lives alongside the rest of the Android-only proxy machinery it drives.
  */
-internal class AndroidRazorpayUpiIntentClient(private val activity: Activity) {
+internal class AndroidRazorpayUpiIntentClient {
 
     private var listener: RazorpayUpiIntentResultListener? = null
 
     fun submit(config: RazorpayUpiIntentConfig) {
+        val activity = ActivityTracker.current
+        if (activity == null) {
+            listener?.onPaymentError(ACTIVITY_UNAVAILABLE_ERROR, "razorpay_activity_unavailable")
+            return
+        }
         RazorpayUpiIntentBridge.pending = PendingUpiIntentCheckout(
             key = config.razorpayKey,
             data = config.data.toOrgJson(),
@@ -60,6 +60,12 @@ internal class AndroidRazorpayUpiIntentClient(private val activity: Activity) {
 
     fun setPaymentResultListener(listener: RazorpayUpiIntentResultListener?) {
         this.listener = listener
+    }
+
+    private companion object {
+        // Non-zero and distinct from Razorpay's own PAYMENT_CANCELLED (5) so
+        // the orchestrator classifies it as a failure, not a cancel.
+        const val ACTIVITY_UNAVAILABLE_ERROR = 2
     }
 }
 
@@ -137,38 +143,4 @@ internal class RazorpayUpiIntentActivity : Activity(), PaymentResultWithDataList
         // Non-zero so the orchestrator classifies it as a failure, not a cancel.
         const val GENERIC_ERROR = 1
     }
-}
-
-// Deliberately not shared with `:razorpay-checkout`'s identical-looking
-// conversion — a file of the same name in the same package in a sibling
-// module would compile to a duplicate JVM class name
-// (JsonObjectConversionsKt) and collide for any consumer depending on both
-// modules. Small, self-contained duplication is the price of the two
-// modules not depending on each other.
-
-/**
- * Razorpay's Android Razorpay.submit() takes org.json.JSONObject, not
- * kotlinx.serialization's JsonObject — this bridges the opaque gatewayConfig
- * blob across without the SDK ever parsing its contents.
- */
-internal fun JsonObject.toOrgJson(): JSONObject {
-    val result = JSONObject()
-    for ((key, value) in this) {
-        result.put(key, value.toOrgJsonValue())
-    }
-    return result
-}
-
-private fun JsonElement.toOrgJsonValue(): Any = when (this) {
-    is JsonNull -> JSONObject.NULL
-    is JsonObject -> toOrgJson()
-    is JsonArray -> JSONArray().also { array -> forEach { array.put(it.toOrgJsonValue()) } }
-    is JsonPrimitive -> toOrgJsonPrimitive()
-}
-
-private fun JsonPrimitive.toOrgJsonPrimitive(): Any {
-    booleanOrNull?.let { return it }
-    longOrNull?.let { return it }
-    doubleOrNull?.let { return it }
-    return content
 }

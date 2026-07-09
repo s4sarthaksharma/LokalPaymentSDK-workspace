@@ -1,7 +1,7 @@
 package com.getlokalapp.paymentsdk.razorpay
 
 internal interface RazorpayCheckoutClient {
-    fun openCheckout(config: RazorpayCheckoutConfig, presenter: PaymentPresenter)
+    fun openCheckout(config: RazorpayCheckoutConfig)
     fun setPaymentResultListener(listener: RazorpayPaymentResultListener?)
 }
 

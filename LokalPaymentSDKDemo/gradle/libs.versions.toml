@@ -13,6 +13,8 @@ kotlinxSerialization = "1.11.0"
 # Must match whatever version was published via
 # `./gradlew :shared:publishToMavenLocal` in LokalPaymentSDK.
 lokalPaymentSdk = "0.0.1"
+# matrimony-kmp's confirmed pin (D4/D9) — the plugin version, not the SDK version.
+juspayHyperSdkPlugin = "2.0.6"
 
 [libraries]
 # The KMP root coordinate (not shared-android): commonMain depends on this so
@@ -32,6 +34,9 @@ lokalpaymentsdk-razorpay-checkout = { module = "com.getlokalapp.paymentsdk:razor
 # LokalPaymentSDK.
 lokalpaymentsdk-razorpay-upi-intent = { module = "com.getlokalapp.paymentsdk:razorpay-upi-intent", version.ref = "lokalPaymentSdk" }
 
+# Published to mavenLocal by `./gradlew :juspay:publishToMavenLocal` in LokalPaymentSDK.
+lokalpaymentsdk-juspay = { module = "com.getlokalapp.paymentsdk:juspay", version.ref = "lokalPaymentSdk" }
+
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activityCompose" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
@@ -42,3 +47,8 @@ android-kotlinMultiplatformLibrary = { id = "com.android.kotlin.multiplatform.li
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 jetbrains-compose = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }
+# D4/D9 — supplies HyperSDK's runtime jars + per-client asset artifact. Applied
+# to :composeApp (R4: unconfirmed whether this is the right module target for
+# a KMP-library composeApp, vs. :androidApp — matrimony's precedent was a
+# single non-split composeApp).
+juspay-hypersdk = { id = "hypersdk.plugin", version.ref = "juspayHyperSdkPlugin" }

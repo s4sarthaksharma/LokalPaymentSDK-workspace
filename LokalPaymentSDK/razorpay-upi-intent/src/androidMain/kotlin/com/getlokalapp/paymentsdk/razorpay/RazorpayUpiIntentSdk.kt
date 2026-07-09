@@ -1,6 +1,5 @@
 package com.getlokalapp.paymentsdk.razorpay
 
-import android.app.Activity
 import com.getlokalapp.paymentsdk.LokalPaymentSdk
 import com.getlokalapp.paymentsdk.PaymentGatewayHandler
 import com.getlokalapp.paymentsdk.model.PaymentGateway
@@ -13,19 +12,18 @@ import kotlinx.serialization.json.JsonObject
 /**
  * Registers itself with [LokalPaymentSdk] to handle
  * [PaymentGateway.RAZORPAY_INTENT] as soon as it's constructed — Android-only
- * (see this module's build.gradle.kts for why). Unlike RazorpayCheckoutSdk,
- * the host supplies its own [Activity] directly rather than a
- * PaymentPresenter (`:razorpay-checkout`'s multiplatform UI handle): this
- * module has no iOS counterpart, so that presenter abstraction doesn't buy
- * anything here. [activity] is only ever used to launch this SDK's own
+ * (see this module's build.gradle.kts for why). No platform handle to grab:
+ * [AndroidRazorpayUpiIntentClient] reads the current Activity from
+ * `:shared`'s hostcontext ActivityTracker at call time (mirrors
+ * RazorpayCheckoutSdk/JuspaySdk), only ever using it to launch this SDK's own
  * internal proxy Activity ([RazorpayUpiIntentActivity]), which owns the
  * WebView Razorpay requires and handles its own onActivityResult — there's
- * nothing for the host to forward. Call [dispose] when [activity] goes away.
+ * nothing for the host to forward.
  *
  * The host is also responsible for surfacing installed UPI apps and letting
  * the user pick one — that's app-level UI, not something this SDK owns.
  */
-class RazorpayUpiIntentSdk(private val activity: Activity) : PaymentGatewayHandler {
+class RazorpayUpiIntentSdk : PaymentGatewayHandler {
 
     override val gateway: PaymentGateway = PaymentGateway.RAZORPAY_INTENT
 
@@ -43,7 +41,7 @@ class RazorpayUpiIntentSdk(private val activity: Activity) : PaymentGatewayHandl
      */
     override fun pay(gatewayConfig: JsonObject): Flow<PaymentResult> = callbackFlow {
         val config = gatewayConfig.toRazorpayUpiIntentConfig()
-        val client = AndroidRazorpayUpiIntentClient(activity)
+        val client = AndroidRazorpayUpiIntentClient()
         client.setPaymentResultListener(object : RazorpayUpiIntentResultListener {
             override fun onPaymentSuccess(paymentId: String, orderId: String?, signature: String) {
                 trySend(razorpayUpiIntentSuccess(paymentId, orderId, signature))
@@ -60,3 +58,5 @@ class RazorpayUpiIntentSdk(private val activity: Activity) : PaymentGatewayHandl
         awaitClose { client.setPaymentResultListener(null) }
     }
 }
+
+actual fun createRazorpayUpiIntentHandler(): PaymentGatewayHandler? = RazorpayUpiIntentSdk()

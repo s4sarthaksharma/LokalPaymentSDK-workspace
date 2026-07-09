@@ -8,6 +8,8 @@ kotlinx-coroutines = "1.11.0"
 kotlinx-serialization-json = "1.11.0"
 razorpay-checkout = "1.6.41"
 razorpay-customui = "3.9.22"
+juspay-hypersdk = "2.2.8-rc.01"
+androidx-fragment = "1.8.5"
 
 [libraries]
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
@@ -20,6 +22,12 @@ razorpay-checkout = { module = "com.razorpay:checkout", version.ref = "razorpay-
 # confirmed against matrimony-kmp's dependency declarations and by inspecting
 # customui-core's classes.jar. Not needed by :razorpay-checkout at all.
 razorpay-customui = { module = "com.razorpay:customui", version.ref = "razorpay-customui" }
+# Plain public Maven artifacts (R2, confirmed via maven.juspay.in + decompiling
+# hyperinteg's classes.jar) — :juspay uses these as compileOnly (D4); the host
+# supplies the real runtime jars + merchant assets by applying hypersdk.plugin.
+juspay-hypersdk = { module = "in.juspay:hypersdk", version.ref = "juspay-hypersdk" }
+juspay-hyperinteg = { module = "in.juspay:hyperinteg", version.ref = "juspay-hypersdk" }
+androidx-fragment = { module = "androidx.fragment:fragment", version.ref = "androidx-fragment" }
 
 [plugins]
 android-kotlin-multiplatform-library = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
