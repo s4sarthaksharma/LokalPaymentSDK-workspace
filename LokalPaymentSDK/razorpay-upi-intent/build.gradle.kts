@@ -8,7 +8,6 @@ plugins {
 }
 
 group = "com.getlokalapp.paymentsdk"
-version = "0.0.1"
 
 // Razorpay's UPI Intent flow itself (resolving installed UPI apps and
 // handing off via an Android Intent) has no iOS equivalent — RazorpayUpiIntentSdk

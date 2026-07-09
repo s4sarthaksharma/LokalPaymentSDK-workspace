@@ -9,7 +9,6 @@ plugins {
 }
 
 group = "com.getlokalapp.paymentsdk"
-version = "0.0.1"
 
 kotlin {
     compilerOptions {
@@ -33,7 +32,7 @@ kotlin {
     iosSimulatorArm64()
 
     cocoapods {
-        version = "0.0.1"
+        version = project.version.toString()
         summary = "Lokal Payment SDK - Razorpay hosted Checkout"
         homepage = "https://github.com/getlokalapp/LokalPaymentSDK"
         ios.deploymentTarget = "16.0"

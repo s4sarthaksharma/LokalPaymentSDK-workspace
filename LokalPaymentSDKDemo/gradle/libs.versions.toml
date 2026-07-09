@@ -10,31 +10,16 @@ composeMultiplatform = "1.11.1"
 kotlinxCoroutines = "1.11.0"
 kotlinxSerialization = "1.11.0"
 
-# Must match whatever version was published via
-# `./gradlew :shared:publishToMavenLocal` in LokalPaymentSDK.
 lokalPaymentSdk = "0.0.1"
-# matrimony-kmp's confirmed pin (D4/D9) — the plugin version, not the SDK version.
-juspayHyperSdkPlugin = "2.0.6"
 
 [libraries]
-# The KMP root coordinate (not shared-android): commonMain depends on this so
-# both targets see the shared Kotlin API (core models only — no Razorpay).
-# Published to mavenLocal by `./gradlew :shared:publishToMavenLocal` in LokalPaymentSDK.
+
 lokalpaymentsdk-shared = { module = "com.getlokalapp.paymentsdk:shared", version.ref = "lokalPaymentSdk" }
 
-# Razorpay hosted Checkout, as its own opt-in module. Gradle Module Metadata
-# resolves it to the .aar on Android and the iOS klibs (+ bundled Razorpay
-# cinterop) on iOS. Published to mavenLocal by
-# `./gradlew :razorpay-checkout:publishToMavenLocal` in LokalPaymentSDK.
 lokalpaymentsdk-razorpay-checkout = { module = "com.getlokalapp.paymentsdk:razorpay-checkout", version.ref = "lokalPaymentSdk" }
 
-# Razorpay UPI Intent — Android-only (no iOS target at all), so this is only
-# ever added to an androidMain source set, never commonMain. Published to
-# mavenLocal by `./gradlew :razorpay-upi-intent:publishToMavenLocal` in
-# LokalPaymentSDK.
 lokalpaymentsdk-razorpay-upi-intent = { module = "com.getlokalapp.paymentsdk:razorpay-upi-intent", version.ref = "lokalPaymentSdk" }
 
-# Published to mavenLocal by `./gradlew :juspay:publishToMavenLocal` in LokalPaymentSDK.
 lokalpaymentsdk-juspay = { module = "com.getlokalapp.paymentsdk:juspay", version.ref = "lokalPaymentSdk" }
 
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activityCompose" }
@@ -47,8 +32,7 @@ android-kotlinMultiplatformLibrary = { id = "com.android.kotlin.multiplatform.li
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 jetbrains-compose = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }
-# D4/D9 — supplies HyperSDK's runtime jars + per-client asset artifact. Applied
-# to :composeApp (R4: unconfirmed whether this is the right module target for
-# a KMP-library composeApp, vs. :androidApp — matrimony's precedent was a
-# single non-split composeApp).
-juspay-hypersdk = { id = "hypersdk.plugin", version.ref = "juspayHyperSdkPlugin" }
+# Deliberately versionless: the juspay-host-settings plugin applied in
+# settings.gradle.kts registers this id's default version, so its own pin there
+# stays the only Juspay-related version in this host.
+lokalpaymentsdk-juspay-host = { id = "com.getlokalapp.paymentsdk.juspay-host" }

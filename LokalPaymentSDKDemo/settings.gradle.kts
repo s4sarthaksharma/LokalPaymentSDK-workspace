@@ -12,12 +12,12 @@ pluginManagement {
         }
         mavenCentral()
         gradlePluginPortal()
-        // hypersdk.plugin (D4/D9) — applied below in composeApp/build.gradle.kts.
-        maven("https://maven.juspay.in/jp-build-packages/hyper-sdk/")
+        mavenLocal()
     }
 }
 plugins {
     id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
+    id("com.getlokalapp.paymentsdk.juspay-host-settings") version "0.0.1"
 }
 
 dependencyResolutionManagement {
@@ -30,14 +30,7 @@ dependencyResolutionManagement {
             }
         }
         mavenCentral()
-        // LokalPaymentSDK's `shared` and `razorpay-checkout` modules are
-        // consumed from here — publish them with
-        // `./gradlew :shared:publishToMavenLocal :razorpay-checkout:publishToMavenLocal`
-        // in the LokalPaymentSDK project after any change to the library.
         mavenLocal()
-        // Runtime jars + per-client asset artifact for the host-applied
-        // hypersdk.plugin (D4/D9).
-        maven("https://maven.juspay.in/jp-build-packages/hyper-sdk/")
     }
 }
 

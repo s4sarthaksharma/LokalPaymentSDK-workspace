@@ -6,19 +6,9 @@ plugins {
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.jetbrains.compose)
     id("org.jetbrains.kotlin.native.cocoapods")
-    // D4/D9/R4: hypersdk.plugin does NOT apply cleanly here — it injects its
-    // dependencies via a plain `implementation` configuration, which a
-    // com.android.kotlin.multiplatform.library module doesn't expose (KMP
-    // uses per-source-set configs like androidMainImplementation instead).
-    // Confirmed: applying it here fails with "Configuration with name
-    // 'implementation' not found." Applied to :androidApp instead, which has
-    // the conventional AGP application configurations the plugin expects.
 }
 
 kotlin {
-    // AGP 9 disallows com.android.application alongside the KMP plugin, so the
-    // shared UI lives in this KMP *library* module and the thin :androidApp
-    // application module hosts it. Mirrors the SDK's :shared setup.
     androidLibrary {
         namespace = "com.getlokalapp.paymentsdk.demo"
         compileSdk = libs.versions.android.compileSdk.get().toInt()
@@ -29,8 +19,6 @@ kotlin {
         }
     }
 
-    // No iosX64(): Compose Multiplatform 1.11.x does not publish an Intel
-    // simulator (ios_x64) variant. Device + Apple-silicon simulator only.
     iosArm64()
     iosSimulatorArm64()
 

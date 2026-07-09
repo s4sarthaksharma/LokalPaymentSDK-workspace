@@ -83,5 +83,5 @@ object LokalPaymentSdk {
         return handler.pay(order.gatewayConfig).map { LokalPaymentResult(order.gateway, it) }
     }
 
-    const val VERSION: String = "0.0.1"
+    const val VERSION: String = PAYMENT_SDK_VERSION
 }
