@@ -6,11 +6,15 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.json.JsonObject
 
 /**
- * Implemented by each gateway module's own SDK class (e.g.
- * RazorpayCheckoutSdk, RazorpayUpiIntentSdk). Registers itself with
- * [LokalPaymentSdk] as soon as it's constructed — the host constructs
- * whichever handlers match the gateway modules it actually included, and
- * [LokalPaymentSdk] routes to them without depending on those modules.
+ * Implemented by each gateway module's own SDK singleton `object` (e.g.
+ * RazorpayCheckoutSdk, RazorpayUpiIntentSdk, JuspaySdk). Each singleton
+ * registers itself with [LokalPaymentSdk] in its `init` block, and the
+ * gateway module arranges for that to run at app startup with zero host
+ * code — a manifest-merged ContentProvider on Android, an
+ * `@EagerInitialization` hook on iOS. The exception is a gateway that needs
+ * host-supplied setup data (Juspay's init payload): there the host's one
+ * `initialize(...)` call is the trigger. Registration is app-lifetime;
+ * handlers are objects, so there is nothing to dispose or unregister.
  *
  * No UI handle to construct with — each concrete handler reads its own
  * current Activity/UIViewController from `:shared`'s hostcontext utilities
@@ -25,14 +29,4 @@ import kotlinx.serialization.json.JsonObject
 interface PaymentGatewayHandler {
     val gateway: PaymentGateway
     fun pay(gatewayConfig: JsonObject): Flow<PaymentResult>
-
-    /**
-     * Call when this handler's underlying instance is going away, so
-     * [LokalPaymentSdk] doesn't hold a stale reference. Default just
-     * unregisters from [LokalPaymentSdk]; override to release any other
-     * resources the concrete handler holds.
-     */
-    fun dispose() {
-        LokalPaymentSdk.unregister(this)
-    }
 }

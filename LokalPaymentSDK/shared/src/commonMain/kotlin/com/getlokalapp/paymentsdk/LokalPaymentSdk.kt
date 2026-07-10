@@ -17,44 +17,31 @@ import kotlinx.coroutines.flow.map
  * regardless of which gateway the backend picked. [pay] reads
  * `PaymentOrder.gateway`
  * and routes to whichever [PaymentGatewayHandler] is currently registered
- * for it. There's no list to build: constructing a gateway module's own SDK
- * class (e.g. `RazorpayCheckoutSdk()`) registers it automatically — see
- * [register]. LokalPaymentSdk only ever knows about the gateway modules
- * the host actually included and instantiated.
+ * for it. There's no list to build: each gateway module's singleton handler
+ * registers itself at app startup (see [PaymentGatewayHandler]'s kdoc for
+ * the per-platform bootstrap), so LokalPaymentSdk only ever knows about the
+ * gateway modules the host actually included. Registration is app-lifetime;
+ * there is no unregister.
  */
 object LokalPaymentSdk {
 
     private val handlers = mutableMapOf<PaymentGateway, PaymentGatewayHandler>()
 
     /**
-     * Called by a gateway module's own SDK class in its constructor — not
-     * something a host normally calls directly. Registering again for the
-     * same gateway (e.g. a new RazorpayCheckoutSdk built after the previous
-     * one was disposed) replaces whichever handler was previously registered
-     * for it.
+     * Called from a gateway singleton's own `init` block — not something a
+     * host normally calls directly. Handlers are singletons, so calling it
+     * again for the same gateway is a harmless no-op.
      */
     fun register(handler: PaymentGatewayHandler) {
         handlers[handler.gateway] = handler
     }
 
     /**
-     * Called when a handler's underlying instance is going away, so
-     * LokalPaymentSdk doesn't hold a stale reference. Only removes it if
-     * it's still the current registration for its gateway — guards against
-     * a late unregister from an old instance clobbering a newer one that
-     * already replaced it.
-     */
-    fun unregister(handler: PaymentGatewayHandler) {
-        if (handlers[handler.gateway] === handler) handlers.remove(handler.gateway)
-    }
-
-    /**
-     * Snapshot of gateways currently registered — i.e. the gateway SDK
-     * classes the host has actually constructed right now. This changes as
-     * handlers register/dispose (e.g. across an Activity recreation), so
-     * treat it as a live query, not a fixed capability list. Useful for a
-     * host that wants to check what's available (e.g. to show/hide a button)
-     * without holding onto every handler instance itself.
+     * Snapshot of gateways currently registered. On Android every included
+     * gateway module has registered before any host code runs; on iOS
+     * Razorpay gateways register pre-main and Juspay appears once the host
+     * calls `JuspaySdk.initialize(...)`. Useful for a host that wants to
+     * check what's available (e.g. to show/hide a button).
      */
     fun registeredGateways(): Set<PaymentGateway> = handlers.keys.toSet()
 
@@ -74,8 +61,9 @@ object LokalPaymentSdk {
                         PaymentError(
                             code = "unsupported_gateway",
                             message = "No PaymentGatewayHandler registered for gateway " +
-                                "${order.gateway}. Did you forget to include " +
-                                "and construct that gateway's SDK class?",
+                                "${order.gateway}. Did you forget to include that " +
+                                "gateway's module, or to call its initialize " +
+                                "function if it has one?",
                         ),
                     ),
                 ),

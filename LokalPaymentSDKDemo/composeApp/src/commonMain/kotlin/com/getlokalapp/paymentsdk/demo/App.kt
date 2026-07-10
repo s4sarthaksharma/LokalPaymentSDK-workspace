@@ -9,7 +9,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -24,8 +23,6 @@ import com.getlokalapp.paymentsdk.model.LokalPaymentResult
 import com.getlokalapp.paymentsdk.model.PaymentGateway
 import com.getlokalapp.paymentsdk.model.PaymentOrder
 import com.getlokalapp.paymentsdk.model.PaymentResult
-import com.getlokalapp.paymentsdk.razorpay.RazorpayCheckoutSdk
-import com.getlokalapp.paymentsdk.razorpay.createRazorpayUpiIntentHandler
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
@@ -165,37 +162,16 @@ private fun parseOrder(orderResponseJson: String): PaymentOrder {
 fun App() {
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
-            // No platform handle to grab — RazorpayCheckoutSdk auto-tracks the
-            // current Activity on Android and looks up the topmost
-            // UIViewController fresh on iOS, same as JuspaySdk below. Just
-            // unregisters when this leaves composition.
-            val razorpayCheckoutSdk = remember { RazorpayCheckoutSdk() }
-            DisposableEffect(razorpayCheckoutSdk) { onDispose { razorpayCheckoutSdk.dispose() } }
-            // createRazorpayUpiIntentHandler() returns null on iOS (see its
-            // kdoc) — nothing to register there. Registers itself with
-            // LokalPaymentSdk when supported; the button below is shown
-            // based on that registration, not this return value.
-            val upiIntentHandler = remember { createRazorpayUpiIntentHandler() }
-            DisposableEffect(upiIntentHandler) { onDispose { upiIntentHandler?.dispose() } }
-            // No platform handle to grab — JuspaySdk auto-tracks the current
-            // Activity on Android and looks up the topmost UIViewController
-            // fresh on iOS. Just unregisters when this leaves composition.
-            val juspaySdk = remember { JuspaySdk(SAMPLE_JUSPAY_INIT_PAYLOAD) }
-            DisposableEffect(juspaySdk) { onDispose { juspaySdk.dispose() } }
+
+            val registeredGateways = remember {
+                JuspaySdk.initialize(SAMPLE_JUSPAY_INIT_PAYLOAD)
+                LokalPaymentSdk.registeredGateways()
+            }
             val scope = rememberCoroutineScope()
 
             var status by remember { mutableStateOf("LokalPayment SDK ${LokalPaymentSdk.VERSION}") }
             var inFlight by remember { mutableStateOf(false) }
-            // Registration above already finished synchronously by this point,
-            // and nothing unregisters while App() stays composed — so this is
-            // safe to compute once and cache, rather than on every recomposition.
-            val registeredGateways = remember { LokalPaymentSdk.registeredGateways() }
 
-            // Both buttons call this with a different sample response — which
-            // gateway handles the payment is decided entirely by the "gateway"
-            // field inside orderResponseJson, exactly as it would be decided by
-            // the host's own backend in production. The host parses the
-            // response into a PaymentOrder here; the SDK takes it typed.
             fun pay(orderResponseJson: String) {
                 scope.launch {
                     inFlight = true

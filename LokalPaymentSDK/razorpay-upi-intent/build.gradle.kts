@@ -22,7 +22,8 @@ group = "com.getlokalapp.paymentsdk"
 // LokalPaymentSDKDemo's composeApp/commonMain failed
 // :composeApp:compileKotlinIosSimulatorArm64 with "No matching variant...
 // consumer needed platform.type 'native'" before these targets existed).
-// iosMain has no real code — see its stub file.
+// There is no iosMain source at all — the targets compile an empty klib, and
+// the gateway simply never registers on iOS.
 kotlin {
     compilerOptions {
         freeCompilerArgs.add("-Xexpect-actual-classes")

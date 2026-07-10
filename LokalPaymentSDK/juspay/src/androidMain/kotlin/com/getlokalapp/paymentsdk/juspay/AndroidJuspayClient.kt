@@ -117,12 +117,6 @@ internal class AndroidJuspayClient : JuspayClient {
         this.listener = listener
     }
 
-    override fun dispose() {
-        holder?.terminate()
-        holder = null
-        listener = null
-    }
-
     private fun errorData(code: String) =
         JuspayResultData(status = code, orderId = null, txnId = null, errorCode = code, errorMessage = null)
 }

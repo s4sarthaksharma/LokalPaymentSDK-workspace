@@ -47,10 +47,16 @@ Flow<PaymentResult>  (Success / Cancelled / Failure — exactly one, terminal)
 Flow<LokalPaymentResult>  (adds the resolved gateway)  → back to host
 ```
 
-**Registration is automatic.** The host never edits SDK dispatch code. It
-includes your module, constructs `YourGatewaySdk(...)`, and that constructor's
-`init { LokalPaymentSdk.register(this) }` wires it into the registry. Routing is
-by the `PaymentGateway` enum key. `LokalPaymentSdk.pay()` for an unregistered
+**Registration is automatic — zero host code.** The host never edits SDK
+dispatch code, and normally never writes a setup line either. Each gateway's
+handler is an app-lifetime singleton `object` whose
+`init { LokalPaymentSdk.register(this) }` runs at app startup because the
+module bootstraps it per platform: a manifest-merged **ContentProvider** on
+Android, an **`@EagerInitialization`** hook on iOS.
+The one exception is a gateway that needs host-supplied setup data (Juspay's
+init payload) — there the host's single `initialize(...)` call is the trigger.
+There is no unregister/dispose: registration is app-lifetime. Routing is by
+the `PaymentGateway` enum key. `LokalPaymentSdk.pay()` for an unregistered
 gateway returns a `Failure(code = "unsupported_gateway")` — it does not throw.
 
 ---
@@ -66,9 +72,6 @@ All in `:shared`, package `com.getlokalapp.paymentsdk`.
 interface PaymentGatewayHandler {
     val gateway: PaymentGateway
     fun pay(gatewayConfig: JsonObject): Flow<PaymentResult>
-    fun dispose() {                    // default: just unregisters
-        LokalPaymentSdk.unregister(this)
-    }
 }
 ```
 
@@ -76,12 +79,14 @@ interface PaymentGatewayHandler {
   already routed by gateway, so you never re-check the gateway or re-parse the
   envelope. You decode the blob into your own typed config (core can't see that
   type — that's why it stays `JsonObject` at the boundary).
-- `dispose()` default unregisters. Override only if you hold extra resources to
-  release; then call `super.dispose()` (or `LokalPaymentSdk.unregister(this)`).
+- No lifecycle methods: the implementing handler is a singleton `object`, so
+  there is nothing to dispose. Per-payment resources live inside `pay()`
+  (`callbackFlow` + `awaitClose` detach).
 
 ### `LokalPaymentSdk` — the registry + entry point (do not edit)
-`shared/.../LokalPaymentSdk.kt` — an `object`. You call `register`/`unregister`;
-you never add a branch here. `pay(order)` routes to `handlers[order.gateway]`.
+`shared/.../LokalPaymentSdk.kt` — an `object`. You call `register` (idempotent,
+from your handler's `init` block); you never add a branch here. `pay(order)`
+routes to `handlers[order.gateway]`.
 
 ### `PaymentGateway` — the routing key
 `shared/.../model/PaymentGateway.kt`
@@ -122,15 +127,14 @@ The canonical gateway is **multiplatform (Android + iOS)** — `razorpay-checkou
 is the reference, and the §4 recipe is written for it. Most gateways are this
 shape. A gateway module:
 
-- puts its SDK entry class, config type, result mapper, and (if multiplatform)
-  its client `expect`/`actual` in the standard source sets;
-- takes **its own platform handle** as a constructor argument. Define your own —
-  an `expect class` for a multiplatform gateway, or a raw
-  `Activity`/`UIViewController` for a single-platform one. **Do not reuse
-  `:razorpay-checkout`'s `PaymentPresenter`**: it's that module's own type, not a
-  shared one, and importing it would make your leaf module depend on another leaf
-  module (forbidden — rule #3). `razorpay-checkout` defines `PaymentPresenter` as
-  *its* example of this pattern, not as a base class for others.
+- puts its SDK entry `object`, config type, result mapper, and (if
+  multiplatform) its client `expect`/`actual` in the standard source sets, plus
+  its two startup triggers: an `androidMain` InitProvider + manifest entry and
+  an `iosMain` `@EagerInitialization` hook;
+- takes **no platform handle from the host** — it reads the current
+  Activity/UIViewController from `:shared`'s hostcontext utilities at call
+  time (Android's ActivityTracker; iOS topmost-UIViewController lookup), the
+  way all three shipped gateways do;
 - depends on core with `api(project(":shared"))` and on its native SDK with
   `implementation(...)`.
 
@@ -142,13 +146,16 @@ unless you're building one.
 
 Real, shipped example: `:razorpay-upi-intent`. Deltas from the canonical shape:
 
-- **SDK entry class lives in `androidMain`**, not `commonMain`.
-- **No `expect`/`actual` factory, no client interface** — just a plain Android class.
-- **Constructor takes a raw `Activity`** (no multiplatform presenter to abstract over).
-- **iOS is a stub only** (`RazorpayUpiIntentIosStub`). You still declare
+- **SDK entry object lives in `androidMain`**, not `commonMain`, and its only
+  startup trigger is the Android InitProvider — no iOS eager-init hook, so the
+  gateway simply never registers on iOS (and never appears in
+  `registeredGateways()` there).
+- **No client `expect`/`actual`** — just plain Android classes.
+- **There is no `iosMain` source at all.** You still declare
   `iosX64/iosArm64/iosSimulatorArm64` targets so a consumer's `commonMain` can
-  resolve an iOS variant (without them Gradle fails with "No matching variant …
-  platform.type 'native'"), but `iosMain` carries no real API.
+  resolve an iOS variant (without them Gradle fails with "No matching variant
+  … platform.type 'native'"), but they just compile an empty klib — the
+  rationale lives in the module's build.gradle.kts comment.
 - **No `native.cocoapods` plugin / `pod()` block** in `build.gradle.kts`.
 - Native dep is the gateway's Android artifact — UPI Intent uses
   `com.razorpay:customui`, a different coordinate from Checkout's
@@ -165,10 +172,9 @@ Real, shipped example: `:razorpay-upi-intent`. Deltas from the canonical shape:
 No shipped example yet — this maps to the reserved `STORE_KIT(2)` enum slot.
 Deltas from the canonical shape (the Android-only variant, flipped):
 
-- **SDK entry class lives in `iosMain`**, not `commonMain`.
-- **No `expect`/`actual` factory** — a plain iOS class.
-- **Constructor takes a raw `UIViewController`** (or nothing — StoreKit has no
-  presenter to pass).
+- **SDK entry object lives in `iosMain`**, not `commonMain`, and its only
+  startup trigger is the `@EagerInitialization` hook — no
+  Android InitProvider, so the gateway never registers on Android.
 - **Android is a stub only.** Declare the Android target so `commonMain` resolves,
   but `androidMain` carries no real API.
 - **`native.cocoapods` + `pod()`** stay (for the iOS pod, if any); **no Android
@@ -239,13 +245,12 @@ the gateway's own cancel code (Checkout uses `0`; UPI Intent uses `5` — they
 differ per gateway, so never hardcode a shared value). Never conflate a user
 cancel with a real failure — the host routes them to different UI.
 
-### Step 5 — the SDK entry class (`PaymentGatewayHandler`)
-Put it in `commonMain` (single-platform gateways put it in `androidMain`/`iosMain`
-— see §3 variants). `FooPlatformHandle` below is **your module's own** platform
-handle (your own `expect class`, or a raw `Activity`/`UIViewController`) — not
-`:razorpay-checkout`'s `PaymentPresenter`.
+### Step 5 — the SDK entry object (`PaymentGatewayHandler`) + startup triggers
+Put the object in `commonMain` (single-platform gateways put it in
+`androidMain`/`iosMain` — see §3 variants). It's `internal`: hosts never
+reference it — the platform triggers below run its registering `init` block.
 ```kotlin
-class FooSdk(private val platform: FooPlatformHandle) : PaymentGatewayHandler {
+internal object FooSdk : PaymentGatewayHandler {
     override val gateway = PaymentGateway.FOO
     init { LokalPaymentSdk.register(this) }              // ← the whole registration mechanism
     override fun pay(gatewayConfig: JsonObject): Flow<PaymentResult> = callbackFlow {
@@ -255,13 +260,36 @@ class FooSdk(private val platform: FooPlatformHandle) : PaymentGatewayHandler {
             override fun onPaymentSuccess(id, orderId, sig) { trySend(fooSuccess(id, orderId, sig)); close() }
             override fun onPaymentError(code, desc)         { trySend(fooErrorToResult(code, desc)); close() }
         })
-        client.open(config, platform)
+        client.open(config)
         awaitClose { client.setPaymentResultListener(null) }   // detach on cancellation/close
     }
 }
 ```
 Emit **exactly one** terminal result, then `close()`. `callbackFlow` +
 `awaitClose` is the standard shape.
+
+Kotlin objects initialize lazily (first reference), so each platform needs a
+startup trigger that references the object with zero host code — copy both
+pieces from `razorpay-checkout`:
+
+1. **Android — `FooInitProvider` in `androidMain` + a `<provider>` manifest
+   entry** (mirror `RazorpayCheckoutInitProvider`; give the authority a unique
+   `${applicationId}.…foo.initprovider` suffix). Subclass `:shared`'s
+   `SdkInitProvider` — it absorbs the dead ContentProvider overrides, so you
+   implement only `onAppStart()`, which touches `FooSdk`. The OS instantiates
+   it at process start.
+2. **iOS — an `@EagerInitialization` top-level val in `iosMain`** (mirror
+   `RazorpayCheckoutEagerInit.kt`, including its warning comment). It runs
+   pre-main, so keep the object's `init` a bare in-memory `register()` — no
+   logging, no UIKit. ⚠️ The annotation is experimental: if a Kotlin upgrade
+   silently no-ops it, registration dies with no compile error — after any
+   Kotlin upgrade, verify on iOS that the gateway still appears in
+   `LokalPaymentSdk.registeredGateways()`.
+
+A gateway that needs host-supplied setup data before it can pay (Juspay's
+init payload) skips the triggers instead: make the object public and give it
+an `initialize(...)` method that registers **and** performs setup — the
+host's one call is the startup trigger (see `JuspaySdk`).
 
 ### Step 6 — platform actuals
 - **Android:** a translucent **proxy Activity** (mirroring `RazorpayCheckoutActivity`)
@@ -287,12 +315,12 @@ modules. **Safest fix: give your new module its own package**
 a unique name.
 
 ### Step 8 — host wiring (in `LokalPaymentSDKDemo`, or the real host)
-The host does **zero** SDK-code changes. It:
+The host does **zero** SDK-code changes and writes **zero** setup lines. It:
 1. adds the module dependency + publishes it (`./gradlew :foo:publishToMavenLocal`),
-2. constructs `FooSdk(...)` once (Compose glue like `rememberFooSdk()` on the host
-   side is fine — Compose is banned *in the SDK*, not in hosts), and calls
-   `dispose()` when the platform context goes away,
-3. keeps calling `LokalPaymentSdk.pay(order)` — routing is automatic.
+2. keeps calling `LokalPaymentSdk.pay(order)` — registration happened at app
+   startup via the module's own triggers, and routing is automatic. (Only a
+   setup-data gateway like Juspay needs one host line:
+   `FooSdk.initialize(...)` at app startup.)
 
 ---
 
@@ -303,8 +331,9 @@ The host does **zero** SDK-code changes. It:
    only permitted `:shared` source edit is a new `PaymentGateway` enum entry (§4
    step 1).
 2. **No Compose / Compose Multiplatform in any SDK module** — see `rulebook.md`.
-   Registration is a plain constructor `init{}`; cleanup is a plain `dispose()`.
-   Compose lifecycle glue (`remember…`, `DisposableEffect`) belongs to the *host*.
+   Registration is a plain `init{}` run by the module's own startup triggers;
+   there is no cleanup — handlers are app-lifetime `object`s. Compose glue
+   belongs to the *host*.
 3. **The gateway module owns its native SDK dependency as `implementation`**, never
    `api` — a host that doesn't use your gateway must not transitively pull its
    third-party SDK. Keep `api` for `project(":shared")` only.
@@ -325,7 +354,8 @@ The host does **zero** SDK-code changes. It:
    `architecture-reference.md` §1.4).
 8. **The host never implements a gateway's callback interface.** Absorb that with
    an SDK-owned proxy Activity (Android) / delegate (iOS), so the host's only
-   contact surface is `FooSdk(...)` + `LokalPaymentSdk.pay()`.
+   contact surface is `LokalPaymentSdk.pay()` (plus `initialize(...)` for a
+   setup-data gateway).
 9. **Unique everything across modules:** Android `namespace`, cocoapods `name` /
    `framework.baseName`, and — critically — top-level file names within a shared
    package (JVM class-name collision, §4 step 7). Prefer a per-module package.
@@ -343,7 +373,7 @@ The host does **zero** SDK-code changes. It:
 ./gradlew :foo:allTests                 # config decoder + result mapper unit tests
 ./gradlew :foo:publishToMavenLocal      # then wire into LokalPaymentSDKDemo
 ```
-Then, in `LokalPaymentSDKDemo`, construct `FooSdk`, confirm
+Then, in `LokalPaymentSDKDemo`, just include the module (no setup code), confirm
 `PaymentGateway.FOO in LokalPaymentSdk.registeredGateways()`, and run a real
 sandbox payment end-to-end — confirming Success **and** Cancelled **and** Failure
 paths, and — for a multiplatform gateway — that iOS extracts `orderId`/`signature`

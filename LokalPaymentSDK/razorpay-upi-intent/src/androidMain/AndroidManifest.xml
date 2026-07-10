@@ -9,6 +9,13 @@
             android:exported="false"
             android:configChanges="orientation|keyboardHidden|screenSize|screenLayout|smallestScreenSize"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <!-- Auto-init: registers RazorpayUpiIntentSdk with LokalPaymentSdk at
+             process start, zero host code (see the provider's kdoc). -->
+        <provider
+            android:name="com.getlokalapp.paymentsdk.razorpay.RazorpayUpiIntentInitProvider"
+            android:authorities="${applicationId}.getlokalapp.paymentsdk.razorpay.upiintent.initprovider"
+            android:exported="false" />
     </application>
 
 </manifest>

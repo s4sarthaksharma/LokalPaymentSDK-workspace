@@ -10,9 +10,12 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.serialization.json.JsonObject
 
 /**
- * Registers itself with [LokalPaymentSdk] to handle
- * [PaymentGateway.RAZORPAY_INTENT] as soon as it's constructed — Android-only
- * (see this module's build.gradle.kts for why). No platform handle to grab:
+ * Singleton handler for [PaymentGateway.RAZORPAY_INTENT] — registers itself
+ * with [LokalPaymentSdk] in its `init` block, which
+ * [RazorpayUpiIntentInitProvider] runs at process start with zero host code.
+ * Android-only (see this module's build.gradle.kts for why), so there is no
+ * iOS bootstrap: the gateway simply never registers there. No platform
+ * handle to grab:
  * [AndroidRazorpayUpiIntentClient] reads the current Activity from
  * `:shared`'s hostcontext ActivityTracker at call time (mirrors
  * RazorpayCheckoutSdk/JuspaySdk), only ever using it to launch this SDK's own
@@ -23,7 +26,7 @@ import kotlinx.serialization.json.JsonObject
  * The host is also responsible for surfacing installed UPI apps and letting
  * the user pick one — that's app-level UI, not something this SDK owns.
  */
-class RazorpayUpiIntentSdk : PaymentGatewayHandler {
+internal object RazorpayUpiIntentSdk : PaymentGatewayHandler {
 
     override val gateway: PaymentGateway = PaymentGateway.RAZORPAY_INTENT
 
@@ -58,5 +61,3 @@ class RazorpayUpiIntentSdk : PaymentGatewayHandler {
         awaitClose { client.setPaymentResultListener(null) }
     }
 }
-
-actual fun createRazorpayUpiIntentHandler(): PaymentGatewayHandler? = RazorpayUpiIntentSdk()

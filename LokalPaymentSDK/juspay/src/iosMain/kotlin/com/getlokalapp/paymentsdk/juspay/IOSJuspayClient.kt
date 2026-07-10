@@ -109,11 +109,6 @@ internal class IOSJuspayClient(private val clientId: String, private val tenantI
         this.listener = listener
     }
 
-    override fun dispose() {
-        services.terminate()
-        listener = null
-    }
-
     private fun onEvent(data: Map<Any?, *>?) {
         val event = data?.get("event") as? String
         when (event) {

@@ -10,13 +10,17 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.serialization.json.JsonObject
 
 /**
- * Registers itself with [LokalPaymentSdk] to handle
- * [PaymentGateway.RAZORPAY_CHECKOUT] as soon as it's constructed — no
- * platform handle to grab: Android auto-tracks the current Activity and iOS
- * looks up the topmost UIViewController fresh, both via `:shared`'s
- * hostcontext utilities (mirrors JuspaySdk).
+ * Singleton handler for [PaymentGateway.RAZORPAY_CHECKOUT] — registers
+ * itself with [LokalPaymentSdk] in its `init` block, which runs at app
+ * startup with zero host code: [RazorpayCheckoutInitProvider] references
+ * this object on Android, the `@EagerInitialization` hook in
+ * `RazorpayCheckoutEagerInit.kt` does on iOS. No platform handle to grab:
+ * Android auto-tracks the current Activity and iOS looks up the topmost
+ * UIViewController fresh, both via `:shared`'s hostcontext utilities
+ * (mirrors JuspaySdk). Each [pay] call builds its own short-lived platform
+ * client.
  */
-class RazorpayCheckoutSdk : PaymentGatewayHandler {
+internal object RazorpayCheckoutSdk : PaymentGatewayHandler {
 
     override val gateway: PaymentGateway = PaymentGateway.RAZORPAY_CHECKOUT
 
