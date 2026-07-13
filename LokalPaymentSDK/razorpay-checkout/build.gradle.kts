@@ -1,3 +1,5 @@
+import com.getlokalapp.paymentsdk.buildsrc.registerModuleVersionTask
+import com.getlokalapp.paymentsdk.buildsrc.registerVendorVersionTask
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -9,6 +11,36 @@ plugins {
 }
 
 group = "com.getlokalapp.paymentsdk"
+
+// Single source for the iOS Razorpay pod version — feeds both the cocoapods
+// block below and generateIosVendorVersion, so the two can't drift from
+// each other.
+val iosVendorSdkVersion = "1.4.3"
+
+// Bakes this module's own version (root gradle.properties) into commonMain,
+// same pattern as :shared's generatePaymentSdkVersion — so GatewayMetadata's
+// moduleVersion can never drift from the published artifact version.
+val generateModuleVersion = registerModuleVersionTask(
+    taskName = "generateModuleVersion",
+    packageName = "com.getlokalapp.paymentsdk.razorpay",
+)
+
+// Bakes gradle/libs.versions.toml's razorpay-checkout entry into androidMain
+// as GatewayMetadata's Android vendorSdkVersion — the same version this
+// module compiles Android against, so it can't drift.
+val generateAndroidVendorVersion = registerVendorVersionTask(
+    taskName = "generateAndroidVendorVersion",
+    packageName = "com.getlokalapp.paymentsdk.razorpay",
+    vendorSdkVersion = libs.versions.razorpay.checkout.get(),
+)
+
+// Bakes this build script's iosVendorSdkVersion (the razorpay-pod version
+// below) into iosMain as GatewayMetadata's iOS vendorSdkVersion.
+val generateIosVendorVersion = registerVendorVersionTask(
+    taskName = "generateIosVendorVersion",
+    packageName = "com.getlokalapp.paymentsdk.razorpay",
+    vendorSdkVersion = iosVendorSdkVersion,
+)
 
 kotlin {
     compilerOptions {
@@ -44,28 +76,37 @@ kotlin {
         }
 
         pod("razorpay-pod") {
-            version = "1.4.3"
+            version = iosVendorSdkVersion
             moduleName = "Razorpay"
             extraOpts += listOf("-compiler-option", "-fmodules")
         }
     }
 
     sourceSets {
-        commonMain.dependencies {
-            api(project(":shared"))
-            implementation(libs.kotlinx.coroutines.core)
-            implementation(libs.kotlinx.serialization.json)
+        commonMain {
+            kotlin.srcDir(generateModuleVersion)
+            dependencies {
+                api(project(":shared"))
+                implementation(libs.kotlinx.coroutines.core)
+                implementation(libs.kotlinx.serialization.json)
+            }
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
             implementation(libs.kotlinx.coroutines.test)
         }
-        androidMain.dependencies {
-            // implementation, not api: Razorpay is fully encapsulated behind
-            // the internal RazorpayCheckoutActivity proxy — no public SDK type
-            // exposes a Razorpay class, so consumers don't need it on their
-            // compile classpath (it's still there transitively at runtime).
-            implementation(libs.razorpay.checkout)
+        androidMain {
+            kotlin.srcDir(generateAndroidVendorVersion)
+            dependencies {
+                // implementation, not api: Razorpay is fully encapsulated behind
+                // the internal RazorpayCheckoutActivity proxy — no public SDK type
+                // exposes a Razorpay class, so consumers don't need it on their
+                // compile classpath (it's still there transitively at runtime).
+                implementation(libs.razorpay.checkout)
+            }
+        }
+        iosMain {
+            kotlin.srcDir(generateIosVendorVersion)
         }
     }
 }

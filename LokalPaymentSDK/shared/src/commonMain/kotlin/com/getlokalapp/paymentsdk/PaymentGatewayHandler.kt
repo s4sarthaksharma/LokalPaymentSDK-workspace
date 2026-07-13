@@ -1,5 +1,7 @@
 package com.getlokalapp.paymentsdk
 
+import com.getlokalapp.paymentsdk.model.GatewayMetadata
+import com.getlokalapp.paymentsdk.model.GatewayReadiness
 import com.getlokalapp.paymentsdk.model.PaymentGateway
 import com.getlokalapp.paymentsdk.model.PaymentResult
 import kotlinx.coroutines.flow.Flow
@@ -28,5 +30,17 @@ import kotlinx.serialization.json.JsonObject
  */
 interface PaymentGatewayHandler {
     val gateway: PaymentGateway
+    val metadata: GatewayMetadata
+
+    /**
+     * Whether this handler can actually process a payment right now.
+     * Checked live on every [LokalPaymentSdk.gatewayStatus] call — unlike
+     * registration, this can flip during the app's lifetime (e.g. Juspay
+     * becomes [GatewayReadiness.Ready] only after the host calls its
+     * `initialize()`). Defaults to always ready: most gateways need no
+     * host-supplied setup beyond registration.
+     */
+    fun readiness(): GatewayReadiness = GatewayReadiness.Ready
+
     fun pay(gatewayConfig: JsonObject): Flow<PaymentResult>
 }

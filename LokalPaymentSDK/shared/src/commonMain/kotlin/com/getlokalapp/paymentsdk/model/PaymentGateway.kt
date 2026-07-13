@@ -1,5 +1,6 @@
 package com.getlokalapp.paymentsdk.model
 
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 
 /**
@@ -8,7 +9,10 @@ import kotlinx.serialization.json.JsonObject
  * handing the SDK a [PaymentOrder]. The number also says which shape to expect
  * in gatewayConfig. Only RAZORPAY_CHECKOUT is wired up in v1 — the rest are
  * reserved so the envelope doesn't change shape when they're added.
+ *
+ * Serializes by entry name (e.g. `"JUSPAY"`) — see [GatewayStatusReport.toJson].
  */
+@Serializable
 enum class PaymentGateway(val value: Int) {
     RAZORPAY_CHECKOUT(1),
     STORE_KIT(2),

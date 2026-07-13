@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.Application
 import android.os.Bundle
 import java.lang.ref.WeakReference
+import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * Tracks the current foreground Activity via Application-level lifecycle
@@ -21,7 +22,22 @@ object ActivityTracker : Application.ActivityLifecycleCallbacks {
     @Volatile
     private var onAvailable: (() -> Unit)? = null
 
+    private val onDestroyedListeners = CopyOnWriteArrayList<(Activity) -> Unit>()
+
     val current: Activity? get() = currentRef?.get()
+
+    /**
+     * Notifies [listener] whenever any Activity is destroyed, so gateway
+     * clients holding an Activity-bound resource (e.g. Juspay's
+     * HyperServiceHolder) can release it instead of leaking the Activity.
+     */
+    fun addOnDestroyedListener(listener: (Activity) -> Unit) {
+        onDestroyedListeners += listener
+    }
+
+    fun removeOnDestroyedListener(listener: (Activity) -> Unit) {
+        onDestroyedListeners -= listener
+    }
 
     fun install(application: Application) {
         application.registerActivityLifecycleCallbacks(this)
@@ -59,6 +75,7 @@ object ActivityTracker : Application.ActivityLifecycleCallbacks {
 
     override fun onActivityDestroyed(activity: Activity) {
         if (currentRef?.get() === activity) currentRef = null
+        onDestroyedListeners.forEach { it(activity) }
     }
 
     private fun track(activity: Activity) {

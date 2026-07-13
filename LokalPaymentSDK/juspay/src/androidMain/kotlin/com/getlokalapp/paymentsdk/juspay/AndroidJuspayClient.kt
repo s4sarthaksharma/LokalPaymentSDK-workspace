@@ -8,28 +8,54 @@ import `in`.juspay.hypersdk.data.JuspayResponseHandler
 import `in`.juspay.hypersdk.ui.HyperPaymentsCallbackAdapter
 import kotlinx.serialization.json.JsonObject
 import org.json.JSONObject
+import java.lang.ref.WeakReference
 
 internal actual fun createJuspayClient(clientId: String, tenantId: String): JuspayClient = AndroidJuspayClient()
 
 /**
- * One persistent [HyperServiceHolder] for this client's lifetime, built
- * lazily against whichever Activity [ActivityTracker] currently
- * reports — mirrors matrimony-kmp's confirmed-working
- * `AndroidJuspayPaymentClient`, superseding this module's earlier
- * SDK-owned-proxy-Activity design. The host's Activity must be a
- * [FragmentActivity] (HyperServiceHolder's own requirement); if the
- * currently tracked Activity isn't one — or none is tracked yet — [process]
- * fails gracefully via [JuspayResultListener] rather than crashing. No
- * onBackPressed forwarding: confirmed dead code even in matrimony's own
- * shipped app.
+ * A [HyperServiceHolder] built lazily against whichever Activity
+ * [ActivityTracker] currently reports, and REBUILT whenever that Activity
+ * changes or dies — holders are cheap wrappers (the real HyperServices
+ * engine is a static inside HyperServiceHolder, created once and kept warm
+ * across holders), so rebinding costs nothing — though a rebuild triggered by
+ * an Activity being destroyed terminates the engine first (see below), so a
+ * genuine re-initiate follows rather than a bare reattach.
+ * When the bound Activity is destroyed the client terminates the engine via
+ * [HyperServiceHolder.terminate] and drops the holder — both so this
+ * process-lifetime singleton doesn't pin the destroyed Activity forever
+ * (matrimony-kmp's `AndroidJuspayPaymentClient`, which this otherwise
+ * mirrors, has that leak) and so the static engine's `isInitialised` resets:
+ * a bare `resetActivity()` leaves it `true`, so the fresh holder for the next
+ * Activity would skip its real initiate() and never bind (breaks pay() after
+ * a rotation that recreates the host Activity). The host's Activity must be a
+ * [FragmentActivity]
+ * (HyperServiceHolder's own requirement); if the currently tracked Activity
+ * isn't one — or none is tracked yet — [process] fails gracefully via
+ * [JuspayResultListener] rather than crashing. No onBackPressed forwarding:
+ * confirmed dead code even in matrimony's own shipped app.
  */
 internal class AndroidJuspayClient : JuspayClient {
 
     @Volatile private var holder: HyperServiceHolder? = null
+    @Volatile private var boundActivity: WeakReference<FragmentActivity>? = null
     @Volatile private var cachedInitPayload: JsonObject? = null
     @Volatile private var pendingProcess: JsonObject? = null
     @Volatile private var isInitiating = false
     private var listener: JuspayResultListener? = null
+
+    init {
+        ActivityTracker.addOnDestroyedListener { destroyed ->
+            synchronized(this) {
+                if (boundActivity?.get() === destroyed) {
+                    holder?.terminate()
+                    holder = null
+                    boundActivity = null
+                    isInitiating = false
+                    pendingProcess = null
+                }
+            }
+        }
+    }
 
     override val isInitialised: Boolean get() = holder?.isInitialised == true
 
@@ -39,8 +65,9 @@ internal class AndroidJuspayClient : JuspayClient {
                 JuspayEvents.INITIATE_RESULT -> {
                     isInitiating = false
                     val pending = pendingProcess
-                    if (holder?.isInitialised == true && pending != null) {
-                        holder?.process(pending.toOrgJson())
+                    val h = getHolder()
+                    if (h?.isInitialised == true && pending != null) {
+                        h.process(pending.toOrgJson())
                     } else if (pending != null) {
                         listener?.onResult(errorData("initiate_failed"))
                     }
@@ -67,16 +94,27 @@ internal class AndroidJuspayClient : JuspayClient {
         }
     }
 
-    /** Builds the holder once, lazily, against whatever Activity is current right now. */
+    /**
+     * Returns the holder bound to the CURRENT Activity: reuses the cached
+     * one only while it's still bound to the Activity the user is looking
+     * at, otherwise builds and binds a fresh one. Rebinding is what keeps a
+     * payment working after rotation or navigation — a holder bound to a
+     * backgrounded/destroyed Activity would render HyperSDK's UI where the
+     * user can't see it. Rebinds are free: holders are thin wrappers over a
+     * static HyperServices engine created once, so isInitialised survives.
+     * Null when no [FragmentActivity] is available (callers report a
+     * graceful error instead). All holder/boundActivity access stays under
+     * the same lock the destroy listener uses — no unlocked fast path.
+     */
     private fun getHolder(): HyperServiceHolder? {
-        holder?.let { return it }
         val activity = ActivityTracker.current as? FragmentActivity ?: return null
-        synchronized(this) {
-            holder?.let { return it }
-            return HyperServiceHolder(activity).also {
-                it.setCallback(callback)
-                holder = it
-            }
+        return synchronized(this) {
+            holder?.takeIf { boundActivity?.get() === activity }
+                ?: HyperServiceHolder(activity).also {
+                    it.setCallback(callback)
+                    holder = it
+                    boundActivity = WeakReference(activity)
+                }
         }
     }
 
@@ -98,12 +136,21 @@ internal class AndroidJuspayClient : JuspayClient {
             listener?.onResult(errorData("juspay_activity_unavailable"))
             return
         }
+        if (isInitiating) {
+            // h.isInitialised can flip true before its own INITIATE_RESULT
+            // actually arrives (seen after an activity rebuild post-rotation:
+            // isInitialised == true ~2s after calling initiate(), but
+            // INITIATE_RESULT itself didn't fire for another ~5s) — so while
+            // an initiate is in flight, always queue and let INITIATE_RESULT
+            // flush it, regardless of what isInitialised claims meanwhile.
+            pendingProcess = processPayload
+            return
+        }
         if (h.isInitialised) {
             h.process(processPayload.toOrgJson())
             return
         }
         pendingProcess = processPayload
-        if (isInitiating) return
         val init = cachedInitPayload
         if (init == null) {
             pendingProcess = null
@@ -115,6 +162,10 @@ internal class AndroidJuspayClient : JuspayClient {
 
     override fun setResultListener(listener: JuspayResultListener?) {
         this.listener = listener
+    }
+
+    override fun clearResultListener(listener: JuspayResultListener) {
+        if (this.listener === listener) this.listener = null
     }
 
     private fun errorData(code: String) =

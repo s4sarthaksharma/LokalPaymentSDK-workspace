@@ -8,10 +8,16 @@ internal object JuspayEvents {
 }
 
 /** Payment statuses inside a process_result event. Verified against matrimony (D6). */
-internal object JuspayStatus {
-    const val CHARGED = "charged"
-    const val AUTHORIZING = "authorizing"
-    const val PENDING_VBV = "pending_vbv"
-    const val BACKPRESSED = "backpressed"
-    const val USER_ABORTED = "user_aborted"
+internal enum class JuspayStatus(val wire: String) {
+    CHARGED("charged"),
+    AUTHORIZING("authorizing"),
+    PENDING_VBV("pending_vbv"),
+    BACKPRESSED("backpressed"),
+    USER_ABORTED("user_aborted");
+
+    companion object {
+        /** Case-insensitive lookup; null = status we don't recognize. */
+        fun fromWire(raw: String): JuspayStatus? =
+            entries.firstOrNull { it.wire.equals(raw, ignoreCase = true) }
+    }
 }

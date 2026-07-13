@@ -1,3 +1,5 @@
+import com.getlokalapp.paymentsdk.buildsrc.registerModuleVersionTask
+import com.getlokalapp.paymentsdk.buildsrc.registerVendorVersionTask
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -9,6 +11,37 @@ plugins {
 }
 
 group = "com.getlokalapp.paymentsdk"
+
+// Single source for the iOS HyperSDK pod version — feeds both the cocoapods
+// block below and generateIosVendorVersion, so the two can't drift from
+// each other.
+val iosVendorSdkVersion = "2.2.8.1"
+
+// Bakes this module's own version (root gradle.properties) into commonMain,
+// same pattern as :shared's generatePaymentSdkVersion — so GatewayMetadata's
+// moduleVersion can never drift from the published artifact version.
+val generateModuleVersion = registerModuleVersionTask(
+    taskName = "generateModuleVersion",
+    packageName = "com.getlokalapp.paymentsdk.juspay",
+)
+
+// Bakes gradle/libs.versions.toml's juspay-hypersdk entry into androidMain as
+// GatewayMetadata's Android vendorSdkVersion — the same version this module
+// compiles Android against (and JuspayHostPlugin.DEFAULT_SDK_VERSION pins the
+// host's runtime HyperSDK to), so it can't drift.
+val generateAndroidVendorVersion = registerVendorVersionTask(
+    taskName = "generateAndroidVendorVersion",
+    packageName = "com.getlokalapp.paymentsdk.juspay",
+    vendorSdkVersion = libs.versions.juspay.hypersdk.get(),
+)
+
+// Bakes this build script's iosVendorSdkVersion (the HyperSDK pod version
+// below) into iosMain as GatewayMetadata's iOS vendorSdkVersion.
+val generateIosVendorVersion = registerVendorVersionTask(
+    taskName = "generateIosVendorVersion",
+    packageName = "com.getlokalapp.paymentsdk.juspay",
+    vendorSdkVersion = iosVendorSdkVersion,
+)
 
 kotlin {
     compilerOptions {
@@ -49,23 +82,32 @@ kotlin {
         // client-specific MerchantConfig.txt + Fuse.rb post_install step that
         // only the host's real Podfile runs. See docs/juspay-integration-plan.md.
         pod("HyperSDK") {
-            version = "2.2.8.1"
+            version = iosVendorSdkVersion
         }
     }
 
     sourceSets {
-        commonMain.dependencies {
-            api(project(":shared"))
-            implementation(libs.kotlinx.coroutines.core)
-            implementation(libs.kotlinx.serialization.json)
+        commonMain {
+            kotlin.srcDir(generateModuleVersion)
+            dependencies {
+                api(project(":shared"))
+                implementation(libs.kotlinx.coroutines.core)
+                implementation(libs.kotlinx.serialization.json)
+            }
         }
-        androidMain.dependencies {
-            // compileOnly (D4): host applies the hypersdk plugin which supplies
-            // these at runtime; consumers who don't use Juspay must not get them
-            // on their classpath. Confirmed real, public artifacts (R2).
-            compileOnly(libs.juspay.hypersdk)
-            compileOnly(libs.juspay.hyperinteg)
-            implementation(libs.androidx.fragment)
+        androidMain {
+            kotlin.srcDir(generateAndroidVendorVersion)
+            dependencies {
+                // compileOnly (D4): host applies the hypersdk plugin which supplies
+                // these at runtime; consumers who don't use Juspay must not get them
+                // on their classpath. Confirmed real, public artifacts (R2).
+                compileOnly(libs.juspay.hypersdk)
+                compileOnly(libs.juspay.hyperinteg)
+                implementation(libs.androidx.fragment)
+            }
+        }
+        iosMain {
+            kotlin.srcDir(generateIosVendorVersion)
         }
     }
 }

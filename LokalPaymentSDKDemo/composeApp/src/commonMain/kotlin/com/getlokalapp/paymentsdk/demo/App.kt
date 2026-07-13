@@ -1,9 +1,12 @@
 package com.getlokalapp.paymentsdk.demo
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -163,10 +166,11 @@ fun App() {
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
 
-            val registeredGateways = remember {
-                JuspaySdk.initialize(SAMPLE_JUSPAY_INIT_PAYLOAD)
-                LokalPaymentSdk.registeredGateways()
+            val gatewayStatus = remember {
+                JuspaySdk.initialize(SAMPLE_JUSPAY_INIT_PAYLOAD, clientId = "lokalmatrimony")
+                LokalPaymentSdk.gatewayStatus()
             }
+            val registeredGateways = gatewayStatus.available.map { it.gateway }
             val scope = rememberCoroutineScope()
 
             var status by remember { mutableStateOf("LokalPayment SDK ${LokalPaymentSdk.VERSION}") }
@@ -189,11 +193,19 @@ fun App() {
             }
 
             Column(
-                modifier = Modifier.fillMaxSize().padding(16.dp),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .safeDrawingPadding()
+                    .padding(16.dp),
                 verticalArrangement = Arrangement.Center,
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Text(text = status)
+                Text(
+                    text = gatewayStatus.toJson(),
+                    modifier = Modifier.padding(top = 8.dp),
+                )
                 if (PaymentGateway.RAZORPAY_CHECKOUT in registeredGateways) {
                     Button(
                         enabled = !inFlight,

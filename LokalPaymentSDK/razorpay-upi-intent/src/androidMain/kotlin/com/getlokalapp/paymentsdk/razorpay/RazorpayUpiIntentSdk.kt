@@ -2,6 +2,7 @@ package com.getlokalapp.paymentsdk.razorpay
 
 import com.getlokalapp.paymentsdk.LokalPaymentSdk
 import com.getlokalapp.paymentsdk.PaymentGatewayHandler
+import com.getlokalapp.paymentsdk.model.GatewayMetadata
 import com.getlokalapp.paymentsdk.model.PaymentGateway
 import com.getlokalapp.paymentsdk.model.PaymentResult
 import kotlinx.coroutines.channels.awaitClose
@@ -29,6 +30,11 @@ import kotlinx.serialization.json.JsonObject
 internal object RazorpayUpiIntentSdk : PaymentGatewayHandler {
 
     override val gateway: PaymentGateway = PaymentGateway.RAZORPAY_INTENT
+
+    override val metadata: GatewayMetadata = GatewayMetadata(
+        moduleVersion = MODULE_VERSION,
+        vendorSdkVersion = VENDOR_SDK_VERSION,
+    )
 
     init {
         LokalPaymentSdk.register(this)

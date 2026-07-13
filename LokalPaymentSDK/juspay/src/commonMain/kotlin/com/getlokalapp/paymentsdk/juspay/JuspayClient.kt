@@ -29,6 +29,12 @@ internal interface JuspayClient {
     /** Runs a payment. If not yet initialised, the actual queues/handles the handshake. */
     fun process(processPayload: JsonObject)
     fun setResultListener(listener: JuspayResultListener?)
+
+    /**
+     * Clears [listener] only if it is still the active one, so a stale
+     * pay() flow's teardown can't remove a newer pay()'s listener.
+     */
+    fun clearResultListener(listener: JuspayResultListener)
 }
 
 /** [clientId]/[tenantId] are iOS-only; Android ignores them (see [com.getlokalapp.paymentsdk.juspay.JuspaySdk]'s kdoc). */
