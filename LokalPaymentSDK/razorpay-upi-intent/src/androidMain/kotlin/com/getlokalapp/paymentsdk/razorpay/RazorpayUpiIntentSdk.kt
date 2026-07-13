@@ -2,6 +2,7 @@ package com.getlokalapp.paymentsdk.razorpay
 
 import com.getlokalapp.paymentsdk.LokalPaymentSdk
 import com.getlokalapp.paymentsdk.PaymentGatewayHandler
+import com.getlokalapp.paymentsdk.parseGatewayConfigOrFail
 import com.getlokalapp.paymentsdk.model.GatewayMetadata
 import com.getlokalapp.paymentsdk.model.PaymentGateway
 import com.getlokalapp.paymentsdk.model.PaymentResult
@@ -49,7 +50,7 @@ internal object RazorpayUpiIntentSdk : PaymentGatewayHandler {
      * @param gatewayConfig the opaque `gateway_config` blob for RAZORPAY_INTENT
      */
     override fun pay(gatewayConfig: JsonObject): Flow<PaymentResult> = callbackFlow {
-        val config = gatewayConfig.toRazorpayUpiIntentConfig()
+        val config = parseGatewayConfigOrFail { gatewayConfig.toRazorpayUpiIntentConfig() } ?: return@callbackFlow
         val client = AndroidRazorpayUpiIntentClient()
         client.setPaymentResultListener(object : RazorpayUpiIntentResultListener {
             override fun onPaymentSuccess(paymentId: String, orderId: String?, signature: String) {

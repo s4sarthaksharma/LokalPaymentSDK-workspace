@@ -2,8 +2,10 @@ package com.getlokalapp.paymentsdk
 
 import com.getlokalapp.paymentsdk.model.GatewayMetadata
 import com.getlokalapp.paymentsdk.model.GatewayReadiness
+import com.getlokalapp.paymentsdk.model.PaymentError
 import com.getlokalapp.paymentsdk.model.PaymentGateway
 import com.getlokalapp.paymentsdk.model.PaymentResult
+import kotlinx.coroutines.channels.ProducerScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.json.JsonObject
 
@@ -44,3 +46,29 @@ interface PaymentGatewayHandler {
 
     fun pay(gatewayConfig: JsonObject): Flow<PaymentResult>
 }
+
+/** Stable, machine-checkable code for a malformed `gateway_config` blob (any gateway). */
+const val BAD_GATEWAY_CONFIG: String = "bad_gateway_config"
+
+/**
+ * Decodes a gateway's opaque `gateway_config` blob inside a handler's [PaymentGatewayHandler.pay]
+ * `callbackFlow`. A malformed blob becomes a single terminal
+ * [PaymentResult.Failure] (code [BAD_GATEWAY_CONFIG]) followed by flow
+ * completion — not an uncaught flow exception — so every gateway honors
+ * [PaymentGatewayHandler.pay]'s "emit exactly one terminal PaymentResult"
+ * contract uniformly. Returns null (after already sending the Failure and
+ * closing the flow) when [parse] throws; callers short-circuit with
+ * `?: return@callbackFlow`. The failing gateway is identifiable from the
+ * enclosing [com.getlokalapp.paymentsdk.model.LokalPaymentResult] envelope,
+ * so the code stays gateway-agnostic.
+ */
+inline fun <T> ProducerScope<PaymentResult>.parseGatewayConfigOrFail(parse: () -> T): T? =
+    runCatching(parse).getOrElse { e ->
+        trySend(
+            PaymentResult.Failure(
+                PaymentError(code = BAD_GATEWAY_CONFIG, message = "Unparseable gateway_config: ${e.message}"),
+            ),
+        )
+        close()
+        null
+    }

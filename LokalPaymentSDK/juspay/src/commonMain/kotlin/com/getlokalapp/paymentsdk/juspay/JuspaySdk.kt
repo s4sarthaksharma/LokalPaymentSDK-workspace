@@ -2,6 +2,7 @@ package com.getlokalapp.paymentsdk.juspay
 
 import com.getlokalapp.paymentsdk.LokalPaymentSdk
 import com.getlokalapp.paymentsdk.PaymentGatewayHandler
+import com.getlokalapp.paymentsdk.parseGatewayConfigOrFail
 import com.getlokalapp.paymentsdk.model.GatewayMetadata
 import com.getlokalapp.paymentsdk.model.GatewayReadiness
 import com.getlokalapp.paymentsdk.model.PaymentError
@@ -98,18 +99,7 @@ object JuspaySdk : PaymentGatewayHandler {
         return callbackFlow {
             // gateway_config comes from the backend — a malformed blob becomes
             // a Failure emission like every other bad state, not a flow crash.
-            val config = runCatching { gatewayConfig.toJuspayConfig() }.getOrElse { e ->
-                trySend(
-                    PaymentResult.Failure(
-                        PaymentError(
-                            code = "juspay_bad_config",
-                            message = "Unparseable gateway_config: ${e.message}",
-                        ),
-                    ),
-                )
-                close()
-                return@callbackFlow
-            }
+            val config = parseGatewayConfigOrFail { gatewayConfig.toJuspayConfig() } ?: return@callbackFlow
             val resultListener = object : JuspayResultListener {
                 override fun onResult(data: JuspayResultData) {
                     trySend(juspayResultToPaymentResult(data))

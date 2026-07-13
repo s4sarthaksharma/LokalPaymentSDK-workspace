@@ -2,6 +2,7 @@ package com.getlokalapp.paymentsdk.razorpay
 
 import com.getlokalapp.paymentsdk.LokalPaymentSdk
 import com.getlokalapp.paymentsdk.PaymentGatewayHandler
+import com.getlokalapp.paymentsdk.parseGatewayConfigOrFail
 import com.getlokalapp.paymentsdk.model.GatewayMetadata
 import com.getlokalapp.paymentsdk.model.PaymentGateway
 import com.getlokalapp.paymentsdk.model.PaymentResult
@@ -35,7 +36,7 @@ internal object RazorpayCheckoutSdk : PaymentGatewayHandler {
     }
 
     override fun pay(gatewayConfig: JsonObject): Flow<PaymentResult> = callbackFlow {
-        val config = gatewayConfig.toRazorpayCheckoutConfig()
+        val config = parseGatewayConfigOrFail { gatewayConfig.toRazorpayCheckoutConfig() } ?: return@callbackFlow
         val client = createRazorpayCheckoutClient()
         client.setPaymentResultListener(object : RazorpayPaymentResultListener {
             override fun onPaymentSuccess(paymentId: String, orderId: String?, signature: String) {
