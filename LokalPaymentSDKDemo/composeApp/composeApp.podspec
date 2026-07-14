@@ -43,4 +43,6 @@ Pod::Spec.new do |spec|
         }
     ]
     spec.resources = ['build/compose/cocoapods/compose-resources']
+    spec.dependency 'razorpay-pod', '1.4.3'
+    spec.dependency 'HyperSDK', '2.2.8.1'
 end

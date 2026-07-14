@@ -1,13 +1,25 @@
 PODS:
-  - composeApp (1.0)
+  - Airborne (0.37.0)
+  - composeApp (1.0):
+    - HyperSDK (= 2.2.8.1)
+    - razorpay-pod (= 1.4.3)
+  - HyperCore (1.0.5)
+  - HyperSDK (2.2.8.1):
+    - Airborne (= 0.37.0)
+    - HyperCore (= 1.0.5)
+    - JuspaySafeBrowser (= 0.1.94)
+  - JuspaySafeBrowser (0.1.94)
   - razorpay-pod (1.4.3)
 
 DEPENDENCIES:
   - composeApp (from `../composeApp`)
-  - razorpay-pod (= 1.4.3)
 
 SPEC REPOS:
   trunk:
+    - Airborne
+    - HyperCore
+    - HyperSDK
+    - JuspaySafeBrowser
     - razorpay-pod
 
 EXTERNAL SOURCES:
@@ -15,9 +27,13 @@ EXTERNAL SOURCES:
     :path: "../composeApp"
 
 SPEC CHECKSUMS:
-  composeApp: aa6d103d4b97b3f51f3cf0c8c76bc2d84e83c7b8
+  Airborne: 118490096542972c3f208cc2d711a44b2b637bad
+  composeApp: df7e5b7cbeb952c444615bdaab02ae39de5702ed
+  HyperCore: 2bad2288ef0b8deed586331aa43ddef925ae14bb
+  HyperSDK: 69153e61718412440adbfd0deb17c1d1cd038ca6
+  JuspaySafeBrowser: 8141eb92fe4d77da997907a0c5eadc0616bce2fa
   razorpay-pod: af9d52abe715ed5cc3eed9fdf6fd74340443d0b9
 
-PODFILE CHECKSUM: 76f0ab9c75a5cb1df3be734789973f3f3f0fad04
+PODFILE CHECKSUM: 5e99cd83953f4fd3147a4781a73ccc9e8bba97e5
 
 COCOAPODS: 1.16.2

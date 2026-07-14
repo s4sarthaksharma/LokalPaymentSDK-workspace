@@ -2,10 +2,58 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- Required by Compose Multiplatform for adequate performance on
-	     high-refresh-rate (ProMotion) iPhones. Must be a real boolean; the
-	     INFOPLIST_KEY_ build setting does not inject this key correctly. -->
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>juspay-$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+				<string>amzn-$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+				<string>$(PRODUCT_BUNDLE_IDENTIFIER).cred</string>
+				<string>paytm-$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+			</array>
+		</dict>
+	</array>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>credpay</string>
+		<string>phonepe</string>
+		<string>paytmmp</string>
+		<string>tez</string>
+		<string>bhim</string>
+		<string>myairtel</string>
+		<string>slice-upi</string>
+		<string>ppe</string>
+		<string>amazonpay</string>
+		<string>kiwi</string>
+		<string>navipay</string>
+		<string>mobikwik</string>
+		<string>popclubapp</string>
+		<string>super</string>
+		<string>postpe</string>
+		<string>jupiter</string>
+		<string>hdfcbanknb</string>
+		<string>aunb</string>
+		<string>imobileappnb</string>
+		<string>simplypayupi</string>
+		<string>tnupi</string>
+		<string>magnetapp</string>
+		<string>lxme</string>
+		<string>indmoney</string>
+		<string>whatsapp</string>
+		<string>canaraaipe</string>
+		<string>fpupi</string>
+		<string>scapia</string>
+		<string>salaryse</string>
+		<string>bajajpayupi</string>
+		<string>curieapp</string>
+		<string>aufmobile</string>
+		<string>devtools</string>
+		<string>cugext</string>
+	</array>
 </dict>
 </plist>

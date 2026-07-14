@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -201,11 +202,15 @@ fun App() {
                 verticalArrangement = Arrangement.Center,
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Text(text = status)
-                Text(
-                    text = gatewayStatus.toJson(),
-                    modifier = Modifier.padding(top = 8.dp),
-                )
+                SelectionContainer {
+                    Text(text = status)
+                }
+                SelectionContainer {
+                    Text(
+                        text = gatewayStatus.toJson(),
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
                 if (PaymentGateway.RAZORPAY_CHECKOUT in registeredGateways) {
                     Button(
                         enabled = !inFlight,
