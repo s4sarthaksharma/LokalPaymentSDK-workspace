@@ -30,7 +30,6 @@ import com.getlokalapp.paymentsdk.model.PaymentResult
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -59,7 +58,7 @@ private val SAMPLE_JUSPAY_INIT_PAYLOAD = Json.parseToJsonElement(
 // SDK never makes that call itself; it only consumes the response.
 private val SAMPLE_CREATE_ORDER_RESPONSE = """
     {
-      "gateway": 1,
+      "gateway": "razorpay_checkout",
       "gateway_config": {
         "razorpay_key": "rzp_test_RRHhT2F4OwJ6hF",
         "data": {
@@ -78,12 +77,12 @@ private val SAMPLE_CREATE_ORDER_RESPONSE = """
     }
 """.trimIndent()
 
-// Illustrative only (gateway 3 = RAZORPAY_CUSTOM_UI) — a real UPI Intent
+// Illustrative only (gateway "razorpay_custom_ui") — a real UPI Intent
 // gateway_config also carries which UPI app to hand off to, decided by the
 // host's own backend/UI, not shown here.
 private val SAMPLE_UPI_INTENT_CREATE_ORDER_RESPONSE = """
 {
-  "gateway": 3,
+  "gateway": "razorpay_custom_ui",
   "gateway_config": {
     "razorpay_key": "rzp_live_RRHjf8hhNwEqrS",
     "data": {
@@ -109,7 +108,7 @@ private val SAMPLE_UPI_INTENT_CREATE_ORDER_RESPONSE = """
 // fresh one from the backend to actually exercise a live payment.
 private val SAMPLE_JUSPAY_CREATE_ORDER_RESPONSE = """
     {
-      "gateway": 4,
+      "gateway": "juspay",
       "gateway_config": {
         "generated_order_id": "pU7GMJx25h39ogiVtkgq",
         "sdk_payload": {
@@ -150,12 +149,12 @@ private val orderJson = Json { ignoreUnknownKeys = true }
 
 private fun parseOrder(orderResponseJson: String): PaymentOrder {
     val root = orderJson.parseToJsonElement(orderResponseJson).jsonObject
-    val gatewayValue = root.getValue("gateway").jsonPrimitive.int
-    // Mapping the backend's gateway number to the typed PaymentGateway is now
+    val gatewayCode = root.getValue("gateway").jsonPrimitive.content
+    // Mapping the backend's gateway code to the typed PaymentGateway is now
     // the host's job — the SDK takes an already-resolved enum. An unknown
-    // value can't produce a PaymentOrder at all, so we surface it here.
-    val gateway = PaymentGateway.fromValue(gatewayValue)
-        ?: error("Unknown gateway value from backend: $gatewayValue")
+    // code can't produce a PaymentOrder at all, so we surface it here.
+    val gateway = PaymentGateway.fromCode(gatewayCode)
+        ?: error("Unknown gateway code from backend: $gatewayCode")
     return PaymentOrder(
         gateway = gateway,
         gatewayConfig = root.getValue("gateway_config").jsonObject,

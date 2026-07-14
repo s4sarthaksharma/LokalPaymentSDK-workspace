@@ -1,26 +1,48 @@
 package com.getlokalapp.paymentsdk.model
 
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.json.JsonObject
 
 /**
- * Matches the gateway numbering the backend sends in its create-order
- * response; the host maps that number to this enum (via [fromValue]) before
- * handing the SDK a [PaymentOrder]. The number also says which shape to expect
+ * Matches the gateway identifier the backend sends in its create-order
+ * response; the host maps that code to this enum (via [fromCode]) before
+ * handing the SDK a [PaymentOrder]. The code also says which shape to expect
  * in gatewayConfig. Only RAZORPAY_CHECKOUT is wired up in v1 — the rest are
  * reserved so the envelope doesn't change shape when they're added.
  *
- * Serializes by entry name (e.g. `"JUSPAY"`) — see [GatewayStatusReport.toJson].
+ * Serializes by [code] (e.g. `"juspay"`) — see [GatewayStatusReport.toJson].
  */
-@Serializable
-enum class PaymentGateway(val value: Int) {
-    RAZORPAY_CHECKOUT(1),
-    STORE_KIT(2),
-    RAZORPAY_CUSTOM_UI(3),
-    JUSPAY(4);
+@Serializable(with = PaymentGateway.Serializer::class)
+enum class PaymentGateway(val code: String) {
+    RAZORPAY_CHECKOUT("razorpay_checkout"),
+    STORE_KIT("store_kit"),
+    RAZORPAY_CUSTOM_UI("razorpay_custom_ui"),
+    JUSPAY("juspay");
 
     companion object {
-        fun fromValue(value: Int): PaymentGateway? = entries.firstOrNull { it.value == value }
+        fun fromCode(code: String): PaymentGateway? = entries.firstOrNull { it.code == code }
+    }
+
+    /** Encodes/decodes by [code] (e.g. `"juspay"`), not the enum entry name. */
+    object Serializer : KSerializer<PaymentGateway> {
+        override val descriptor: SerialDescriptor =
+            PrimitiveSerialDescriptor("PaymentGateway", PrimitiveKind.STRING)
+
+        override fun serialize(encoder: Encoder, value: PaymentGateway) =
+            encoder.encodeString(value.code)
+
+        override fun deserialize(decoder: Decoder): PaymentGateway {
+            val code = decoder.decodeString()
+            return fromCode(code)
+                ?: throw SerializationException("Unknown gateway code: $code")
+        }
     }
 }
 

@@ -63,8 +63,8 @@ data class GatewayStatusReport(
     /**
      * Serializes the whole report — every gateway, its metadata and (for
      * unavailable ones) the reason — to a JSON string, handy for logging or
-     * shipping to diagnostics. [PaymentGateway] values encode as their enum
-     * name (e.g. `"JUSPAY"`), not their backend number.
+     * shipping to diagnostics. [PaymentGateway] values encode as their
+     * [PaymentGateway.code] (e.g. `"juspay"`).
      */
     fun toJson(): String = statusReportJson.encodeToString(this)
 }
