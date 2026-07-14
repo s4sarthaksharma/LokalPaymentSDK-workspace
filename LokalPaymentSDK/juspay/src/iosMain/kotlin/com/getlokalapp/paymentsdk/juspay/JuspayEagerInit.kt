@@ -7,7 +7,7 @@ import kotlin.native.EagerInitialization
 /**
  * ⚠️ LOAD-BEARING "UNUSED" PROPERTY — DO NOT DELETE.
  *
- * iOS counterpart of JuspayInitProvider: `@EagerInitialization` makes this
+ * iOS counterpart of JuspayInitializer: `@EagerInitialization` makes this
  * property initialize before `main()`, which touches [JuspaySdk] and runs
  * its registering `init` block — so the gateway is registered with zero
  * host code, same as Android (mirrors RazorpayCheckoutEagerInit.kt).

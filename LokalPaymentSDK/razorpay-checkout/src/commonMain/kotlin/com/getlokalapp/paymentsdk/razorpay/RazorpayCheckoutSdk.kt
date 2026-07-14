@@ -14,8 +14,8 @@ import kotlinx.serialization.json.JsonObject
 /**
  * Singleton handler for [PaymentGateway.RAZORPAY_CHECKOUT] — registers
  * itself with [LokalPaymentSdk] in its `init` block, which runs at app
- * startup with zero host code: [RazorpayCheckoutInitProvider] references
- * this object on Android, the `@EagerInitialization` hook in
+ * startup with zero host code: `RazorpayCheckoutInitializer` (AndroidX App
+ * Startup) touches this object on Android, the `@EagerInitialization` hook in
  * `RazorpayCheckoutEagerInit.kt` does on iOS. No platform handle to grab:
  * Android auto-tracks the current Activity and iOS looks up the topmost
  * UIViewController fresh, both via `:shared`'s hostcontext utilities

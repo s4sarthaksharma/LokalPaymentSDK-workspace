@@ -14,7 +14,8 @@ import kotlinx.serialization.json.JsonObject
 /**
  * Singleton handler for [PaymentGateway.RAZORPAY_INTENT] — registers itself
  * with [LokalPaymentSdk] in its `init` block, which
- * [RazorpayUpiIntentInitProvider] runs at process start with zero host code.
+ * `RazorpayUpiIntentInitializer` (AndroidX App Startup) runs at process start
+ * with zero host code.
  * Android-only (see this module's build.gradle.kts for why), so there is no
  * iOS bootstrap: the gateway simply never registers there. No platform
  * handle to grab:

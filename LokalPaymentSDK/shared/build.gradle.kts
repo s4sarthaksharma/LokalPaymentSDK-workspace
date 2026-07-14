@@ -66,5 +66,13 @@ kotlin {
             implementation(libs.kotlin.test)
             implementation(libs.kotlinx.coroutines.test)
         }
+        androidMain.dependencies {
+            // api, not implementation: :shared's public GatewayInitializer
+            // extends androidx.startup's Initializer, so the type is part of
+            // :shared's API. Exposing it here means gateway modules inherit it
+            // transitively — they subclass GatewayInitializer without declaring
+            // androidx.startup themselves.
+            api(libs.androidx.startup)
+        }
     }
 }

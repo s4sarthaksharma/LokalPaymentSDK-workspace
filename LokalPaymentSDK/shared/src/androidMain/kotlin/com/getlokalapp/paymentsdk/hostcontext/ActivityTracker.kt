@@ -9,7 +9,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 /**
  * Tracks the current foreground Activity via Application-level lifecycle
  * callbacks so no gateway module's host ever has to supply one explicitly —
- * installed once by [ActivityTrackerInitProvider] at process start. A
+ * installed once by `PaymentSdkInitializer` at process start. A
  * [WeakReference] avoids pinning a destroyed Activity in memory. Lives in
  * `:shared` so every Android gateway module (Juspay, Razorpay Checkout,
  * Razorpay UPI Intent) can read the current Activity the same way.

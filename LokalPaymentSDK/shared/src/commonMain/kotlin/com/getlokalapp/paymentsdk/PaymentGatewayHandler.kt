@@ -14,7 +14,7 @@ import kotlinx.serialization.json.JsonObject
  * RazorpayCheckoutSdk, RazorpayUpiIntentSdk, JuspaySdk). Each singleton
  * registers itself with [LokalPaymentSdk] in its `init` block, and the
  * gateway module arranges for that to run at app startup with zero host
- * code — a manifest-merged ContentProvider on Android, an
+ * code — an AndroidX App Startup `Initializer` on Android, an
  * `@EagerInitialization` hook on iOS. The exception is a gateway that needs
  * host-supplied setup data (Juspay's init payload): there the host's one
  * `initialize(...)` call is the trigger. Registration is app-lifetime;

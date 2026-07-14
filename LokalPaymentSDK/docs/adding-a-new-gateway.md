@@ -51,8 +51,9 @@ Flow<LokalPaymentResult>  (adds the resolved gateway)  → back to host
 dispatch code, and normally never writes a setup line either. Each gateway's
 handler is an app-lifetime singleton `object` whose
 `init { LokalPaymentSdk.register(this) }` runs at app startup because the
-module bootstraps it per platform: a manifest-merged **ContentProvider** on
-Android, an **`@EagerInitialization`** hook on iOS.
+module bootstraps it per platform: an AndroidX App Startup **`Initializer`**
+on Android (contributed to `:shared`'s single init provider via a manifest
+`<meta-data>`), an **`@EagerInitialization`** hook on iOS.
 The one exception is a gateway that needs host-supplied setup data (Juspay's
 init payload) — there the host's single `initialize(...)` call is the trigger.
 There is no unregister/dispose: registration is app-lifetime. Routing is by
@@ -129,8 +130,8 @@ shape. A gateway module:
 
 - puts its SDK entry `object`, config type, result mapper, and (if
   multiplatform) its client `expect`/`actual` in the standard source sets, plus
-  its two startup triggers: an `androidMain` InitProvider + manifest entry and
-  an `iosMain` `@EagerInitialization` hook;
+  its two startup triggers: an `androidMain` App Startup `Initializer` +
+  manifest `<meta-data>` entry and an `iosMain` `@EagerInitialization` hook;
 - takes **no platform handle from the host** — it reads the current
   Activity/UIViewController from `:shared`'s hostcontext utilities at call
   time (Android's ActivityTracker; iOS topmost-UIViewController lookup), the
@@ -147,8 +148,8 @@ unless you're building one.
 Real, shipped example: `:razorpay-upi-intent`. Deltas from the canonical shape:
 
 - **SDK entry object lives in `androidMain`**, not `commonMain`, and its only
-  startup trigger is the Android InitProvider — no iOS eager-init hook, so the
-  gateway simply never registers on iOS (and never appears in
+  startup trigger is the Android App Startup initializer — no iOS eager-init
+  hook, so the gateway simply never registers on iOS (and never appears in
   `registeredGateways()` there).
 - **No client `expect`/`actual`** — just plain Android classes.
 - **There is no `iosMain` source at all.** You still declare
@@ -174,7 +175,7 @@ Deltas from the canonical shape (the Android-only variant, flipped):
 
 - **SDK entry object lives in `iosMain`**, not `commonMain`, and its only
   startup trigger is the `@EagerInitialization` hook — no
-  Android InitProvider, so the gateway never registers on Android.
+  Android App Startup initializer, so the gateway never registers on Android.
 - **Android is a stub only.** Declare the Android target so `commonMain` resolves,
   but `androidMain` carries no real API.
 - **`native.cocoapods` + `pod()`** stay (for the iOS pod, if any); **no Android
@@ -272,12 +273,16 @@ Kotlin objects initialize lazily (first reference), so each platform needs a
 startup trigger that references the object with zero host code — copy both
 pieces from `razorpay-checkout`:
 
-1. **Android — `FooInitProvider` in `androidMain` + a `<provider>` manifest
-   entry** (mirror `RazorpayCheckoutInitProvider`; give the authority a unique
-   `${applicationId}.…foo.initprovider` suffix). Subclass `:shared`'s
-   `SdkInitProvider` — it absorbs the dead ContentProvider overrides, so you
-   implement only `onAppStart()`, which touches `FooSdk`. The OS instantiates
-   it at process start.
+1. **Android — `FooInitializer` in `androidMain` + a `<meta-data>` manifest
+   entry** (mirror `RazorpayCheckoutInitializer`). Extend `:shared`'s
+   `GatewayInitializer` (an AndroidX App Startup `Initializer`) and implement
+   only `create()`, touching `FooSdk` to run its `init`; the base already
+   depends on `PaymentSdkInitializer` so the ActivityTracker install runs
+   first. No `androidx.startup` dependency in your module — it comes
+   transitively from `:shared` (`api`). Register it with a `<meta-data>`
+   (keyed by the initializer's class name — no per-module authority to pick)
+   merged into App Startup's single `InitializationProvider`. It runs
+   synchronously at process start, before `Application.onCreate()`.
 2. **iOS — an `@EagerInitialization` top-level val in `iosMain`** (mirror
    `RazorpayCheckoutEagerInit.kt`, including its warning comment). It runs
    pre-main, so keep the object's `init` a bare in-memory `register()` — no

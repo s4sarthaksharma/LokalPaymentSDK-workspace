@@ -19,8 +19,8 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
 /**
  * Singleton handler for [PaymentGateway.JUSPAY] — registers itself with
  * [LokalPaymentSdk] in its `init` block at process start, same as the
- * Razorpay gateways (Android manifest-merged ContentProvider / iOS
- * `@EagerInitialization`, see `JuspayInitProvider`/`JuspayEagerInit.kt`).
+ * Razorpay gateways (Android AndroidX App Startup `Initializer` / iOS
+ * `@EagerInitialization`, see `JuspayInitializer`/`JuspayEagerInit.kt`).
  * Registration only means "this gateway module is present" — HyperSDK still
  * needs a host-supplied init payload before it can actually pay, so the
  * host's one [initialize] call remains required (call it once at app

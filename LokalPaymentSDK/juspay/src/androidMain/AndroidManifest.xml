@@ -1,15 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <application>
         <!-- Auto-init: registers JuspaySdk with LokalPaymentSdk at process
-             start, zero host code (see the provider's kdoc). Registration
-             alone doesn't make Juspay payable — the host's
-             JuspaySdk.initialize() call is still required. -->
+             start, zero host code (see the initializer's kdoc). Contributed to
+             App Startup's single provider as a <meta-data>. Registration alone
+             doesn't make Juspay payable — the host's JuspaySdk.initialize()
+             call is still required. -->
         <provider
-            android:name="com.getlokalapp.paymentsdk.juspay.JuspayInitProvider"
-            android:authorities="${applicationId}.getlokalapp.paymentsdk.juspay.initprovider"
-            android:exported="false" />
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="com.getlokalapp.paymentsdk.juspay.JuspayInitializer"
+                android:value="androidx.startup" />
+        </provider>
     </application>
 
 </manifest>

@@ -37,11 +37,11 @@ object LokalPaymentSdk {
      * Called from a gateway singleton's own `init` block — not something a
      * host normally calls directly. Handlers are singletons, so calling it
      * again for the same gateway is a harmless no-op. Every gateway module
-     * registers eagerly at process start (Android manifest-merged
-     * ContentProvider / iOS `@EagerInitialization`), so this always runs
-     * before any host code, regardless of whether the gateway needs further
-     * host-supplied setup (e.g. Juspay's `initialize(...)`) before [pay]
-     * actually works.
+     * registers at startup with zero host code (Android: an AndroidX App
+     * Startup `Initializer` run synchronously before `Application.onCreate()`;
+     * iOS: `@EagerInitialization`), so this always runs before any host code,
+     * regardless of whether the gateway needs further host-supplied setup
+     * (e.g. Juspay's `initialize(...)`) before [pay] actually works.
      */
     fun register(handler: PaymentGatewayHandler) {
         handlers[handler.gateway] = handler

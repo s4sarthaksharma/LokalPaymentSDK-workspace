@@ -10,6 +10,7 @@ razorpay-checkout = "1.6.41"
 razorpay-customui = "3.9.22"
 juspay-hypersdk = "2.2.8-rc.01"
 androidx-fragment = "1.8.5"
+androidx-startup = "1.2.0"
 
 [libraries]
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
@@ -28,6 +29,10 @@ razorpay-customui = { module = "com.razorpay:customui", version.ref = "razorpay-
 juspay-hypersdk = { module = "in.juspay:hypersdk", version.ref = "juspay-hypersdk" }
 juspay-hyperinteg = { module = "in.juspay:hyperinteg", version.ref = "juspay-hypersdk" }
 androidx-fragment = { module = "androidx.fragment:fragment", version.ref = "androidx-fragment" }
+# Single-ContentProvider auto-init: each gateway module registers an Initializer
+# via manifest <meta-data> keyed by class name, so no module needs its own
+# provider authority. Android-only, lives in androidMain.
+androidx-startup = { module = "androidx.startup:startup-runtime", version.ref = "androidx-startup" }
 
 [plugins]
 android-kotlin-multiplatform-library = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }

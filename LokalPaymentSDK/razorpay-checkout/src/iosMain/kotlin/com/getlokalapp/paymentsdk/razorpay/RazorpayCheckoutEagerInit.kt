@@ -7,7 +7,7 @@ import kotlin.native.EagerInitialization
 /**
  * ⚠️ LOAD-BEARING "UNUSED" PROPERTY — DO NOT DELETE.
  *
- * iOS counterpart of RazorpayCheckoutInitProvider: `@EagerInitialization`
+ * iOS counterpart of RazorpayCheckoutInitializer: `@EagerInitialization`
  * makes this property initialize before `main()`, which touches
  * [RazorpayCheckoutSdk] and runs its registering `init` block — so the
  * gateway is registered with zero host code, same as Android.

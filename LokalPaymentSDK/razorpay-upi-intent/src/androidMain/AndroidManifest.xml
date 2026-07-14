@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Proxy Activity that fronts Razorpay's UPI Intent flow. Merged into the
          host app so the SDK is self-contained: consumers don't register anything. -->
@@ -11,11 +12,17 @@
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
         <!-- Auto-init: registers RazorpayUpiIntentSdk with LokalPaymentSdk at
-             process start, zero host code (see the provider's kdoc). -->
+             process start, zero host code (see the initializer's kdoc).
+             Contributed to App Startup's single provider as a <meta-data>. -->
         <provider
-            android:name="com.getlokalapp.paymentsdk.razorpay.RazorpayUpiIntentInitProvider"
-            android:authorities="${applicationId}.getlokalapp.paymentsdk.razorpay.upiintent.initprovider"
-            android:exported="false" />
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="com.getlokalapp.paymentsdk.razorpay.RazorpayUpiIntentInitializer"
+                android:value="androidx.startup" />
+        </provider>
     </application>
 
 </manifest>

@@ -1,14 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Auto-init: registers ActivityTracker with zero host code. Merged
-         into the host app automatically, so every gateway module that
-         depends on :shared gets the current-Activity tracker for free. -->
+    <!-- Auto-init, zero host code, via AndroidX App Startup. This is the SDK's
+         single startup provider: every gateway module contributes its own
+         Initializer as a <meta-data> merged into this same provider (keyed by
+         class name), so no gateway module needs a provider — or a unique
+         android:authorities — of its own. This entry installs the
+         current-Activity tracker; gateway initializers depend on it, so it
+         runs first. -->
     <application>
         <provider
-            android:name="com.getlokalapp.paymentsdk.hostcontext.ActivityTrackerInitProvider"
-            android:authorities="${applicationId}.getlokalapp.paymentsdk.hostcontext.initprovider"
-            android:exported="false" />
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="com.getlokalapp.paymentsdk.PaymentSdkInitializer"
+                android:value="androidx.startup" />
+        </provider>
     </application>
 
 </manifest>
