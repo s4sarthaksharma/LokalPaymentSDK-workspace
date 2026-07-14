@@ -10,6 +10,8 @@ import com.getlokalapp.paymentsdk.model.PaymentGateway
 import com.getlokalapp.paymentsdk.model.PaymentOrder
 import com.getlokalapp.paymentsdk.model.PaymentResult
 import com.getlokalapp.paymentsdk.model.UnavailableGateway
+import com.getlokalapp.paymentsdk.upi.UpiApp
+import com.getlokalapp.paymentsdk.upi.detectInstalledUpiApps
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -120,6 +122,24 @@ object LokalPaymentSdk {
             )
         }
     }
+
+    /**
+     * Lists the UPI payment apps currently installed on the device, for a host
+     * that wants to show the user a chooser (or decide whether a UPI flow is
+     * even worth offering) before creating an order.
+     *
+     * Results are platform-shaped — see [UpiApp]. **Android** returns every app
+     * that can handle `upi://pay`, with real [UpiApp.packageName]s. **iOS**
+     * returns matches from a curated URL-scheme catalog; note that iOS's
+     * `canOpenURL` only reports an app as present if its scheme is declared in
+     * the **host app's** `Info.plist` under `LSApplicationQueriesSchemes`, so an
+     * iOS host must list the UPI schemes it cares about there or this returns
+     * an empty list.
+     *
+     * Returns an empty list if detection isn't possible (e.g. the Android SDK
+     * hasn't been initialized yet, so no [android.content.Context] is available).
+     */
+    fun installedUpiApps(): List<UpiApp> = detectInstalledUpiApps()
 
     const val VERSION: String = PAYMENT_SDK_VERSION
 }

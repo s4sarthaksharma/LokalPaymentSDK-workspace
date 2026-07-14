@@ -2,6 +2,16 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- Package visibility (Android 11+) so LokalPaymentSdk.installedUpiApps()
+         can see every app that handles the standard upi://pay deep link when
+         it queries PackageManager. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="upi" />
+        </intent>
+    </queries>
+
     <!-- Auto-init, zero host code, via AndroidX App Startup. This is the SDK's
          single startup provider: every gateway module contributes its own
          Initializer as a <meta-data> merged into this same provider (keyed by

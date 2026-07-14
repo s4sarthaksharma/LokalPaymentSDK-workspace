@@ -52,3 +52,4 @@ key.properties
 .env
 .env.*
 *.pem
+/iosApp/iosApp.xcodeproj/xcshareddata/xcschemes/iosApp.xcscheme

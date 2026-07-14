@@ -22,9 +22,20 @@ object ActivityTracker : Application.ActivityLifecycleCallbacks {
     @Volatile
     private var onAvailable: (() -> Unit)? = null
 
+    @Volatile
+    private var applicationRef: Application? = null
+
     private val onDestroyedListeners = CopyOnWriteArrayList<(Activity) -> Unit>()
 
     val current: Activity? get() = currentRef?.get()
+
+    /**
+     * The process [Application], captured at [install] time. Unlike [current]
+     * it's non-null for the whole process lifetime once the SDK has started,
+     * so it's the right [android.content.Context] for activity-independent
+     * work such as querying [android.content.pm.PackageManager].
+     */
+    val application: Application? get() = applicationRef
 
     /**
      * Notifies [listener] whenever any Activity is destroyed, so gateway
@@ -40,6 +51,7 @@ object ActivityTracker : Application.ActivityLifecycleCallbacks {
     }
 
     fun install(application: Application) {
+        applicationRef = application
         application.registerActivityLifecycleCallbacks(this)
     }
 

@@ -27,6 +27,7 @@ import com.getlokalapp.paymentsdk.model.LokalPaymentResult
 import com.getlokalapp.paymentsdk.model.PaymentGateway
 import com.getlokalapp.paymentsdk.model.PaymentOrder
 import com.getlokalapp.paymentsdk.model.PaymentResult
+import com.getlokalapp.paymentsdk.upi.UpiApp
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
@@ -210,6 +211,12 @@ fun App() {
                         modifier = Modifier.padding(top = 8.dp),
                     )
                 }
+                Button(
+                    onClick = { status = renderUpiApps(LokalPaymentSdk.installedUpiApps()) },
+                    modifier = Modifier.padding(top = 16.dp),
+                ) {
+                    Text("Detect installed UPI apps")
+                }
                 if (PaymentGateway.RAZORPAY_CHECKOUT in registeredGateways) {
                     Button(
                         enabled = !inFlight,
@@ -240,6 +247,21 @@ fun App() {
             }
         }
     }
+}
+
+// Formats the UPI apps the SDK detected. Results are platform-shaped: Android
+// yields real package names (dynamic PackageManager query), iOS yields URL
+// schemes from a curated catalog (canOpenURL) — so we print whichever the
+// UpiApp carries.
+private fun renderUpiApps(apps: List<UpiApp>): String {
+    if (apps.isEmpty()) return "No UPI apps detected"
+    return buildString {
+        appendLine("Installed UPI apps (${apps.size}):")
+        apps.forEach { app ->
+            val id = app.packageName ?: app.urlScheme?.let { "$it://" } ?: "—"
+            appendLine("• ${app.displayName}  [$id]")
+        }
+    }.trimEnd()
 }
 
 // Dumps the entire object the SDK hands back — the routing gateway from the
