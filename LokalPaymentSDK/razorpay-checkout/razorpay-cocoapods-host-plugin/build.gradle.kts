@@ -1,3 +1,5 @@
+import com.getlokalapp.paymentsdk.buildsrc.registerVendorVersionTask
+
 plugins {
     id("org.jetbrains.kotlin.jvm")
     `java-gradle-plugin`
@@ -8,6 +10,24 @@ group = "com.getlokalapp.paymentsdk"
 
 kotlin {
     jvmToolchain(11)
+}
+
+// Bakes gradle/libs.versions.toml's razorpay-pod-ios entry into a
+// VENDOR_SDK_VERSION constant this plugin pins the host's podspec to — the same
+// catalog entry :razorpay-checkout links its cinterop bindings against, so the
+// linked pod can't drift from the bindings the host consumes.
+val generatePodVersion = registerVendorVersionTask(
+    taskName = "generatePodVersion",
+    packageName = "com.getlokalapp.paymentsdk.razorpay.host",
+    vendorSdkVersion = libs.versions.razorpay.pod.ios.get(),
+    asActual = false,
+)
+
+// Shared podspec-editing helper + generated pod-version constant, both compiled
+// into this plugin jar (kept out of a published artifact so it stays self-contained).
+sourceSets.main {
+    kotlin.srcDir(rootProject.file("cocoapods-host-plugin-common/src/main/kotlin"))
+    kotlin.srcDir(generatePodVersion)
 }
 
 // A host applies this to its Compose/KMP module (the one that owns the iOS

@@ -9,6 +9,14 @@ kotlinx-serialization-json = "1.11.0"
 razorpay-checkout = "1.6.41"
 razorpay-customui = "3.9.22"
 juspay-hypersdk = "2.2.8-rc.01"
+# iOS pod versions — deliberately separate from the Android entries above.
+# The iOS pods track a different release train: Android juspay-hypersdk is
+# 2.2.8-rc.01 while the iOS HyperSDK pod is 2.2.8.1; Android razorpay-checkout
+# is 1.6.41 while the iOS razorpay-pod is 1.4.3. Named `*-pod-ios` (not
+# `juspay-hypersdk-ios`) so they don't nest under the existing juspay-hypersdk
+# leaf, which would turn that accessor into a group and break `.get()`.
+juspay-pod-ios = "2.2.8.1"
+razorpay-pod-ios = "1.4.3"
 androidx-fragment = "1.8.5"
 androidx-startup = "1.2.0"
 
