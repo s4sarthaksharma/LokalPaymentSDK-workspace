@@ -7,12 +7,12 @@ import kotlinx.serialization.json.JsonObject
 
 /**
  * Parsed from PaymentOrder.gatewayConfig when gateway is
- * RAZORPAY_INTENT. `data` is handed straight to Razorpay's Razorpay.submit()
+ * RAZORPAY_CUSTOM_UI. `data` is handed straight to Razorpay's Razorpay.submit()
  * — the SDK never inspects its contents, same treatment as
  * RazorpayCheckoutConfig in `:razorpay-checkout`.
  */
 @Serializable
-internal data class RazorpayUpiIntentConfig(
+internal data class RazorpayCustomUiConfig(
     @SerialName("razorpay_key") val razorpayKey: String,
     @SerialName("data") val data: JsonObject,
 )
@@ -20,7 +20,7 @@ internal data class RazorpayUpiIntentConfig(
 /**
  * Decodes the opaque `gateway_config` blob that LokalPaymentSdk already
  * routed to this module. No gateway check is needed here — LokalPaymentSdk
- * only ever hands a RAZORPAY_INTENT config to RazorpayUpiIntentSdk.
+ * only ever hands a RAZORPAY_CUSTOM_UI config to RazorpayCustomUiSdk.
  */
-internal fun JsonObject.toRazorpayUpiIntentConfig(): RazorpayUpiIntentConfig =
-    lenientJson.decodeFromJsonElement(RazorpayUpiIntentConfig.serializer(), this)
+internal fun JsonObject.toRazorpayCustomUiConfig(): RazorpayCustomUiConfig =
+    lenientJson.decodeFromJsonElement(RazorpayCustomUiConfig.serializer(), this)

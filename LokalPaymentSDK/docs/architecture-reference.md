@@ -160,7 +160,7 @@ paymentsdk/
   PaymentPresenter.kt              // ✅ expect: opaque handle, no members in commonMain
   model/                           // ✅ done — no backend/ package anymore, no PaymentBackend/ValidationResult/RazorpayPaymentData/PaymentOrder
     CreateOrderResponse.kt         // envelope: gateway: Int, gatewayConfig: JsonObject — mirrors matrimony's CreateOrderDto; the only type carried over from the old backend/ package
-    PaymentGateway.kt              // enum RAZORPAY_CHECKOUT=1, STORE_KIT=2, RAZORPAY_INTENT=3, JUSPAY=4 — mirrors matrimony's numbering
+    PaymentGateway.kt              // enum RAZORPAY_CHECKOUT=1, STORE_KIT=2, RAZORPAY_CUSTOM_UI=3, JUSPAY=4 — mirrors matrimony's numbering
     PaymentResult.kt               // sealed: Success(paymentId, orderId, signature) / Cancelled / Failure
     PaymentError.kt
     CancelReason.kt
@@ -285,7 +285,7 @@ mirrors matrimony keeping that judgment in `PaymentsHelper`, not in
 
 ## 6. Deferred (explicitly out of scope for v1 — revisit later)
 
-- Razorpay UPI Intent flow (needs a `WebView`, Android-only).
+- Razorpay Custom UI flow (needs a `WebView`, Android-only).
 - Juspay integration (Android-only gateway).
 - StoreKit / Apple IAP (iOS-only, different purchase model entirely).
 - Any bundled UI (success/failure/nudge screens).

@@ -11,20 +11,24 @@ plugins {
 
 group = "com.getlokalapp.paymentsdk"
 
-// Razorpay's UPI Intent flow itself (resolving installed UPI apps and
-// handing off via an Android Intent) has no iOS equivalent — RazorpayUpiIntentSdk
-// stays Android-only, declared only in androidMain. Razorpay's iOS UPI
-// offering ("UPI Turbo") is a materially different, much larger integration
-// surface (account linking, native PIN entry, token plugins) — out of scope
-// here; it would land as its own module later.
+// This module drives Razorpay's Custom UI SDK (com.razorpay:customui) via
+// Razorpay.submit() — the backend puts whatever payment-method payload it
+// wants in gateway_config.data and this module hands it straight to submit().
+// Android-only for now: RazorpayCustomUiSdk stays in androidMain. Razorpay's
+// iOS Custom UI surface is a materially different, much larger integration
+// (its own pod, native PIN entry, token plugins) — out of scope here; it
+// would land as iosMain support on this module later. The current Android
+// implementation is a no-UI proxy suited to methods that hand off to an
+// external app (e.g. UPI Intent); rendering in-app method UI (card fields,
+// OTP/3DS) would be added in a later version.
 //
 // iOS targets exist below purely so this module publishes an iOS variant —
 // without one, Gradle can't resolve it from a consumer's commonMain at all
-// (verified: `implementation(libs.lokalpaymentsdk.razorpay.upi.intent)` in
+// (verified: `implementation(libs.lokalpaymentsdk.razorpay.customui)` in
 // LokalPaymentSDKDemo's composeApp/commonMain failed
 // :composeApp:compileKotlinIosSimulatorArm64 with "No matching variant...
 // consumer needed platform.type 'native'" before these targets existed).
-// iosMain's only content is RazorpayUpiIntentEagerInit.kt, which registers
+// iosMain's only content is RazorpayCustomUiEagerInit.kt, which registers
 // this gateway as unavailable (see LokalPaymentSdk.registerUnavailable) —
 // there is no working iOS implementation.
 
@@ -51,7 +55,7 @@ kotlin {
     }
 
     androidLibrary {
-        namespace = "com.getlokalapp.paymentsdk.upiintent"
+        namespace = "com.getlokalapp.paymentsdk.customui"
         compileSdk = libs.versions.android.compileSdk.get().toInt()
         minSdk = libs.versions.android.minSdk.get().toInt()
 
@@ -87,8 +91,8 @@ kotlin {
             kotlin.srcDir(generateVendorVersion)
             dependencies {
                 // Not razorpay-checkout: the `Razorpay` class (submit()/setWebView(),
-                // driving UPI Intent) lives in `com.razorpay:customui`, a distinct
-                // Maven artifact from the one :razorpay-checkout depends on.
+                // driving the Custom UI flow) lives in `com.razorpay:customui`, a
+                // distinct Maven artifact from the one :razorpay-checkout depends on.
                 implementation(libs.razorpay.customui)
             }
         }

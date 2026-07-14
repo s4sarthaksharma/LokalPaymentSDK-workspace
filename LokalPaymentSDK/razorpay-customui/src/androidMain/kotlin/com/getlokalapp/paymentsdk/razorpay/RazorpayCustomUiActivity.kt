@@ -12,26 +12,26 @@ import com.razorpay.Razorpay
 import org.json.JSONObject
 
 /**
- * Handoff for the single in-flight UPI Intent payment. Same reasoning as
+ * Handoff for the single in-flight Custom UI payment. Same reasoning as
  * `:razorpay-checkout`'s RazorpayCheckoutBridge — the listener isn't
  * Parcelable, so it can't ride along in the launch Intent; it's parked here
- * for [RazorpayUpiIntentActivity] to pick up. Only one UPI Intent payment
+ * for [RazorpayCustomUiActivity] to pick up. Only one Custom UI payment
  * can be in flight at a time, so a single slot is sufficient.
  */
-internal object RazorpayUpiIntentBridge {
+internal object RazorpayCustomUiBridge {
     @Volatile
-    var pending: PendingUpiIntentCheckout? = null
+    var pending: PendingCustomUiCheckout? = null
 }
 
-internal class PendingUpiIntentCheckout(
+internal class PendingCustomUiCheckout(
     val key: String,
     val data: JSONObject,
-    val listener: RazorpayUpiIntentResultListener?,
+    val listener: RazorpayCustomUiResultListener?,
 )
 
 /**
- * Drives Razorpay's UPI Intent flow on Android by launching
- * [RazorpayUpiIntentActivity], an internal proxy that owns the WebView
+ * Drives Razorpay's Custom UI (Razorpay.submit()) flow on Android by launching
+ * [RazorpayCustomUiActivity], an internal proxy that owns the WebView
  * Razorpay requires and implements its result listener — mirrors
  * `:razorpay-checkout`'s AndroidRazorpayCheckoutClient for hosted Checkout.
  * The Activity to launch it from comes from [ActivityTracker] (`:shared`'s
@@ -40,25 +40,25 @@ internal class PendingUpiIntentCheckout(
  * this module has no iOS counterpart or factory indirection to satisfy — so
  * it lives alongside the rest of the Android-only proxy machinery it drives.
  */
-internal class AndroidRazorpayUpiIntentClient {
+internal class AndroidRazorpayCustomUiClient {
 
-    private var listener: RazorpayUpiIntentResultListener? = null
+    private var listener: RazorpayCustomUiResultListener? = null
 
-    fun submit(config: RazorpayUpiIntentConfig) {
+    fun submit(config: RazorpayCustomUiConfig) {
         val activity = ActivityTracker.current
         if (activity == null) {
             listener?.onPaymentError(ACTIVITY_UNAVAILABLE_ERROR, "razorpay_activity_unavailable")
             return
         }
-        RazorpayUpiIntentBridge.pending = PendingUpiIntentCheckout(
+        RazorpayCustomUiBridge.pending = PendingCustomUiCheckout(
             key = config.razorpayKey,
             data = config.data.toOrgJson(),
             listener = listener,
         )
-        activity.startActivity(Intent(activity, RazorpayUpiIntentActivity::class.java))
+        activity.startActivity(Intent(activity, RazorpayCustomUiActivity::class.java))
     }
 
-    fun setPaymentResultListener(listener: RazorpayUpiIntentResultListener?) {
+    fun setPaymentResultListener(listener: RazorpayCustomUiResultListener?) {
         this.listener = listener
     }
 
@@ -70,23 +70,25 @@ internal class AndroidRazorpayUpiIntentClient {
 }
 
 /**
- * Internal proxy Activity that owns the WebView Razorpay's UPI Intent flow
- * requires as a JS bridge (never shown to the user) and satisfies Razorpay's
- * requirement that the Activity calling submit() implement its result
- * listener — mirrors RazorpayCheckoutActivity's role for hosted Checkout.
- * Keeping this here means the host never supplies a WebView, never forwards
- * onActivityResult, and only ever passes an Activity to launch this one.
- * Runs translucent — nothing of this Activity's own UI is shown; if the
- * flow routes to an external UPI app, only that app's own screen appears.
+ * Internal proxy Activity that owns the WebView Razorpay's Custom UI
+ * (submit()) flow requires as a JS bridge (never shown to the user) and
+ * satisfies Razorpay's requirement that the Activity calling submit()
+ * implement its result listener — mirrors RazorpayCheckoutActivity's role for
+ * hosted Checkout. Keeping this here means the host never supplies a WebView,
+ * never forwards onActivityResult, and only ever passes an Activity to launch
+ * this one. Runs translucent with no UI of its own — which suits methods that
+ * hand off to an external app (e.g. UPI Intent), where only that app's screen
+ * appears. Methods needing in-app UI (card fields, OTP/3DS) aren't rendered
+ * yet — that would be added in a later version.
  */
-internal class RazorpayUpiIntentActivity : Activity(), PaymentResultWithDataListener {
+internal class RazorpayCustomUiActivity : Activity(), PaymentResultWithDataListener {
 
     private var razorpay: Razorpay? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val pending = RazorpayUpiIntentBridge.pending
+        val pending = RazorpayCustomUiBridge.pending
         if (pending == null) {
             // No in-flight request — e.g. the process was recreated after death
             // mid-payment and the listener is gone. Nothing to drive; bail.
@@ -133,9 +135,9 @@ internal class RazorpayUpiIntentActivity : Activity(), PaymentResultWithDataList
     }
 
     /** Returns the pending listener once and clears the slot so it fires exactly once. */
-    private fun takeListener(): RazorpayUpiIntentResultListener? {
-        val listener = RazorpayUpiIntentBridge.pending?.listener
-        RazorpayUpiIntentBridge.pending = null
+    private fun takeListener(): RazorpayCustomUiResultListener? {
+        val listener = RazorpayCustomUiBridge.pending?.listener
+        RazorpayCustomUiBridge.pending = null
         return listener
     }
 

@@ -11,7 +11,7 @@ import kotlinx.serialization.json.JsonObject
 
 /**
  * Implemented by each gateway module's own SDK singleton `object` (e.g.
- * RazorpayCheckoutSdk, RazorpayUpiIntentSdk, JuspaySdk). Each singleton
+ * RazorpayCheckoutSdk, RazorpayCustomUiSdk, JuspaySdk). Each singleton
  * registers itself with [LokalPaymentSdk] in its `init` block, and the
  * gateway module arranges for that to run at app startup with zero host
  * code — an AndroidX App Startup `Initializer` on Android, an

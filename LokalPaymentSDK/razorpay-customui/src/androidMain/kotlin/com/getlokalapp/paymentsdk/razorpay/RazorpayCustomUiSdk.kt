@@ -12,26 +12,27 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.serialization.json.JsonObject
 
 /**
- * Singleton handler for [PaymentGateway.RAZORPAY_INTENT] — registers itself
+ * Singleton handler for [PaymentGateway.RAZORPAY_CUSTOM_UI] — registers itself
  * with [LokalPaymentSdk] in its `init` block, which
- * `RazorpayUpiIntentInitializer` (AndroidX App Startup) runs at process start
+ * `RazorpayCustomUiInitializer` (AndroidX App Startup) runs at process start
  * with zero host code.
  * Android-only (see this module's build.gradle.kts for why), so there is no
  * iOS bootstrap: the gateway simply never registers there. No platform
  * handle to grab:
- * [AndroidRazorpayUpiIntentClient] reads the current Activity from
+ * [AndroidRazorpayCustomUiClient] reads the current Activity from
  * `:shared`'s hostcontext ActivityTracker at call time (mirrors
  * RazorpayCheckoutSdk/JuspaySdk), only ever using it to launch this SDK's own
- * internal proxy Activity ([RazorpayUpiIntentActivity]), which owns the
+ * internal proxy Activity ([RazorpayCustomUiActivity]), which owns the
  * WebView Razorpay requires and handles its own onActivityResult — there's
  * nothing for the host to forward.
  *
- * The host is also responsible for surfacing installed UPI apps and letting
- * the user pick one — that's app-level UI, not something this SDK owns.
+ * Any method-selection UI (e.g. surfacing installed UPI apps and letting the
+ * user pick one) is the host's responsibility — that's app-level UI, not
+ * something this SDK owns.
  */
-internal object RazorpayUpiIntentSdk : PaymentGatewayHandler {
+internal object RazorpayCustomUiSdk : PaymentGatewayHandler {
 
-    override val gateway: PaymentGateway = PaymentGateway.RAZORPAY_INTENT
+    override val gateway: PaymentGateway = PaymentGateway.RAZORPAY_CUSTOM_UI
 
     override val metadata: GatewayMetadata = GatewayMetadata(
         moduleVersion = MODULE_VERSION,
@@ -48,19 +49,19 @@ internal object RazorpayUpiIntentSdk : PaymentGatewayHandler {
      * LokalPaymentSdk has already parsed the create-order envelope and routed by
      * gateway, so there's no response to re-parse or gateway to re-check here.
      *
-     * @param gatewayConfig the opaque `gateway_config` blob for RAZORPAY_INTENT
+     * @param gatewayConfig the opaque `gateway_config` blob for RAZORPAY_CUSTOM_UI
      */
     override fun pay(gatewayConfig: JsonObject): Flow<PaymentResult> = callbackFlow {
-        val config = parseGatewayConfigOrFail { gatewayConfig.toRazorpayUpiIntentConfig() } ?: return@callbackFlow
-        val client = AndroidRazorpayUpiIntentClient()
-        client.setPaymentResultListener(object : RazorpayUpiIntentResultListener {
+        val config = parseGatewayConfigOrFail { gatewayConfig.toRazorpayCustomUiConfig() } ?: return@callbackFlow
+        val client = AndroidRazorpayCustomUiClient()
+        client.setPaymentResultListener(object : RazorpayCustomUiResultListener {
             override fun onPaymentSuccess(paymentId: String, orderId: String?, signature: String) {
-                trySend(razorpayUpiIntentSuccess(paymentId, orderId, signature))
+                trySend(razorpayCustomUiSuccess(paymentId, orderId, signature))
                 close()
             }
 
             override fun onPaymentError(code: Int, description: String?) {
-                trySend(razorpayUpiIntentErrorToResult(code, description))
+                trySend(razorpayCustomUiErrorToResult(code, description))
                 close()
             }
         })

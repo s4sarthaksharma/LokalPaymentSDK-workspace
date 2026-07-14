@@ -12,7 +12,7 @@ import java.util.concurrent.CopyOnWriteArrayList
  * installed once by `PaymentSdkInitializer` at process start. A
  * [WeakReference] avoids pinning a destroyed Activity in memory. Lives in
  * `:shared` so every Android gateway module (Juspay, Razorpay Checkout,
- * Razorpay UPI Intent) can read the current Activity the same way.
+ * Razorpay Custom UI) can read the current Activity the same way.
  */
 object ActivityTracker : Application.ActivityLifecycleCallbacks {
 

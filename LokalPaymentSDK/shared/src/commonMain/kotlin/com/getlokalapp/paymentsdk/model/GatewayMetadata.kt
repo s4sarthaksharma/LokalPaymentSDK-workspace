@@ -30,7 +30,7 @@ data class AvailableGateway(
 /**
  * One entry of [GatewayStatusReport.unavailable] — either a gateway whose
  * module is compiled in but structurally can't work on this platform (e.g.
- * Razorpay UPI Intent on iOS), or one that's registered but not
+ * Razorpay Custom UI on iOS), or one that's registered but not
  * [GatewayReadiness.Ready] yet (e.g. Juspay before its `initialize()` call).
  * [reasonCode] is stable and machine-checkable (e.g. "unsupported_platform",
  * "juspay_not_initialized"); [reasonMessage] is the human-readable form for

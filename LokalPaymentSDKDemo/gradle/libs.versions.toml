@@ -18,7 +18,7 @@ lokalpaymentsdk-shared = { module = "com.getlokalapp.paymentsdk:shared", version
 
 lokalpaymentsdk-razorpay-checkout = { module = "com.getlokalapp.paymentsdk:razorpay-checkout", version.ref = "lokalPaymentSdk" }
 
-lokalpaymentsdk-razorpay-upi-intent = { module = "com.getlokalapp.paymentsdk:razorpay-upi-intent", version.ref = "lokalPaymentSdk" }
+lokalpaymentsdk-razorpay-customui = { module = "com.getlokalapp.paymentsdk:razorpay-customui", version.ref = "lokalPaymentSdk" }
 
 lokalpaymentsdk-juspay = { module = "com.getlokalapp.paymentsdk:juspay", version.ref = "lokalPaymentSdk" }
 

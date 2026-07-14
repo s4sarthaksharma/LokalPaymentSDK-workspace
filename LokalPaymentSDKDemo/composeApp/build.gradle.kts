@@ -45,7 +45,7 @@ kotlin {
         commonMain.dependencies {
             implementation(libs.lokalpaymentsdk.shared)
             implementation(libs.lokalpaymentsdk.razorpay.checkout)
-            implementation(libs.lokalpaymentsdk.razorpay.upi.intent)
+            implementation(libs.lokalpaymentsdk.razorpay.customui)
             implementation(libs.lokalpaymentsdk.juspay)
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)

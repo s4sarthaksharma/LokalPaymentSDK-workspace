@@ -5,7 +5,7 @@ import com.getlokalapp.paymentsdk.GatewayInitializer
 import com.getlokalapp.paymentsdk.PaymentGatewayHandler
 
 /**
- * AndroidX App Startup hook that registers [RazorpayUpiIntentSdk] with zero
+ * AndroidX App Startup hook that registers [RazorpayCustomUiSdk] with zero
  * host code: returning the object from [create] references it, running its
  * `init` block, which registers it with LokalPaymentSdk. Declared via a
  * manifest `<meta-data>` merged into App Startup's single provider — no
@@ -14,7 +14,7 @@ import com.getlokalapp.paymentsdk.PaymentGatewayHandler
  * iOS counterpart — this gateway is Android-only, so it just never registers
  * there.)
  */
-class RazorpayUpiIntentInitializer : GatewayInitializer() {
+class RazorpayCustomUiInitializer : GatewayInitializer() {
 
-    override fun create(context: Context): PaymentGatewayHandler = RazorpayUpiIntentSdk
+    override fun create(context: Context): PaymentGatewayHandler = RazorpayCustomUiSdk
 }

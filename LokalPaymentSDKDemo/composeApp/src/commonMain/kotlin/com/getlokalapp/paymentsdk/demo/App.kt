@@ -78,7 +78,7 @@ private val SAMPLE_CREATE_ORDER_RESPONSE = """
     }
 """.trimIndent()
 
-// Illustrative only (gateway 3 = RAZORPAY_INTENT) — a real UPI Intent
+// Illustrative only (gateway 3 = RAZORPAY_CUSTOM_UI) — a real UPI Intent
 // gateway_config also carries which UPI app to hand off to, decided by the
 // host's own backend/UI, not shown here.
 private val SAMPLE_UPI_INTENT_CREATE_ORDER_RESPONSE = """
@@ -220,7 +220,7 @@ fun App() {
                         Text("Pay with Razorpay")
                     }
                 }
-                if (PaymentGateway.RAZORPAY_INTENT in registeredGateways) {
+                if (PaymentGateway.RAZORPAY_CUSTOM_UI in registeredGateways) {
                     Button(
                         enabled = !inFlight,
                         onClick = { pay(SAMPLE_UPI_INTENT_CREATE_ORDER_RESPONSE) },

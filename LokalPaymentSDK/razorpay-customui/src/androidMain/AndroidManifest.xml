@@ -2,16 +2,17 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Proxy Activity that fronts Razorpay's UPI Intent flow. Merged into the
-         host app so the SDK is self-contained: consumers don't register anything. -->
+    <!-- Proxy Activity that fronts Razorpay's Custom UI (Razorpay.submit()) flow.
+         Merged into the host app so the SDK is self-contained: consumers don't
+         register anything. -->
     <application>
         <activity
-            android:name="com.getlokalapp.paymentsdk.razorpay.RazorpayUpiIntentActivity"
+            android:name="com.getlokalapp.paymentsdk.razorpay.RazorpayCustomUiActivity"
             android:exported="false"
             android:configChanges="orientation|keyboardHidden|screenSize|screenLayout|smallestScreenSize"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
-        <!-- Auto-init: registers RazorpayUpiIntentSdk with LokalPaymentSdk at
+        <!-- Auto-init: registers RazorpayCustomUiSdk with LokalPaymentSdk at
              process start, zero host code (see the initializer's kdoc).
              Contributed to App Startup's single provider as a <meta-data>. -->
         <provider
@@ -20,7 +21,7 @@
             android:exported="false"
             tools:node="merge">
             <meta-data
-                android:name="com.getlokalapp.paymentsdk.razorpay.RazorpayUpiIntentInitializer"
+                android:name="com.getlokalapp.paymentsdk.razorpay.RazorpayCustomUiInitializer"
                 android:value="androidx.startup" />
         </provider>
     </application>

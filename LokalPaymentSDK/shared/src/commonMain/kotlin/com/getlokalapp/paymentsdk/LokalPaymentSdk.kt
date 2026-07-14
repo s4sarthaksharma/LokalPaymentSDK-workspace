@@ -50,7 +50,7 @@ object LokalPaymentSdk {
     /**
      * Called from a gateway module's own eager startup hook when that
      * module is compiled into the build but structurally can't work on this
-     * platform (e.g. Razorpay UPI Intent on iOS) — not something a host
+     * platform (e.g. Razorpay Custom UI on iOS) — not something a host
      * normally calls directly. [metadata] is still the calling module's own
      * build info, same as a registered handler's [PaymentGatewayHandler.metadata].
      */
@@ -64,7 +64,7 @@ object LokalPaymentSdk {
      * right now (see [PaymentGatewayHandler.readiness]), with each gateway's
      * own build metadata; [unavailable] lists both gateways whose module is
      * compiled into this build but structurally can't work here (e.g.
-     * Razorpay UPI Intent on iOS) and gateways that are registered but not
+     * Razorpay Custom UI on iOS) and gateways that are registered but not
      * ready yet (e.g. Juspay before its `initialize()` call) — either way,
      * with why. A gateway module the host never included appears in neither.
      * Call this fresh whenever readiness matters — e.g. right after calling

@@ -37,7 +37,7 @@ dependencyResolutionManagement {
 include(":shared")
 include(":razorpay-checkout")
 include(":razorpay-checkout:razorpay-cocoapods-host-plugin")
-include(":razorpay-upi-intent")
+include(":razorpay-customui")
 include(":juspay")
 include(":juspay:host-plugin")
 include(":juspay:host-settings-plugin")

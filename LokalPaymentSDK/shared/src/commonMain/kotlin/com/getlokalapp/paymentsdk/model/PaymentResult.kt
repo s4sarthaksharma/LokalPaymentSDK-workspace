@@ -21,7 +21,7 @@ data class PaymentError(
 
 /**
  * Terminal state emitted on the Flow returned by each gateway module's
- * pay() (e.g. RazorpayCheckoutSdk.pay(), RazorpayUpiIntentSdk.pay()).
+ * pay() (e.g. RazorpayCheckoutSdk.pay(), RazorpayCustomUiSdk.pay()).
  * Cancellation is a distinct branch from Failure by design — a user
  * dismissing the checkout sheet is not an error and should not route to
  * a failure UI.

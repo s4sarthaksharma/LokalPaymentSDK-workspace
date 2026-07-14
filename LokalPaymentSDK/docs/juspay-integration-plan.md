@@ -253,7 +253,7 @@ juspay/
 ```
 `toOrgJson()`/`toPlainMap()`/`lenientJson` are **not** duplicated per-module anymore —
 they live in `:shared` (`shared/src/{commonMain,androidMain,iosMain}/.../json/`) and
-every gateway module (`razorpay-checkout`, `razorpay-upi-intent`, `juspay`) imports
+every gateway module (`razorpay-checkout`, `razorpay-customui`, `juspay`) imports
 from there. This also fixed a real bug found via a live Juspay `jp_003` error: the
 old per-module `toOrgJsonPrimitive()` checked `longOrNull` before `isString`, so a
 numeric-looking JSON *string* (e.g. `"customerId": "308184"`) silently became a
@@ -303,7 +303,7 @@ against HyperSDK classes without forcing the plugin on every consumer.
    - **If the pod interops cleanly** → implement Step 10 for real.
    - **If it does not** (or the iOS API can't be driven from Kotlin/Native cleanly)
      → stop and report. The documented fallback is to ship iOS as a **stub** (mirror
-     `razorpay-upi-intent`'s `RazorpayUpiIntentIosStub`) and revisit — but D2 asked
+     `razorpay-customui`'s `RazorpayCustomUiIosStub`) and revisit — but D2 asked
      for real iOS, so surface this rather than silently stubbing.
 
 ### Step 1 — `PaymentGateway` enum — SKIP
@@ -325,7 +325,7 @@ dependencyResolutionManagement {
 // ...
 include(":shared")
 include(":razorpay-checkout")
-include(":razorpay-upi-intent")
+include(":razorpay-customui")
 include(":juspay")   // NEW
 ```
 `gradle/libs.versions.toml` (SDK) — add versions + libraries for the HyperSDK
@@ -599,7 +599,7 @@ good:
 - `shared/src/androidMain/.../json/JsonConversions.android.kt` — `JsonObject.toOrgJson(): org.json.JSONObject`
 - `shared/src/iosMain/.../json/JsonConversions.ios.kt` — `JsonObject.toPlainMap(): Map<Any?, Any?>`
 
-`:juspay` (and `razorpay-checkout`/`razorpay-upi-intent`) just `import
+`:juspay` (and `razorpay-checkout`/`razorpay-customui`) just `import
 com.getlokalapp.paymentsdk.json.toOrgJson` / `.toPlainMap` / `.lenientJson` — all
 three already depend on `:shared` via `api(project(":shared"))`, so no new
 dependency was needed. This sidesteps rulebook #9's original filename-collision
@@ -700,7 +700,7 @@ wanted; the shapes below are what they covered:
 ### Step 12 — Publish + host wiring (in `LokalPaymentSDKDemo`) — implemented, R4 resolved
 The SDK code needs **zero** host-dispatch edits, and — after D10 — **zero**
 host Activity-type edits either. Host steps, as actually done:
-1. **Publish:** `./gradlew :shared:publishToMavenLocal :razorpay-checkout:publishToMavenLocal :razorpay-upi-intent:publishToMavenLocal :juspay:publishToMavenLocal`.
+1. **Publish:** `./gradlew :shared:publishToMavenLocal :razorpay-checkout:publishToMavenLocal :razorpay-customui:publishToMavenLocal :juspay:publishToMavenLocal`.
 2. **Host Gradle:**
    - `gradle/libs.versions.toml`: `lokalpaymentsdk-juspay = { module = "com.getlokalapp.paymentsdk:juspay", version.ref = "lokalPaymentSdk" }`, plus a **versionless** plugin alias `lokalpaymentsdk-juspay-host = { id = "com.getlokalapp.paymentsdk.juspay-host" }`. No Juspay-related version appears anywhere in the host: the raw `hypersdk.plugin` pin (`2.0.6`) lives inside `:juspay:host-plugin` (below), and the wrapper plugin's own version is registered as a `pluginManagement` default by `juspay-host-settings` (below), so the settings plugin's single pin covers everything.
    - `composeApp/build.gradle.kts`: `implementation(libs.lokalpaymentsdk.juspay)`. **Does NOT** apply the plugin — confirmed it fails there (R4, resolved): `com.android.kotlin.multiplatform.library` modules don't expose a plain `implementation` configuration, which is what the underlying `hypersdk.plugin` injects into.
@@ -828,7 +828,7 @@ host Activity-type edits either. Host steps, as actually done:
 ## 8. Verification checklist (playbook §6)
 ```bash
 # each module builds independently; :shared still pulls in no gateway SDK
-./gradlew :shared:build :razorpay-checkout:build :razorpay-upi-intent:build :juspay:build
+./gradlew :shared:build :razorpay-checkout:build :razorpay-customui:build :juspay:build
 ./gradlew :juspay:publishToMavenLocal # then wire into LokalPaymentSDKDemo
 # No :juspay:allTests — Step 11's tests were dropped for now (by request).
 ```
@@ -858,6 +858,6 @@ Then, in `LokalPaymentSDKDemo`:
 ---
 
 *Reference templates: `razorpay-checkout/` (multiplatform, copy this) ·
-`razorpay-upi-intent/` (Android-only + iOS stub pattern) · matrimony-kmp
+`razorpay-customui/` (Android-only + iOS stub pattern) · matrimony-kmp
 `core/payments/juspay/` (working Android HyperSDK integration). Core contract:
 `shared/`. Playbook: `docs/adding-a-new-gateway.md`.*

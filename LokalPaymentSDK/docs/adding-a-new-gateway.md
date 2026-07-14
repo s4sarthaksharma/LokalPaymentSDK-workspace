@@ -23,7 +23,7 @@ nothing about any specific gateway; gateways know the core.
 :shared                — core: LokalPaymentSdk registry, PaymentGatewayHandler,
                           PaymentGateway enum, PaymentResult / LokalPaymentResult / PaymentError
 :razorpay-checkout     — the reference gateway: multiplatform (Android + iOS) — the §4 recipe follows it
-:razorpay-upi-intent   — Android-only variant (iOS is a stub) — see §3
+:razorpay-customui   — Android-only variant (iOS is a stub) — see §3
 :your-new-gateway      — you add this, modeled on razorpay-checkout
 ```
 
@@ -94,7 +94,7 @@ routes to `handlers[order.gateway]`.
 
 ```kotlin
 enum class PaymentGateway(val value: Int) {
-    RAZORPAY_CHECKOUT(1), STORE_KIT(2), RAZORPAY_INTENT(3), JUSPAY(4);
+    RAZORPAY_CHECKOUT(1), STORE_KIT(2), RAZORPAY_CUSTOM_UI(3), JUSPAY(4);
     companion object { fun fromValue(value: Int): PaymentGateway? = ... }
 }
 ```
@@ -143,27 +143,36 @@ The two single-platform variants below are the exceptions — leave them collaps
 unless you're building one.
 
 <details>
-<summary><b>Variant: Android-only gateway</b> (e.g. Razorpay UPI Intent, Juspay) — the <code>razorpay-upi-intent</code> pattern</summary>
+<summary><b>Variant: Android-only gateway</b> (e.g. Razorpay Custom UI, Juspay) — the <code>razorpay-customui</code> pattern</summary>
 
-Real, shipped example: `:razorpay-upi-intent`. Deltas from the canonical shape:
+Real, shipped example: `:razorpay-customui`. Deltas from the canonical shape:
 
-- **SDK entry object lives in `androidMain`**, not `commonMain`, and its only
-  startup trigger is the Android App Startup initializer — no iOS eager-init
-  hook, so the gateway simply never registers on iOS (and never appears in
-  `registeredGateways()` there).
-- **No client `expect`/`actual`** — just plain Android classes.
-- **There is no `iosMain` source at all.** You still declare
-  `iosX64/iosArm64/iosSimulatorArm64` targets so a consumer's `commonMain` can
-  resolve an iOS variant (without them Gradle fails with "No matching variant
-  … platform.type 'native'"), but they just compile an empty klib — the
-  rationale lives in the module's build.gradle.kts comment.
-- **No `native.cocoapods` plugin / `pod()` block** in `build.gradle.kts`.
-- Native dep is the gateway's Android artifact — UPI Intent uses
+- **SDK entry object lives in `androidMain`**, not `commonMain`, with **no
+  client `expect`/`actual`** — just plain Android classes. Its Android startup
+  trigger is the App Startup initializer (`RazorpayCustomUiInitializer`), same
+  as the canonical shape.
+- **`iosMain` holds a single eager-init hook** (`RazorpayCustomUiEagerInit.kt`).
+  Via `@EagerInitialization` it runs before `main()` and calls
+  `LokalPaymentSdk.registerUnavailable(...)`, so on iOS the gateway reports
+  itself *unavailable* — with a reason a host can read via `gatewayStatus()` —
+  rather than silently not existing. It never becomes *available* there, so it
+  never appears in `registeredGateways()`.
+- **You still declare `iosX64/iosArm64/iosSimulatorArm64` targets** so a
+  consumer's `commonMain` can resolve an iOS variant (without them Gradle fails
+  with "No matching variant … platform.type 'native'"). The klib isn't empty —
+  it carries that unavailable registration. Rationale lives in the module's
+  build.gradle.kts comment.
+- **No `native.cocoapods` plugin / `pod()` block** in `build.gradle.kts` —
+  there's no iOS vendor SDK to link.
+- Native dep is the gateway's Android artifact — Razorpay Custom UI uses
   `com.razorpay:customui`, a different coordinate from Checkout's
   `com.razorpay:checkout`.
-- **Extra host obligations** (UPI Intent specifically): the host supplies a
-  `WebView` (Razorpay's JS bridge) and forwards `onActivityResult` — there's no
-  SDK-owned proxy Activity, since the host Activity is the one hosting the WebView.
+- **No extra host obligations.** The `WebView` Razorpay's Custom UI flow needs
+  is SDK-owned, not host-supplied: `AndroidRazorpayCustomUiClient` reads the
+  current Activity from `:shared`'s `ActivityTracker` and launches an internal
+  proxy Activity (`RazorpayCustomUiActivity`) that owns the `WebView`, calls
+  `submit()`, and handles its own `onActivityResult` — the host forwards
+  nothing. (Same proxy-Activity approach as `:razorpay-checkout`.)
 
 </details>
 
@@ -204,7 +213,7 @@ edit to `:shared` source a gateway is allowed to make.
 
 ### Step 2 — create the module + Gradle wiring
 - Create `foo/` with `foo/build.gradle.kts` — **copy** `razorpay-checkout/build.gradle.kts`
-  (for an Android-only gateway, copy `razorpay-upi-intent/build.gradle.kts` instead
+  (for an Android-only gateway, copy `razorpay-customui/build.gradle.kts` instead
   — see §3 variants). Then change:
   - `androidLibrary.namespace = "com.getlokalapp.paymentsdk.foo"` (must be unique)
   - cocoapods `name` / `framework.baseName` → `"Foo"` (unique), and the `pod("...")`
@@ -374,7 +383,7 @@ The host does **zero** SDK-code changes and writes **zero** setup lines. It:
 
 ```bash
 # each module compiles independently; :shared still pulls in no gateway SDK
-./gradlew :shared:build :razorpay-checkout:build :razorpay-upi-intent:build :foo:build
+./gradlew :shared:build :razorpay-checkout:build :razorpay-customui:build :foo:build
 ./gradlew :foo:allTests                 # config decoder + result mapper unit tests
 ./gradlew :foo:publishToMavenLocal      # then wire into LokalPaymentSDKDemo
 ```
@@ -388,4 +397,4 @@ least-verified iOS step).
 ---
 
 *Templates to copy from: `razorpay-checkout/` (multiplatform) ·
-`razorpay-upi-intent/` (Android-only). Core contract: `shared/`.*
+`razorpay-customui/` (Android-only). Core contract: `shared/`.*

@@ -16,7 +16,7 @@ import kotlinx.serialization.json.JsonObject
 enum class PaymentGateway(val value: Int) {
     RAZORPAY_CHECKOUT(1),
     STORE_KIT(2),
-    RAZORPAY_INTENT(3),
+    RAZORPAY_CUSTOM_UI(3),
     JUSPAY(4);
 
     companion object {
