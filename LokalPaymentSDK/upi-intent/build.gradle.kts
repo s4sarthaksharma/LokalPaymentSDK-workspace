@@ -65,5 +65,11 @@ kotlin {
             implementation(libs.kotlin.test)
             implementation(libs.kotlinx.coroutines.test)
         }
+        androidMain.dependencies {
+            // Draggable UPI-app-chooser BottomSheetDialog. Android-only; Views, not
+            // Compose (which stays banned in the SDK). implementation, not api —
+            // fully encapsulated behind the internal proxy Activity.
+            implementation(libs.material)
+        }
     }
 }

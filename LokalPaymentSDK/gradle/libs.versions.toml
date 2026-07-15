@@ -19,6 +19,7 @@ juspay-pod-ios = "2.2.8.1"
 razorpay-pod-ios = "1.4.3"
 androidx-fragment = "1.8.5"
 androidx-startup = "1.2.0"
+material = "1.12.0"
 
 [libraries]
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
@@ -41,6 +42,9 @@ androidx-fragment = { module = "androidx.fragment:fragment", version.ref = "andr
 # via manifest <meta-data> keyed by class name, so no module needs its own
 # provider authority. Android-only, lives in androidMain.
 androidx-startup = { module = "androidx.startup:startup-runtime", version.ref = "androidx-startup" }
+# Android-only (androidMain) — used by :upi-intent for the UPI app chooser's
+# draggable BottomSheetDialog. No Compose; a plain Views/Material component.
+material = { module = "com.google.android.material:material", version.ref = "material" }
 
 [plugins]
 android-kotlin-multiplatform-library = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
