@@ -24,7 +24,8 @@ enum class PaymentGateway(val code: String) {
     RAZORPAY_CHECKOUT("razorpay_checkout"),
     STORE_KIT("store_kit"),
     RAZORPAY_CUSTOM_UI("razorpay_custom_ui"),
-    JUSPAY("juspay");
+    JUSPAY("juspay"),
+    UPI_INTENT("upi_intent");
 
     companion object {
         fun fromCode(code: String): PaymentGateway? = entries.firstOrNull { it.code == code }

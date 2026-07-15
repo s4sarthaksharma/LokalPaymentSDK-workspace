@@ -11,6 +11,20 @@ enum class CancelReason {
 }
 
 /**
+ * The unverified status a UPI app reported back through the intent result,
+ * carried on [PaymentResult.Pending] for UX only. Never authoritative: a
+ * [SUCCESS] hint can still resolve to a failed payment and, more dangerously,
+ * a [FAILURE]/[UNKNOWN] hint can still resolve to a debited, successful one —
+ * only the host's backend status check decides. [UNKNOWN] covers the common
+ * case where the app returns nothing parseable (empty/null response).
+ */
+enum class ClientStatus {
+    SUCCESS,
+    FAILURE,
+    UNKNOWN,
+}
+
+/**
  * Normalized error surfaced by PaymentResult.Failure, regardless of
  * whether it came from the gateway SDK, order creation, or validation.
  */
@@ -47,6 +61,28 @@ sealed class PaymentResult {
     data class Cancelled(val reason: CancelReason) : PaymentResult()
 
     data class Failure(val error: PaymentError) : PaymentResult()
+
+    /**
+     * Outcome not yet known. The flow handed off to an external app — a UPI
+     * intent launched into PhonePe/GPay/etc. — and control returned, but the
+     * client cannot decide the result: the app's response is spoofable, often
+     * empty, and a debit can succeed even when the client sees failure. Only
+     * the host's backend (webhook or status poll, keyed on [txnRef]) can
+     * resolve it.
+     *
+     * Distinct from [Success] on purpose: [Success] carries gateway fields the
+     * host confirms in one shot; [Pending] carries only the correlation id and
+     * obliges the host to poll-until-terminal. No non-UPI gateway emits this,
+     * so its handlers' `when` branches are unreachable — but exhaustiveness
+     * forces every consumer to decide how to route it.
+     *
+     * [clientHint] is UX flavor only (see [ClientStatus]) and must never be
+     * treated as the outcome.
+     */
+    data class Pending(
+        val txnRef: String,
+        val clientHint: ClientStatus,
+    ) : PaymentResult()
 }
 
 /**

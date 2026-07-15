@@ -101,6 +101,20 @@ private val SAMPLE_UPI_INTENT_CREATE_ORDER_RESPONSE = """
 }
 """.trimIndent()
 
+// Generic UPI-intent gateway ("upi_intent"). gateway_config carries the
+// ready-to-launch upi:// deep link the backend built (here a real UPI AutoPay
+// mandate URL); the SDK launches it opaquely and emits Pending — the host then
+// resolves the real outcome via its own backend. txn_ref is omitted on purpose
+// to exercise the SDK's fallback of reading `tr` out of the URL.
+private val SAMPLE_GENERIC_UPI_INTENT_CREATE_ORDER_RESPONSE = """
+{
+  "gateway": "upi_intent",
+  "gateway_config": {
+    "intent_url": "upi://mandate?mn=Autopay&ver=01&rev=Y&purpose=14&validityend=15072056&QRts=2026-07-15T13:00:22.5741693+05:30&QRexpire=2026-07-15T13:05:21.5741693+05:30&txnType=CREATE&am=299.00&validitystart=15072026&orgId=180001&mode=04&pa=SAHIENGLISHONLINE@ybl&cu=INR&amrule=MAX&fam=2.00&mc=8299&qrMedium=00&recur=ASPRESENTED&mg=ONLINE&share=Y&block=N&tr=OM2607151300225570627163V&pn=Sahi%20English"
+  }
+}
+""".trimIndent()
+
 // A real gateway_config captured from a matrimony sandbox flow (R3, now
 // resolved — matches JuspayConfig's assumed sdk_payload/generated_order_id
 // wrapper shape exactly, no decoder changes needed). NOTE: sdk_payload's
@@ -235,6 +249,15 @@ fun App() {
                         Text("Pay with Razorpay (UPI Intent)")
                     }
                 }
+                if (PaymentGateway.UPI_INTENT in registeredGateways) {
+                    Button(
+                        enabled = !inFlight,
+                        onClick = { pay(SAMPLE_GENERIC_UPI_INTENT_CREATE_ORDER_RESPONSE) },
+                        modifier = Modifier.padding(top = 16.dp),
+                    ) {
+                        Text("Pay with UPI Intent")
+                    }
+                }
                 if (PaymentGateway.JUSPAY in registeredGateways) {
                     Button(
                         enabled = !inFlight,
@@ -285,6 +308,12 @@ private fun render(payment: LokalPaymentResult): String {
             Failure
             code    = ${result.error.code ?: "—"}
             message = ${result.error.message}
+        """.trimIndent()
+
+        is PaymentResult.Pending -> """
+            Pending (verify with backend)
+            txnRef     = ${result.txnRef}
+            clientHint = ${result.clientHint}
         """.trimIndent()
     }
     return "$header\n$body"

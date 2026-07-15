@@ -20,6 +20,8 @@ lokalpaymentsdk-razorpay-checkout = { module = "com.getlokalapp.paymentsdk:razor
 
 lokalpaymentsdk-razorpay-customui = { module = "com.getlokalapp.paymentsdk:razorpay-customui", version.ref = "lokalPaymentSdk" }
 
+lokalpaymentsdk-upi-intent = { module = "com.getlokalapp.paymentsdk:upi-intent", version.ref = "lokalPaymentSdk" }
+
 lokalpaymentsdk-juspay = { module = "com.getlokalapp.paymentsdk:juspay", version.ref = "lokalPaymentSdk" }
 
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activityCompose" }
