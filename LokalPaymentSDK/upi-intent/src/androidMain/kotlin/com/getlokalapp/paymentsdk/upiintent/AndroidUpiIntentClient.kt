@@ -17,6 +17,7 @@ internal object UpiIntentBridge {
 
 internal class PendingUpiIntent(
     val intentUrl: String,
+    val allowedApps: List<AllowedApp>,
     val listener: UpiIntentResultListener?,
 )
 
@@ -40,6 +41,7 @@ internal class AndroidUpiIntentClient : UpiIntentClient {
         }
         UpiIntentBridge.pending = PendingUpiIntent(
             intentUrl = config.intentUrl,
+            allowedApps = config.allowedApps,
             listener = listener,
         )
         // No-animation launch: the proxy is invisible, so the default open/close

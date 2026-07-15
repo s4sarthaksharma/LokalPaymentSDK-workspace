@@ -56,19 +56,26 @@ internal class UpiIntentActivity : Activity() {
             launchApp(url, targetPackage = null)
             return
         }
-        val apps = LokalPaymentSdk.installedUpiApps().filter { it.packageName != null }
-        if (apps.isEmpty()) {
-            // Nothing detected — best-effort plain launch (a single handler opens;
-            // otherwise the OS decides). No app list to choose from.
-            launchApp(url, targetPackage = null)
-            return
+        val installed = LokalPaymentSdk.installedUpiApps().filter { it.packageName != null }
+        val allowed = pending.allowedApps
+        val apps = installed.toChooserApps(allowed)
+        when {
+            // Backend restricted the chooser but none of those apps are installed:
+            // a deliberate dead end, so fail rather than fall back to all apps.
+            allowed.isNotEmpty() && apps.isEmpty() ->
+                deliver { onFailure(NO_UPI_APP, "no_allowed_upi_app_installed") }
+            // No allow-list and nothing detected — best-effort plain launch (a
+            // single handler opens; otherwise the OS decides).
+            apps.isEmpty() ->
+                launchApp(url, targetPackage = null)
+            else ->
+                dialog = showUpiAppPicker(
+                    activity = this,
+                    apps = apps,
+                    onPick = { chooserApp -> launchApp(url, chooserApp.app.packageName) },
+                    onCancel = { deliver { onCancelled() } },
+                )
         }
-        dialog = showUpiAppPicker(
-            activity = this,
-            apps = apps,
-            onPick = { app -> launchApp(url, app.packageName) },
-            onCancel = { deliver { onCancelled() } },
-        )
     }
 
     /** Launches the UPI app for [url], targeting [targetPackage] when known so the OS never disambiguates. */

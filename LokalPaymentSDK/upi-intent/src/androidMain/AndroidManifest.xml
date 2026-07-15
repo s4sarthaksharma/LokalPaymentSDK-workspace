@@ -2,6 +2,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- Needed to fetch the backend-supplied UPI app logos (allowed_apps.logo_url)
+         shown in the chooser. Normal permission, auto-granted; merged into the
+         host (virtually every app already declares it). Without a logo_url the
+         chooser makes no network call and falls back to the OS launcher icon. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <!-- Proxy Activity that fronts the UPI intent (startActivityForResult).
          Merged into the host app so the SDK is self-contained: consumers
          register nothing. Translucent so only the UPI app's screen shows. -->

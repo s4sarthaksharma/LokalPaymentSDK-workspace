@@ -5,22 +5,35 @@ package com.getlokalapp.paymentsdk.upiintent
 import com.getlokalapp.paymentsdk.LokalPaymentSdk
 import com.getlokalapp.paymentsdk.hostcontext.topmostViewController
 import com.getlokalapp.paymentsdk.model.ClientStatus
-import com.getlokalapp.paymentsdk.upi.UpiApp
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.useContents
 import platform.CoreGraphics.CGRectMake
 import platform.CoreGraphics.CGSizeMake
+import platform.Foundation.NSCache
+import platform.Foundation.NSData
 import platform.Foundation.NSString
 import platform.Foundation.NSURL
+import platform.Foundation.NSURLSession
+import platform.Foundation.dataTaskWithURL
+import platform.QuartzCore.kCACornerCurveContinuous
 import platform.UIKit.*
+import platform.darwin.dispatch_async
+import platform.darwin.dispatch_get_main_queue
 
 // Grid geometry — shared between the content-fit sheet-detent math (below) and
 // the picker's own layout so the sheet is exactly as tall as its grid.
 private const val GRID_COLUMNS = 4
-private const val CELL_HEIGHT = 82.0
+private const val CELL_HEIGHT = 92.0
 private const val GRID_TOP = 54.0
 private const val GRID_BOTTOM_PAD = 36.0
-private const val ICON_SIZE = 44.0
+// Side inset on the grid so 4 columns don't span the full sheet width — this is
+// what tightens the gap between icons to match the Android chooser.
+private const val GRID_SIDE_PAD = 16.0
+private const val ICON_SIZE = 58.0
+private const val ICON_TOP = 8.0
+// iOS home-screen "squircle": ~22.37% of the tile size, drawn with the
+// continuous corner curve (below), not a plain circular arc.
+private const val ICON_CORNER_RADIUS = ICON_SIZE * 0.2237
 
 // Failure codes surfaced on PaymentResult.Failure (machine-checkable) and their
 // human-readable messages.
@@ -28,6 +41,7 @@ private const val ERROR_NO_UPI_APP = "no_upi_app"
 private const val ERROR_NO_VIEW_CONTROLLER = "no_view_controller"
 private const val MESSAGE_NO_VIEW_CONTROLLER = "upi_intent_no_view_controller"
 private const val MESSAGE_OPEN_FAILED = "no_upi_app_or_open_failed"
+private const val MESSAGE_NO_ALLOWED_APP = "no_allowed_upi_app_installed"
 
 // Chooser UI strings.
 private const val DETENT_ID_FIT = "upiFit"
@@ -63,12 +77,24 @@ internal class IosUpiIntentClient : UpiIntentClient {
             openUrl(config.intentUrl)
             return
         }
-        val apps = LokalPaymentSdk.installedUpiApps().filter { it.urlScheme != null }
-        if (apps.isEmpty()) {
-            // No detectable apps (often just a missing Info.plist declaration) —
-            // best-effort raw open rather than a hard failure.
-            openUrl(config.intentUrl)
-            return
+        val installed = LokalPaymentSdk.installedUpiApps().filter { it.urlScheme != null }
+        val allowed = config.allowedApps
+        val apps = installed.toChooserApps(allowed)
+        when {
+            // Backend restricted the chooser but none of those apps resolved. Note
+            // the iOS blind spot: detection only sees a scheme the host declared
+            // in Info.plist under LSApplicationQueriesSchemes, so a misconfigured
+            // host can produce this Failure even when the app is installed.
+            allowed.isNotEmpty() && apps.isEmpty() -> {
+                listener?.onFailure(ERROR_NO_UPI_APP, MESSAGE_NO_ALLOWED_APP)
+                return
+            }
+            // No allow-list and nothing detected (often just a missing Info.plist
+            // declaration) — best-effort raw open rather than a hard failure.
+            apps.isEmpty() -> {
+                openUrl(config.intentUrl)
+                return
+            }
         }
         val presenter = topmostViewController()
         if (presenter == null) {
@@ -77,7 +103,7 @@ internal class IosUpiIntentClient : UpiIntentClient {
         }
         val picker = UpiAppPickerController(
             apps = apps,
-            onPick = { app -> openUrl(config.intentUrl.withUpiScheme(app.urlScheme!!)) },
+            onPick = { chooserApp -> openUrl(config.intentUrl.withUpiScheme(chooserApp.app.urlScheme!!)) },
             onCancel = { listener?.onCancelled() },
         )
         // Float it as a rounded bottom-sheet card, sized to exactly fit the grid
@@ -116,8 +142,18 @@ internal class IosUpiIntentClient : UpiIntentClient {
 
 internal actual fun createUpiIntentClient(): UpiIntentClient = IosUpiIntentClient()
 
-/** One grid cell: a tap [UIButton] with an [UIImageView] icon over a [UILabel]. */
-private class PickerCell(val button: UIButton, val icon: UIImageView, val label: UILabel)
+/**
+ * One grid cell: a tap [UIButton] holding a shadowed [iconCard] wrapper (the
+ * elevation) whose [icon] image is clipped to rounded corners, over a [label].
+ * The card and the image are separate because a layer can't both clip its
+ * content to rounded corners and cast a shadow.
+ */
+private class PickerCell(
+    val button: UIButton,
+    val iconCard: UIView,
+    val icon: UIImageView,
+    val label: UILabel,
+)
 
 /**
  * Custom chooser modeled on the iOS bottom-sheet panel: a frosted-glass
@@ -131,8 +167,8 @@ private class PickerCell(val button: UIButton, val icon: UIImageView, val label:
  * needed.
  */
 private class UpiAppPickerController(
-    private val apps: List<UpiApp>,
-    private val onPick: (UpiApp) -> Unit,
+    private val apps: List<UpiChooserApp>,
+    private val onPick: (UpiChooserApp) -> Unit,
     private val onCancel: () -> Unit,
 ) : UIViewController(nibName = null, bundle = null) {
 
@@ -157,26 +193,59 @@ private class UpiAppPickerController(
         titleLabel.setTextColor(UIColor.labelColor)
         content.addSubview(titleLabel)
 
-        apps.forEach { app ->
+        apps.forEach { chooserApp ->
+            val displayName = chooserApp.app.displayName
             val cellButton = UIButton(frame = CGRectMake(0.0, 0.0, 0.0, 0.0))
-            val icon = UIImageView(image = monogramIcon(app.displayName))
+
+            // Card wrapper carries the subtle home-screen elevation; it can't clip
+            // (that would clip its own shadow), so the squircle corners live on
+            // the image. Continuous corner curve = the iOS app-icon shape, not a
+            // plain circular-arc rounded rect.
+            val iconCard = UIView(frame = CGRectMake(0.0, 0.0, 0.0, 0.0))
+            iconCard.setBackgroundColor(UIColor.clearColor)
+            iconCard.layer.setMasksToBounds(false)
+            iconCard.layer.setCornerRadius(ICON_CORNER_RADIUS)
+            iconCard.layer.setCornerCurve(kCACornerCurveContinuous)
+            iconCard.layer.setShadowColor(UIColor.blackColor.CGColor)
+            iconCard.layer.setShadowOpacity(0.12f)
+            iconCard.layer.setShadowRadius(3.0)
+            iconCard.layer.setShadowOffset(CGSizeMake(0.0, 1.5))
+
+            val icon = UIImageView(frame = CGRectMake(0.0, 0.0, 0.0, 0.0))
+            // Fill the tile edge-to-edge like a real app icon (assets are square).
+            icon.setContentMode(UIViewContentMode.UIViewContentModeScaleAspectFill)
+            icon.layer.setCornerRadius(ICON_CORNER_RADIUS)
+            icon.layer.setCornerCurve(kCACornerCurveContinuous)
+            icon.setClipsToBounds(true)
+            // The monogram is the fallback: shown immediately when there's no
+            // logo_url, and only after a fetch fails when there is one. During a
+            // fetch the image stays transparent (no placeholder).
+            val logoUrl = chooserApp.logoUrl
+            val cachedLogo = logoUrl?.let { logoCache.objectForKey(it as NSString) as? UIImage }
+            when {
+                logoUrl == null -> icon.setImage(monogramIcon(displayName))
+                cachedLogo != null -> icon.setImage(cachedLogo)
+                else -> loadRemoteLogo(logoUrl, icon) { monogramIcon(displayName) }
+            }
+            iconCard.addSubview(icon)
+
             val label = UILabel()
-            label.setText(app.displayName)
+            label.setText(displayName)
             label.setTextAlignment(NSTextAlignmentCenter)
-            label.setFont(UIFont.systemFontOfSize(12.0))
+            label.setFont(UIFont.systemFontOfSize(11.0))
             label.setTextColor(UIColor.labelColor)
             label.setNumberOfLines(1) // single line; UILabel truncates the tail with "…" by default
-            cellButton.addSubview(icon)
+            cellButton.addSubview(iconCard)
             cellButton.addSubview(label)
             cellButton.addAction(
                 UIAction.actionWithHandler {
                     picked = true
-                    dismissViewControllerAnimated(true) { onPick(app) }
+                    dismissViewControllerAnimated(true) { onPick(chooserApp) }
                 },
                 forControlEvents = UIControlEventTouchUpInside,
             )
             content.addSubview(cellButton)
-            cells.add(PickerCell(cellButton, icon, label))
+            cells.add(PickerCell(cellButton, iconCard, icon, label))
         }
     }
 
@@ -187,14 +256,16 @@ private class UpiAppPickerController(
 
         titleLabel.setFrame(CGRectMake(0.0, 16.0, totalWidth, 24.0))
 
-        val cellWidth = totalWidth / GRID_COLUMNS
+        val cellWidth = (totalWidth - 2 * GRID_SIDE_PAD) / GRID_COLUMNS
         cells.forEachIndexed { index, cell ->
             val row = index / GRID_COLUMNS
             val column = index % GRID_COLUMNS
-            cell.button.setFrame(CGRectMake(column * cellWidth, GRID_TOP + row * CELL_HEIGHT, cellWidth, CELL_HEIGHT))
-            // icon + label frames are in the cell button's own coordinate space
-            cell.icon.setFrame(CGRectMake((cellWidth - ICON_SIZE) / 2.0, 4.0, ICON_SIZE, ICON_SIZE))
-            cell.label.setFrame(CGRectMake(2.0, 4.0 + ICON_SIZE + 6.0, cellWidth - 4.0, 16.0))
+            cell.button.setFrame(CGRectMake(GRID_SIDE_PAD + column * cellWidth, GRID_TOP + row * CELL_HEIGHT, cellWidth, CELL_HEIGHT))
+            // icon-card + label frames are in the cell button's own coordinate
+            // space; the image fills the card.
+            cell.iconCard.setFrame(CGRectMake((cellWidth - ICON_SIZE) / 2.0, ICON_TOP, ICON_SIZE, ICON_SIZE))
+            cell.icon.setFrame(CGRectMake(0.0, 0.0, ICON_SIZE, ICON_SIZE))
+            cell.label.setFrame(CGRectMake(2.0, ICON_TOP + ICON_SIZE + 6.0, cellWidth - 4.0, 16.0))
         }
     }
 
@@ -204,16 +275,40 @@ private class UpiAppPickerController(
     }
 }
 
+// Process-wide logo cache keyed by URL, so re-presenting the chooser doesn't
+// refetch the same handful of icons. NSCache is thread-safe and self-evicts
+// under memory pressure.
+private val logoCache = NSCache()
+
 /**
- * Draws a round monogram (soft-colored circle + first letter) as a stand-in for
- * the real app logo. Replace this with bundled per-app assets when available;
- * the call site in [UpiAppPickerController] doesn't change.
+ * Fetches [url] with [NSURLSession] off the main thread while [target] stays
+ * transparent, then on the main queue sets the logo (success) or [fallback]
+ * (failure) — the fallback appears only after the fetch/decode fails, never
+ * during loading. Callers handle the cache-hit case, so this always fetches.
+ * UIKit retains [target] while the sheet is presented.
+ */
+private fun loadRemoteLogo(url: String, target: UIImageView, fallback: () -> UIImage?) {
+    val key = url as NSString
+    val nsUrl = NSURL(string = url)
+    NSURLSession.sharedSession.dataTaskWithURL(nsUrl) { data: NSData?, _, _ ->
+        val image = data?.let { UIImage(data = it) }
+        if (image != null) logoCache.setObject(image, forKey = key)
+        dispatch_async(dispatch_get_main_queue()) { target.setImage(image ?: fallback()) }
+    }.resume()
+}
+
+/**
+ * Draws a monogram (soft-colored tile + first letter) as the fallback when no
+ * `logo_url` is supplied or its fetch fails. It fills the whole square — the
+ * cell's image view clips it to the home-screen squircle — so the fallback reads
+ * as an app tile, not a circle. The call site in [UpiAppPickerController] doesn't
+ * change.
  */
 private fun monogramIcon(name: String): UIImage? {
     val dim = ICON_SIZE
     UIGraphicsBeginImageContextWithOptions(CGSizeMake(dim, dim), false, 0.0)
     colorForName(name).setFill()
-    UIBezierPath.bezierPathWithOvalInRect(CGRectMake(0.0, 0.0, dim, dim)).fill()
+    UIBezierPath.bezierPathWithRect(CGRectMake(0.0, 0.0, dim, dim)).fill()
 
     val letter = name.take(1).uppercase()
     val paragraph = NSMutableParagraphStyle().apply { setAlignment(NSTextAlignmentCenter) }

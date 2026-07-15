@@ -106,11 +106,26 @@ private val SAMPLE_UPI_INTENT_CREATE_ORDER_RESPONSE = """
 // mandate URL); the SDK launches it opaquely and emits Pending — the host then
 // resolves the real outcome via its own backend. txn_ref is omitted on purpose
 // to exercise the SDK's fallback of reading `tr` out of the URL.
+//
+// allowed_apps is the backend-curated allow-list: the in-SDK chooser shows only
+// these apps if installed (Android matches package_name, iOS matches url_scheme)
+// and fails with no_upi_app if none are. Drop the field (or send []) to offer
+// every installed UPI app instead.
+//
+// logo_url is the app icon the chooser renders. When present both platforms load
+// it; when absent (or the fetch fails) Android falls back to the OS launcher
+// icon and iOS to a monogram letter. The URLs below are throwaway placeholders
+// that just prove the remote-load path — a real backend sends actual app logos.
 private val SAMPLE_GENERIC_UPI_INTENT_CREATE_ORDER_RESPONSE = """
 {
   "gateway": "upi_intent",
   "gateway_config": {
-    "intent_url": "upi://mandate?mn=Autopay&ver=01&rev=Y&purpose=14&validityend=15072056&QRts=2026-07-15T13:00:22.5741693+05:30&QRexpire=2026-07-15T13:05:21.5741693+05:30&txnType=CREATE&am=299.00&validitystart=15072026&orgId=180001&mode=04&pa=SAHIENGLISHONLINE@ybl&cu=INR&amrule=MAX&fam=2.00&mc=8299&qrMedium=00&recur=ASPRESENTED&mg=ONLINE&share=Y&block=N&tr=OM2607151300225570627163V&pn=Sahi%20English"
+    "intent_url": "upi://mandate?mn=Autopay&ver=01&rev=Y&purpose=14&validityend=15072056&QRts=2026-07-15T13:00:22.5741693+05:30&QRexpire=2026-07-15T13:05:21.5741693+05:30&txnType=CREATE&am=299.00&validitystart=15072026&orgId=180001&mode=04&pa=SAHIENGLISHONLINE@ybl&cu=INR&amrule=MAX&fam=2.00&mc=8299&qrMedium=00&recur=ASPRESENTED&mg=ONLINE&share=Y&block=N&tr=OM2607151300225570627163V&pn=Sahi%20English",
+    "allowed_apps": [
+      { "name": "PhonePe", "package_name": "com.phonepe.app", "url_scheme": "phonepe", "logo_url": "https://placehold.co/96x96/5f259f/ffffff/png?text=PP" },
+      { "name": "Google Pay", "package_name": "com.google.android.apps.nbu.paisa.user", "url_scheme": "tez"},
+      { "name": "Paytm", "package_name": "net.one97.paytm", "url_scheme": "paytmmp", "logo_url": "https://placehold.co/96x96/00baf2/ffffff/png?text=Paytm" }
+    ]
   }
 }
 """.trimIndent()
