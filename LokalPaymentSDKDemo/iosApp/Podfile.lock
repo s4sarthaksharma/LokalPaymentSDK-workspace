@@ -14,7 +14,7 @@ PODS:
 
 DEPENDENCIES:
   - composeApp (from `../composeApp`)
-  - NativeIapBridge (from `../../LokalPaymentSDK/native-iap/ios/NativeIapBridge`)
+  - NativeIapBridge (from `../composeApp/build/iosPodSources/native-iap`)
 
 SPEC REPOS:
   trunk:
@@ -28,7 +28,7 @@ EXTERNAL SOURCES:
   composeApp:
     :path: "../composeApp"
   NativeIapBridge:
-    :path: "../../LokalPaymentSDK/native-iap/ios/NativeIapBridge"
+    :path: "../composeApp/build/iosPodSources/native-iap"
 
 SPEC CHECKSUMS:
   Airborne: 118490096542972c3f208cc2d711a44b2b637bad
@@ -39,6 +39,6 @@ SPEC CHECKSUMS:
   NativeIapBridge: afbfcfd197cc7cc7246b26b1db608167858a739d
   razorpay-pod: af9d52abe715ed5cc3eed9fdf6fd74340443d0b9
 
-PODFILE CHECKSUM: cae5adcaf11f91930f54694f430979fa91567d69
+PODFILE CHECKSUM: 20037592a22825b8901145bbeccd27e243bffba1
 
 COCOAPODS: 1.16.2

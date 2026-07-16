@@ -11,6 +11,7 @@ plugins {
     // of iosApp/Podfile. See the plugins in LokalPaymentSDK/*/*-cocoapods-host-plugin.
     alias(libs.plugins.lokalpaymentsdk.razorpay.cocoapods.host)
     alias(libs.plugins.lokalpaymentsdk.juspay.cocoapods.host)
+    alias(libs.plugins.lokalpaymentsdk.shared.cocoapods)
 }
 
 kotlin {

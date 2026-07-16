@@ -40,8 +40,6 @@ jetbrains-compose = { id = "org.jetbrains.compose", version.ref = "composeMultip
 # settings.gradle.kts registers this id's default version, so its own pin there
 # stays the only Juspay-related version in this host.
 lokalpaymentsdk-juspay-host = { id = "com.getlokalapp.paymentsdk.juspay-host" }
-# Applied to :composeApp — inject the vendor pods into its generated podspec so
-# HyperSDK/razorpay-pod link transitively, with no vendor pod named in the
-# Podfile. Versioned to the SDK release; resolve from mavenLocal.
+lokalpaymentsdk-shared-cocoapods = { id = "com.getlokalapp.paymentsdk.shared-cocoapods", version.ref = "lokalPaymentSdk" }
 lokalpaymentsdk-razorpay-cocoapods-host = { id = "com.getlokalapp.paymentsdk.razorpay-cocoapods-host", version.ref = "lokalPaymentSdk" }
 lokalpaymentsdk-juspay-cocoapods-host = { id = "com.getlokalapp.paymentsdk.juspay-cocoapods-host", version.ref = "lokalPaymentSdk" }

@@ -35,6 +35,7 @@ dependencyResolutionManagement {
 }
 
 include(":shared")
+include(":shared:shared-cocoapods-plugin")
 include(":razorpay-checkout")
 include(":razorpay-checkout:razorpay-cocoapods-host-plugin")
 include(":razorpay-customui")

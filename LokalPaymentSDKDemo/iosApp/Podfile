@@ -1,21 +1,29 @@
 platform :ios, '16.0'
 use_frameworks!
 
+# >>> lokal-payment-sdk bootstrap (managed by shared-cocoapods on Gradle sync) — DO NOT EDIT OR DELETE.
+# Regenerated on every Gradle sync; manual changes between these markers are overwritten.
+# Required to run the Lokal Payment SDK. Unpacks every Maven-sourced iOS pod source AND
+# generates the pod helper via the shared-cocoapods Gradle plugin, then loads it. Runs at
+# Podfile-evaluation time (NOT pre_install): require_relative below needs the file present.
+unless system("../gradlew", "-p", "..", ":composeApp:prepareLokalIosPods")
+  raise "prepareLokalIosPods failed — are the SDK iossrc artifacts published to Maven?"
+end
+require_relative '../composeApp/build/lokal/lokal_ios_pods.rb'
+# <<< lokal-payment-sdk bootstrap
+
 target 'iosApp' do
+  # >>> lokal-payment-sdk pods (managed by shared-cocoapods on Gradle sync) — DO NOT EDIT OR DELETE.
+  # Regenerated every sync. Required to run the Lokal Payment SDK. Inserted into the FIRST
+  # target in this Podfile; declares a :path pod for each first-party pod auto-discovered
+  # from Maven (pod name = .podspec filename). To attach these pods to a different target,
+  # make that target the first one in this Podfile.
+  lokal_ios_pods
+  # <<< lokal-payment-sdk pods
+
   # The Compose Multiplatform demo framework. The Lokal Payment SDK is compiled
   # into this framework via its Maven dependency, so we no longer pull `pod 'Shared'`.
   pod 'composeApp', :path => '../composeApp'
-
-  # Vendor pods (razorpay-pod, HyperSDK) are declared transitively by
-  # composeApp.podspec — injected there by the Lokal SDK's cocoapods-host Gradle
-  # plugins, so no vendor pod is named here. CocoaPods resolves them from trunk.
-
-  # NativeIapBridge is a *local* pod (LokalPaymentSDK/native-iap/ios/NativeIapBridge),
-  # not a trunk-hosted one — unlike razorpay-pod/HyperSDK above, a `spec.dependency`
-  # injected into composeApp.podspec can't carry a filesystem path (that's a
-  # Podfile-only concept in CocoaPods), so this line has to live here directly
-  # rather than being auto-injected by a cocoapods-host plugin.
-  pod 'NativeIapBridge', :path => '../../LokalPaymentSDK/native-iap/ios/NativeIapBridge'
 end
 
 post_install do |installer|

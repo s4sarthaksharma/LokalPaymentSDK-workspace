@@ -1,3 +1,4 @@
+import com.getlokalapp.paymentsdk.buildsrc.registerIosPodSourcePublication
 import com.getlokalapp.paymentsdk.buildsrc.registerModuleVersionTask
 import com.getlokalapp.paymentsdk.buildsrc.registerVendorVersionTask
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
@@ -102,3 +103,8 @@ kotlin {
         }
     }
 }
+
+// Ship NativeIapBridge's pod source (Swift + podspec) as an `iossrc`-classifier artifact
+// on this module's Maven coordinate, so an external consumer can resolve + compile the
+// local pod without a monorepo path. See buildSrc IosPodSource.kt.
+registerIosPodSourcePublication(podDir = "ios/NativeIapBridge")
