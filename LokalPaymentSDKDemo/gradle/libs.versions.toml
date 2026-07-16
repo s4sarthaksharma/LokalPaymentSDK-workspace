@@ -36,10 +36,6 @@ android-kotlinMultiplatformLibrary = { id = "com.android.kotlin.multiplatform.li
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 jetbrains-compose = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }
-# Deliberately versionless: the juspay-host-settings plugin applied in
-# settings.gradle.kts registers this id's default version, so its own pin there
-# stays the only Juspay-related version in this host.
 lokalpaymentsdk-juspay-host = { id = "com.getlokalapp.paymentsdk.juspay-host" }
-lokalpaymentsdk-shared-cocoapods = { id = "com.getlokalapp.paymentsdk.shared-cocoapods", version.ref = "lokalPaymentSdk" }
-lokalpaymentsdk-razorpay-cocoapods-host = { id = "com.getlokalapp.paymentsdk.razorpay-cocoapods-host", version.ref = "lokalPaymentSdk" }
+lokalpaymentsdk-lokal-payment = { id = "com.getlokalapp.paymentsdk.lokal-payment", version.ref = "lokalPaymentSdk" }
 lokalpaymentsdk-juspay-cocoapods-host = { id = "com.getlokalapp.paymentsdk.juspay-cocoapods-host", version.ref = "lokalPaymentSdk" }

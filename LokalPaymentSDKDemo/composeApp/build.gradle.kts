@@ -6,12 +6,8 @@ plugins {
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.jetbrains.compose)
     id("org.jetbrains.kotlin.native.cocoapods")
-    // Inject the SDK's vendor pods (HyperSDK, razorpay-pod) into this module's
-    // generated podspec so they link transitively — keeps every vendor pod out
-    // of iosApp/Podfile. See the plugins in LokalPaymentSDK/*/*-cocoapods-host-plugin.
-    alias(libs.plugins.lokalpaymentsdk.razorpay.cocoapods.host)
+    alias(libs.plugins.lokalpaymentsdk.lokal.payment)
     alias(libs.plugins.lokalpaymentsdk.juspay.cocoapods.host)
-    alias(libs.plugins.lokalpaymentsdk.shared.cocoapods)
 }
 
 kotlin {

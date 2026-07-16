@@ -1,10 +1,11 @@
 platform :ios, '16.0'
 use_frameworks!
 
-# >>> lokal-payment-sdk bootstrap (managed by shared-cocoapods on Gradle sync) — DO NOT EDIT OR DELETE.
+
+# >>> lokal-payment-sdk bootstrap (managed by the Lokal Payment SDK on Gradle sync) — DO NOT EDIT OR DELETE.
 # Regenerated on every Gradle sync; manual changes between these markers are overwritten.
 # Required to run the Lokal Payment SDK. Unpacks every Maven-sourced iOS pod source AND
-# generates the pod helper via the shared-cocoapods Gradle plugin, then loads it. Runs at
+# generates the pod helper via the Lokal Payment SDK Gradle plugin, then loads it. Runs at
 # Podfile-evaluation time (NOT pre_install): require_relative below needs the file present.
 unless system("../gradlew", "-p", "..", ":composeApp:prepareLokalIosPods")
   raise "prepareLokalIosPods failed — are the SDK iossrc artifacts published to Maven?"
@@ -12,17 +13,15 @@ end
 require_relative '../composeApp/build/lokal/lokal_ios_pods.rb'
 # <<< lokal-payment-sdk bootstrap
 
-target 'iosApp' do
-  # >>> lokal-payment-sdk pods (managed by shared-cocoapods on Gradle sync) — DO NOT EDIT OR DELETE.
-  # Regenerated every sync. Required to run the Lokal Payment SDK. Inserted into the FIRST
-  # target in this Podfile; declares a :path pod for each first-party pod auto-discovered
-  # from Maven (pod name = .podspec filename). To attach these pods to a different target,
-  # make that target the first one in this Podfile.
-  lokal_ios_pods
-  # <<< lokal-payment-sdk pods
+# >>> lokal-payment-sdk pods (managed by the Lokal Payment SDK on Gradle sync) — DO NOT EDIT OR DELETE.
+# Regenerated every sync; manual edits between these markers are overwritten. Required to
+# run the Lokal Payment SDK. Declared at the Podfile root so CocoaPods' implicit root
+# abstract target makes these pods inherited by EVERY target. Adds a :path pod for each
+# first-party pod auto-discovered from Maven (pod name = .podspec filename).
+lokal_ios_pods
+# <<< lokal-payment-sdk pods
 
-  # The Compose Multiplatform demo framework. The Lokal Payment SDK is compiled
-  # into this framework via its Maven dependency, so we no longer pull `pod 'Shared'`.
+target 'iosApp' do
   pod 'composeApp', :path => '../composeApp'
 end
 

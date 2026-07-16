@@ -10,19 +10,33 @@ kotlin {
     jvmToolchain(11)
 }
 
-// The generic, gateway-agnostic host plugin. Unlike the per-gateway
-// `*-cocoapods-host` plugins (each of which bakes in one vendor pod name +
-// version and edits the host podspec), this one names nothing: it discovers
-// every `com.getlokalapp.paymentsdk:*` dependency the host declares and pulls
-// any that ship an `iossrc` classifier. One plugin covers all present and
-// future iOS modules, so it lives under :shared rather than any one gateway.
-// It has no dependency on the :shared library — the nesting is organisational.
+dependencies {
+    // The shared SPI (LokalGatewayHostContributor + lokalPaymentSdk extension)
+    // LokalPaymentPlugin loads and dispatches to.
+    implementation(project(":cocoapods-host-plugin-api"))
+    // Bundle each gateway's host contributor onto the buildscript classpath so
+    // LokalPaymentPlugin can discover it via ServiceLoader. Each contributor
+    // self-gates to a no-op unless the host imports its gateway module, so
+    // depending on all of them here does not make an unused gateway do anything.
+    implementation(project(":razorpay-checkout:razorpay-cocoapods-host-plugin"))
+}
+
+// This module lives under :shared rather than any one gateway because its plugin is
+// gateway-agnostic (it has no dependency on the :shared library — the nesting is
+// organisational).
+//
+// Only `lokal-payment` is exposed as an applicable plugin: the single host-facing
+// umbrella. It creates the `lokalPaymentSdk { }` DSL, dispatches to each gateway's
+// host contributor (razorpay, …) via ServiceLoader, AND folds in
+// SharedCocoapodsPlugin (first-party `iossrc` pod plumbing + Podfile management) by
+// applying it directly. SharedCocoapodsPlugin has no standalone id — it's an
+// implementation detail applied by class from LokalPaymentPlugin.
 gradlePlugin {
     plugins {
-        create("sharedCocoapods") {
-            id = "com.getlokalapp.paymentsdk.shared-cocoapods"
+        create("lokalPayment") {
+            id = "com.getlokalapp.paymentsdk.lokal-payment"
             implementationClass =
-                "com.getlokalapp.paymentsdk.shared.SharedCocoapodsPlugin"
+                "com.getlokalapp.paymentsdk.shared.LokalPaymentPlugin"
         }
     }
 }
