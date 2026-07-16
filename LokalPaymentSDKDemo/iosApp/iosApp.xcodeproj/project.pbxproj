@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		535FFEC2787CB0D5FA2BFCDE /* Pods_iosApp.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = BD47A04E7EE9E304EF924663 /* Pods_iosApp.framework */; };
 		B0000000000000000000FFF1 /* iOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0000000000000000000EEE1 /* iOSApp.swift */; };
+		F86BFE1F3007CA0F0072CB89 /* Products.storekit in Resources */ = {isa = PBXBuildFile; fileRef = F86BFE1E3007CA0F0072CB89 /* Products.storekit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -17,6 +18,8 @@
 		B0000000000000000000EEE0 /* iosApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = iosApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B0000000000000000000EEE1 /* iOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iOSApp.swift; sourceTree = "<group>"; };
 		BD47A04E7EE9E304EF924663 /* Pods_iosApp.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_iosApp.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		F86BFE1E3007CA0F0072CB89 /* Products.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; name = Products.storekit; path = iosApp/Products.storekit; sourceTree = "<group>"; };
+		F86BFE203007CB800072CB89 /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = System/Library/Frameworks/StoreKit.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -37,13 +40,13 @@
 				7E50DC302EA3303A769F6523 /* Pods-iosApp.debug.xcconfig */,
 				5C7CC29695BC61117E357FD0 /* Pods-iosApp.release.xcconfig */,
 			);
-			name = Pods;
 			path = Pods;
 			sourceTree = "<group>";
 		};
 		B0000000000000000000DDD0 = {
 			isa = PBXGroup;
 			children = (
+				F86BFE1E3007CA0F0072CB89 /* Products.storekit */,
 				B0000000000000000000DDD1 /* iosApp */,
 				B0000000000000000000DDD2 /* Products */,
 				210F7F729E25B6283A11AD5C /* Pods */,
@@ -70,6 +73,7 @@
 		FE96F5F138FEEB7206B8A599 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				F86BFE203007CB800072CB89 /* StoreKit.framework */,
 				BD47A04E7EE9E304EF924663 /* Pods_iosApp.framework */,
 			);
 			name = Frameworks;
@@ -136,6 +140,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F86BFE1F3007CA0F0072CB89 /* Products.storekit in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -331,6 +336,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = iosApp/Products.storekit;
 				DEVELOPMENT_TEAM = F5PU37JWUY;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -366,6 +372,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = iosApp/Products.storekit;
 				DEVELOPMENT_TEAM = F5PU37JWUY;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;

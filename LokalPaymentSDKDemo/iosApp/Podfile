@@ -9,6 +9,13 @@ target 'iosApp' do
   # Vendor pods (razorpay-pod, HyperSDK) are declared transitively by
   # composeApp.podspec — injected there by the Lokal SDK's cocoapods-host Gradle
   # plugins, so no vendor pod is named here. CocoaPods resolves them from trunk.
+
+  # NativeIapBridge is a *local* pod (LokalPaymentSDK/native-iap/ios/NativeIapBridge),
+  # not a trunk-hosted one — unlike razorpay-pod/HyperSDK above, a `spec.dependency`
+  # injected into composeApp.podspec can't carry a filesystem path (that's a
+  # Podfile-only concept in CocoaPods), so this line has to live here directly
+  # rather than being auto-injected by a cocoapods-host plugin.
+  pod 'NativeIapBridge', :path => '../../LokalPaymentSDK/native-iap/ios/NativeIapBridge'
 end
 
 post_install do |installer|

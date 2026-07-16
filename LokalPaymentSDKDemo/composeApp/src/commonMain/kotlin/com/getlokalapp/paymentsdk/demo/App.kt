@@ -170,6 +170,22 @@ private val SAMPLE_JUSPAY_CREATE_ORDER_RESPONSE = """
     }
 """.trimIndent()
 
+// Illustrative only (gateway "native_iap"): product_id has to be a real App
+// Store Connect in-app-purchase product identifier to actually purchase
+// anything — this placeholder will resolve to "Product not found" against a
+// real StoreKit call. app_account_token is a real value captured from a
+// matrimony sandbox create-order response (R3) — a real host's backend
+// generates a fresh one per order, not a constant.
+private val SAMPLE_NATIVE_IAP_CREATE_ORDER_RESPONSE = """
+{
+  "gateway": "native_iap",
+  "gateway_config": {
+    "product_id": "com.getlokalapp.lokalpaymentsdk.demo.tier1",
+    "app_account_token": "2816973c-4c74-4e8d-b7f9-ba2607a4fe7d"
+  }
+}
+""".trimIndent()
+
 // The SDK expects a typed PaymentOrder and no longer parses JSON itself, so
 // the host does it. A real host would decode into its own backend DTOs; here
 // we pull the two fields the SDK needs straight off the JSON tree.
@@ -280,6 +296,15 @@ fun App() {
                         modifier = Modifier.padding(top = 16.dp),
                     ) {
                         Text("Pay with Juspay")
+                    }
+                }
+                if (PaymentGateway.NATIVE_IAP in registeredGateways) {
+                    Button(
+                        enabled = !inFlight,
+                        onClick = { pay(SAMPLE_NATIVE_IAP_CREATE_ORDER_RESPONSE) },
+                        modifier = Modifier.padding(top = 16.dp),
+                    ) {
+                        Text("Pay with Native IAP (StoreKit)")
                     }
                 }
             }

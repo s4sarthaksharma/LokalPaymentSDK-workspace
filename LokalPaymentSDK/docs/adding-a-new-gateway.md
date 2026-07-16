@@ -93,15 +93,17 @@ routes to `handlers[order.gateway]`.
 `shared/.../model/PaymentGateway.kt`
 
 ```kotlin
-enum class PaymentGateway(val value: Int) {
-    RAZORPAY_CHECKOUT(1), STORE_KIT(2), RAZORPAY_CUSTOM_UI(3), JUSPAY(4);
-    companion object { fun fromValue(value: Int): PaymentGateway? = ... }
+enum class PaymentGateway(val code: String) {
+    RAZORPAY_CHECKOUT("razorpay_checkout"), NATIVE_IAP("native_iap"),
+    RAZORPAY_CUSTOM_UI("razorpay_custom_ui"), JUSPAY("juspay"), UPI_INTENT("upi_intent");
+    companion object { fun fromCode(code: String): PaymentGateway? = ... }
 }
 ```
 
-The `value` Ints mirror the **backend's** gateway numbering. `STORE_KIT(2)` and
-`JUSPAY(4)` are reserved-but-unimplemented slots. **This enum is the single core
-source file a new gateway may need to touch** — see §4 step 1.
+The `code` strings mirror the **backend's** gateway identifier. `JUSPAY` is a
+reserved-but-unimplemented slot; `NATIVE_IAP` is in progress (see the iOS-only
+gateway variant in §3). **This enum is the single core source file a new
+gateway may need to touch** — see §4 step 1.
 
 ### The result model (what your `pay()` emits)
 `shared/.../model/PaymentResult.kt`
@@ -177,25 +179,73 @@ Real, shipped example: `:razorpay-customui`. Deltas from the canonical shape:
 </details>
 
 <details>
-<summary><b>Variant: iOS-only gateway</b> (e.g. StoreKit / Apple IAP) — mirror image of the Android-only variant</summary>
+<summary><b>Variant: iOS-only-for-now gateway</b> (e.g. NativeIap / StoreKit today, Play Billing on Android later) — mirror image of the Android-only variant</summary>
 
-No shipped example yet — this maps to the reserved `STORE_KIT(2)` enum slot.
-Deltas from the canonical shape (the Android-only variant, flipped):
+Shipped: `:native-iap`, `PaymentGateway.NATIVE_IAP`. Deltas from the canonical
+shape (the Android-only variant, flipped):
 
-- **SDK entry object lives in `iosMain`**, not `commonMain`, and its only
-  startup trigger is the `@EagerInitialization` hook — no
-  Android App Startup initializer, so the gateway never registers on Android.
-- **Android is a stub only.** Declare the Android target so `commonMain` resolves,
-  but `androidMain` carries no real API.
-- **`native.cocoapods` + `pod()`** stay (for the iOS pod, if any); **no Android
-  native dep**. StoreKit itself is a system framework (`platform.StoreKit`), so it
-  needs no `pod()` at all.
-- ⚠️ **Caveat — StoreKit doesn't drop in cleanly.** An IAP-style gateway has
-  products, a restore flow, and a *continuous* transaction stream — it doesn't fit
-  the current `Success(paymentId, orderId, signature)` shape or the
-  single-terminal-emission model. Adding it needs a core-model discussion first,
-  not just a new module. Treat this variant as structural guidance for *any*
-  iOS-only gateway, not a claim that StoreKit specifically is a copy-paste job.
+- **SDK entry object lives in `iosMain`**, not `commonMain`
+  (`NativeIapSdk.kt`), and its only startup trigger is the
+  `@EagerInitialization` hook (`NativeIapEagerInit.kt`) — no Android App
+  Startup initializer for now, so the gateway doesn't register on Android yet.
+  Unlike the permanent Android-only variant, this side is meant to get a real
+  implementation later (Play Billing), not stay a stub forever.
+- **Android is a stub in the meantime.** iOS/Android targets are declared so
+  `commonMain` resolves on both, and `NativeIapUnavailableInitializer`
+  registers the gateway as unavailable via `LokalPaymentSdk.registerUnavailable(...)`
+  (mirrors `RazorpayCustomUiEagerInit.kt`, just on the opposite platform) — no
+  real API until Play Billing lands.
+- ⚠️ **StoreKit doesn't cinterop like a normal vendor pod, at all.** StoreKit
+  2's API (`Product`, `Transaction`, `VerificationResult`) is pure Swift async
+  / `AsyncSequence` — it isn't `@objc`-visible, so Kotlin/Native's `cinterop`
+  (a clang-based tool that only reads Objective-C headers) can never call it
+  directly, the way `razorpay-checkout`'s `pod()` calls Razorpay's Objective-C
+  SDK. **An alternative was tried and dropped:** a plain Kotlin interface
+  (`NativeIapStoreKitProvider`) that the *host* implements in Swift and
+  registers at launch — technically sound (Kotlin/Native always generates an
+  Objective-C-visible header for its own framework, so that direction needs no
+  cinterop at all, and it's the same shape matrimony-kmp's production
+  `StoreKitProvider` uses) — but it means the host owns and maintains real
+  StoreKit business logic, which breaks rule 8 ("the host never implements a
+  gateway's callback interface") for this one gateway. **Settled on:** this
+  module vendors its own small Objective-C-visible bridge as a local CocoaPod
+  (`ios/NativeIapBridge/`) — real Swift StoreKit 2 code
+  (`NativeIapBridge.swift`) wrapped behind a plain-`NSObject`,
+  completion-handler-based surface, referenced from `build.gradle.kts` via
+  `pod("NativeIapBridge") { source = path(project.file("ios/NativeIapBridge")) }`
+  rather than a CocoaPods-trunk version pin. Gradle's cocoapods plugin builds
+  it locally (`pod install` + Xcode) as part of the iOS compile — nothing to
+  publish or check in as a separate prebuilt artifact. The iOS actual
+  (`IOSNativeIapClient.kt`) cinterops directly into it, and registration goes
+  through the normal `@EagerInitialization` hook (`NativeIapEagerInit.kt`) —
+  **zero host Swift code**, the same guarantee every other gateway makes.
+  The one cost: because `NativeIapBridge` is a *local* pod (not trunk-hosted),
+  the host has to add one static line to its own Podfile —
+  `pod 'NativeIapBridge', :path => '<path-to-native-iap>/ios/NativeIapBridge'`
+  — since CocoaPods' `spec.dependency` (the mechanism `razorpay-cocoapods-host`/
+  `juspay-cocoapods-host` use to inject *trunk* pods with zero host lines)
+  structurally cannot carry a filesystem `:path`; only a Podfile's own `pod`
+  directive can. That line is static — it never changes per feature or per
+  release — so it's a one-time integration cost, not an ongoing one. (It could
+  be eliminated entirely by publishing `NativeIapBridge` to CocoaPods trunk or
+  a private Specs repo, letting a `native-iap-cocoapods-host-plugin` inject it
+  the same way the other two vendor pods are; not done here — real publishing
+  infrastructure wasn't judged worth it yet for one local pod.)
+  One naming gotcha hit building this: Kotlin/Native imports a Swift `@objc
+  enum`'s cases as **top-level constants** in the cinterop package
+  (`NativeIapOutcomeSuccess`, not `NativeIapOutcome.Success` /
+  `NativeIapOutcome.NativeIapOutcomeSuccess`) — import them individually
+  rather than qualifying through the enum type.
+- **Result-model resolution:** StoreKit's purchase result has more cases
+  (success / unverified / cancelled / pending / failure) than `PaymentResult`,
+  plus a continuous transaction-updates stream for deferred/restored
+  transactions that's independent of any single purchase call. Collapsed at
+  the result-mapper layer (`NativeIapResult.kt`): `unverified` → `Failure`;
+  `pending` → don't emit yet, keep the `pay()` `callbackFlow` open
+  (`NativeIapSdk.kt`) and also listen to the transaction-updates stream for
+  the matching terminal transaction before emitting and closing. `pay()`
+  still emits exactly one terminal `PaymentResult` (rule 7) — the waiting
+  happens inside it, not via a second API.
 
 </details>
 
@@ -203,13 +253,13 @@ Deltas from the canonical shape (the Android-only variant, flipped):
 
 ## 4. Step-by-step
 
-Assume gateway name `Foo`, backend gateway number `N`, new module `:foo`.
+Assume gateway name `Foo`, backend gateway code `"foo"`, new module `:foo`.
 
 ### Step 1 — (core, only if needed) add the `PaymentGateway` entry
-In `shared/.../model/PaymentGateway.kt`, add `FOO(N)` with the number the backend
-uses. **Skip this** if you're implementing an already-reserved slot
-(`STORE_KIT(2)` / `JUSPAY(4)`) — the entry already exists. This is the *only*
-edit to `:shared` source a gateway is allowed to make.
+In `shared/.../model/PaymentGateway.kt`, add `FOO("foo")` with the code the
+backend uses. **Skip this** if you're implementing an already-reserved slot
+(`NATIVE_IAP("native_iap")` / `JUSPAY("juspay")`) — the entry already exists.
+This is the *only* edit to `:shared` source a gateway is allowed to make.
 
 ### Step 2 — create the module + Gradle wiring
 - Create `foo/` with `foo/build.gradle.kts` — **copy** `razorpay-checkout/build.gradle.kts`
@@ -373,9 +423,9 @@ The host does **zero** SDK-code changes and writes **zero** setup lines. It:
 9. **Unique everything across modules:** Android `namespace`, cocoapods `name` /
    `framework.baseName`, and — critically — top-level file names within a shared
    package (JVM class-name collision, §4 step 7). Prefer a per-module package.
-10. **Reserve the enum number to match the backend.** `PaymentGateway.value` is
-    the backend's number, not an arbitrary local id — the host maps
-    backend-number → enum via `PaymentGateway.fromValue`.
+10. **Reserve the enum code to match the backend.** `PaymentGateway.code` is
+    the backend's identifier, not an arbitrary local id — the host maps
+    backend-code → enum via `PaymentGateway.fromCode`.
 
 ---
 

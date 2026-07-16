@@ -22,7 +22,7 @@ import kotlinx.serialization.json.JsonObject
 @Serializable(with = PaymentGateway.Serializer::class)
 enum class PaymentGateway(val code: String) {
     RAZORPAY_CHECKOUT("razorpay_checkout"),
-    STORE_KIT("store_kit"),
+    NATIVE_IAP("native_iap"),
     RAZORPAY_CUSTOM_UI("razorpay_custom_ui"),
     JUSPAY("juspay"),
     UPI_INTENT("upi_intent");

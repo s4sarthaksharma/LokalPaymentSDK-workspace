@@ -48,6 +48,7 @@ kotlin {
             implementation(libs.lokalpaymentsdk.razorpay.customui)
             implementation(libs.lokalpaymentsdk.upi.intent)
             implementation(libs.lokalpaymentsdk.juspay)
+            implementation(libs.lokalpaymentsdk.native.iap)
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
 
