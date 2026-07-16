@@ -386,6 +386,25 @@ The host does **zero** SDK-code changes and writes **zero** setup lines. It:
    setup-data gateway like Juspay needs one host line:
    `FooSdk.initialize(...)` at app startup.)
 
+### Step 8b — (only if your gateway needs settings-phase setup) a settings contributor
+Most gateways need nothing here. But if your gateway's native SDK lives in a
+**private Maven repo** (like Juspay's `maven.juspay.in`) or otherwise needs
+`settings.gradle.kts`-level wiring, do **not** ask the host to edit its
+`settings.gradle.kts`. Instead ship a `LokalGatewaySettingsContributor` — the
+settings-phase twin of the iOS `LokalGatewayHostContributor`:
+- Create a plain jar module (e.g. `:foo:settings-contributor`) — **not** a
+  `java-gradle-plugin` — depending only on `:settings-plugin-api` (never on the
+  gateway's own vendor artifact/repo; that would reintroduce the chicken-and-egg the
+  contributor exists to solve).
+- Implement `LokalGatewaySettingsContributor.contribute(settings)` to add your repo
+  to `pluginManagement` + `dependencyResolutionManagement`, register it in
+  `META-INF/services/com.getlokalapp.paymentsdk.host.LokalGatewaySettingsContributor`,
+  and add `implementation(project(":foo:settings-contributor"))` to
+  `:shared:shared-settings-plugin` so the umbrella discovers it.
+- Contribute **unconditionally** — settings evaluation can't see the module
+  dependency graph, so there's no self-gate (adding an unused repo is a harmless
+  no-op). The host still applies only `com.getlokalapp.paymentsdk.lokal-payment-settings`.
+
 ---
 
 ## 5. Rulebook — hard rules & non-negotiables

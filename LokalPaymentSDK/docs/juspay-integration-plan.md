@@ -702,11 +702,11 @@ The SDK code needs **zero** host-dispatch edits, and — after D10 — **zero**
 host Activity-type edits either. Host steps, as actually done:
 1. **Publish:** `./gradlew :shared:publishToMavenLocal :razorpay-checkout:publishToMavenLocal :razorpay-customui:publishToMavenLocal :juspay:publishToMavenLocal`.
 2. **Host Gradle:**
-   - `gradle/libs.versions.toml`: `lokalpaymentsdk-juspay = { module = "com.getlokalapp.paymentsdk:juspay", version.ref = "lokalPaymentSdk" }`, plus a **versionless** plugin alias `lokalpaymentsdk-juspay-host = { id = "com.getlokalapp.paymentsdk.juspay-host" }`. No Juspay-related version appears anywhere in the host: the raw `hypersdk.plugin` pin (`2.0.6`) lives inside `:juspay:host-plugin` (below), and the wrapper plugin's own version is registered as a `pluginManagement` default by `juspay-host-settings` (below), so the settings plugin's single pin covers everything.
+   - `gradle/libs.versions.toml`: `lokalpaymentsdk-juspay = { module = "com.getlokalapp.paymentsdk:juspay", version.ref = "lokalPaymentSdk" }`, plus a **versionless** plugin alias `lokalpaymentsdk-juspay-host = { id = "com.getlokalapp.paymentsdk.juspay-host" }`. No Juspay-related version appears anywhere in the host: the raw `hypersdk.plugin` pin (`2.0.6`) lives inside `:juspay:host-plugin` (below), and the wrapper plugin's own version is registered as a `pluginManagement` default by the `lokal-payment-settings` umbrella's Juspay contributor (below), so the umbrella settings plugin's single pin covers everything.
    - `composeApp/build.gradle.kts`: `implementation(libs.lokalpaymentsdk.juspay)`. **Does NOT** apply the plugin — confirmed it fails there (R4, resolved): `com.android.kotlin.multiplatform.library` modules don't expose a plain `implementation` configuration, which is what the underlying `hypersdk.plugin` injects into.
    - `androidApp/build.gradle.kts` — **apply `com.getlokalapp.paymentsdk.juspay-host` here instead** (a conventional `com.android.application` module has the configuration the plugin expects):
      ```kotlin
-     plugins { alias(libs.plugins.lokalpaymentsdk.juspay.host) }   // versionless alias — default registered by juspay-host-settings
+     plugins { alias(libs.plugins.lokalpaymentsdk.juspay.host) }   // versionless alias — default registered by lokal-payment-settings
      lokalJuspayHost { clientId = "lokalmatrimony" }
      ```
      `clientId` is matrimony's real, already-registered one, borrowed with explicit
@@ -716,7 +716,7 @@ host Activity-type edits either. Host steps, as actually done:
      issued. `sdkVersion` is **not** host-configurable — it's fixed inside
      `JuspayHostPlugin` to whatever `:juspay` compiled against, so the runtime
      SDK a host fetches can never drift from that.
-   - `settings.gradle.kts`: add `mavenLocal()` to `pluginManagement.repositories` (resolves both wrapper plugins below) and apply `com.getlokalapp.paymentsdk.juspay-host-settings` in the top-level `plugins {}` block. The host's `settings.gradle.kts` needs **zero** mentions of `maven.juspay.in` — that plugin adds it to both `pluginManagement` and `dependencyResolutionManagement` on the host's behalf.
+   - `settings.gradle.kts`: add `mavenLocal()` to `pluginManagement.repositories` (resolves the umbrella + its contributors) and apply `com.getlokalapp.paymentsdk.lokal-payment-settings` in the top-level `plugins {}` block. The host's `settings.gradle.kts` needs **zero** mentions of `maven.juspay.in` — the umbrella's Juspay contributor adds it to both `pluginManagement` and `dependencyResolutionManagement` on the host's behalf. This is the *only* settings-plugin id a host ever applies, regardless of how many gateways it uses.
 
    **`:juspay:host-plugin`** (new, added after this step was first written): a plain
    `java-gradle-plugin` module nested under `:juspay` (not a KMP/Android-library
@@ -727,24 +727,42 @@ host Activity-type edits either. Host steps, as actually done:
    `lokalJuspayHost { clientId }` into the real `HyperSdkPluginExtension`
    (`sdkVersion` is fixed inside the plugin, not host-configurable).
 
-   **`:juspay:host-settings-plugin`** (new): a *separate* plain `java-gradle-plugin`
-   module, nested alongside `:juspay:host-plugin` rather than folded into it.
-   `JuspayHostSettingsPlugin` (a `Plugin<Settings>`, applied from a host's
-   `settings.gradle.kts` itself, not a module's `build.gradle.kts`) calls
+   **Umbrella settings plugin — `com.getlokalapp.paymentsdk.lokal-payment-settings`**
+   (originally shipped as a per-gateway `:juspay:host-settings-plugin`; since folded
+   into a single host-facing umbrella that mirrors the project-phase
+   `lokal-payment`). The `LokalPaymentSettingsPlugin` (a `Plugin<Settings>`, applied
+   from a host's `settings.gradle.kts` itself, not a module's `build.gradle.kts`)
+   lives in its own module `:shared:shared-settings-plugin` and does no
+   gateway-specific work: it discovers every `LokalGatewaySettingsContributor` on the
+   settings classpath via `ServiceLoader` and calls `contribute(settings)`. The SPI
+   lives in its own plain jar, `:settings-plugin-api` (twin of
+   `:cocoapods-host-plugin-api`). It is a *separate* module from
+   `:shared:shared-cocoapods-plugin` deliberately: a `Plugin<Settings>` jar lands on
+   the parent (settings) classpath visible to every project, so sharing a jar with
+   the `lokal-payment` project plugin would leave that plugin "already on the
+   classpath with an unknown version" and unappliable with an explicit version
+   (confirmed failure).
+
+   **`:juspay:settings-contributor`** (new, replaces the old
+   `:juspay:host-settings-plugin`): a plain jar — **not** a `java-gradle-plugin` — that
+   ships `JuspaySettingsContributor : LokalGatewaySettingsContributor` and registers
+   it in `META-INF/services`. `contribute(settings)` calls
    `settings.pluginManagement.repositories.maven(...)` and
    `settings.dependencyResolutionManagement.repositories.maven(...)` to add
-   `maven.juspay.in` on the host's behalf, and registers a `pluginManagement`
-   default version for the `juspay-host` project plugin id so app modules apply
-   it version-free. It's a separate module deliberately:
-   it must have **zero** dependency on `in.juspay:hypersdk.plugin` (or anything
-   else juspay-specific), otherwise applying it would itself require
-   `maven.juspay.in` to already be resolvable — the exact repo it exists to add
-   — a chicken-and-egg failure confirmed empirically when this was first tried
-   as a second plugin ID inside `:juspay:host-plugin`'s existing jar (Gradle
-   resolves a module's whole dependency graph as one unit regardless of which
-   of its plugin IDs gets applied).
+   `maven.juspay.in` on the host's behalf, and registers a `pluginManagement` default
+   version for the `juspay-host` project plugin id so app modules apply it
+   version-free. It has **zero** dependency on `in.juspay:hypersdk.plugin` (or anything
+   else juspay-specific) — otherwise loading it would itself require `maven.juspay.in`
+   to already be resolvable, the exact repo it exists to add (a chicken-and-egg
+   failure confirmed empirically when this was first tried as a second plugin ID
+   inside `:juspay:host-plugin`'s jar; Gradle resolves a module's whole dependency
+   graph as one unit regardless of which plugin ID is applied). Unlike the project-
+   phase `LokalGatewayHostContributor`, settings contributors do **not** self-gate —
+   the module dependency graph isn't known during settings evaluation, so they
+   contribute unconditionally (an unused repo / an unapplied plugin's version pin are
+   no-ops); real gating stays at the project level.
 
-   Publish both alongside the rest: `./gradlew :juspay:host-plugin:publishToMavenLocal :juspay:host-settings-plugin:publishToMavenLocal`.
+   Publish alongside the rest: `./gradlew :juspay:host-plugin:publishToMavenLocal :juspay:settings-contributor:publishToMavenLocal :settings-plugin-api:publishToMavenLocal :shared:shared-settings-plugin:publishToMavenLocal`.
    Deliberately **not** propagated to matrimony-kmp as part of this change — only
    `LokalPaymentSDKDemo` was migrated to it so far.
 3. **Compose glue** (`JuspayPresenter.kt`, alongside `PaymentPresenter.kt`) — `JuspaySdk`'s

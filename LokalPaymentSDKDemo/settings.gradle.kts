@@ -17,7 +17,7 @@ pluginManagement {
 }
 plugins {
     id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
-    id("com.getlokalapp.paymentsdk.juspay-host-settings") version "0.0.1"
+    id("com.getlokalapp.paymentsdk.lokal-payment-settings") version "0.0.1"
 }
 
 dependencyResolutionManagement {
