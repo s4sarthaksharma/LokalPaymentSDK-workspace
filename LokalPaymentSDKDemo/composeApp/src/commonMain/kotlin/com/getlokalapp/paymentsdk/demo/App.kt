@@ -248,13 +248,14 @@ fun App() {
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 SelectionContainer {
-                    Text(text = status)
-                }
-                SelectionContainer {
                     Text(
                         text = gatewayStatus.toJson(),
                         modifier = Modifier.padding(top = 8.dp),
                     )
+                }
+
+                SelectionContainer {
+                    Text(text = status)
                 }
                 Button(
                     onClick = { status = renderUpiApps(LokalPaymentSdk.installedUpiApps()) },

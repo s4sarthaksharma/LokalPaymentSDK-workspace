@@ -1,5 +1,6 @@
 package com.getlokalapp.paymentsdk.shared
 
+import com.getlokalapp.paymentsdk.host.LokalPostInstallSnippets
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.tasks.Sync
@@ -25,13 +26,21 @@ import java.util.concurrent.Callable
  *    the Podfile invokes at evaluation time.
  *
  * It also *manages the consumer Podfile*: on every Gradle sync (configuration phase) it
- * writes two marker-wrapped blocks into `../iosApp/Podfile` — a top-level bootstrap that
- * runs `prepareLokalIosPods` and `require_relative`s the generated helper, and a
- * `lokal_ios_pods` call declared once at the Podfile root — CocoaPods' implicit root
- * abstract target makes it inherited by every target. Everything
- * between the markers is regenerated each sync (manual edits are overwritten), and the
- * four relative paths in the bootstrap are computed from the Gradle model so they can't
- * drift. `setupLokalPodfile` runs the same patch on demand from the CLI.
+ * writes three marker-wrapped regions into `../iosApp/Podfile` — a top-level bootstrap that
+ * runs `prepareLokalIosPods` and `require_relative`s the generated helper, a `lokal_ios_pods`
+ * call declared once at the Podfile root — CocoaPods' implicit root abstract target makes it
+ * inherited by every target — and a snippet-dispatcher region nested inside a `post_install`
+ * block (see [LokalPostInstallSnippets]). That third one deliberately does **not** claim the
+ * whole `post_install do |installer| ... end` — CocoaPods' `post_install` hook doesn't chain
+ * (a second one silently replaces the first), so if a host already has their own
+ * `post_install` block, our markers wrap only the inner dispatch lines and get inserted
+ * *inside* the host's existing block, leaving whatever else the host put there untouched. A
+ * wrapper is fabricated only when the host has none. The dispatch itself globs and `eval`s
+ * whatever optional Ruby snippet each gateway contributor dropped in `build/lokal/postInstall/`,
+ * so no gateway needs to touch `post_install` directly either. Everything between the markers
+ * is regenerated each sync (manual edits are overwritten), and the relative paths are computed
+ * from the Gradle model so they can't drift. `setupLokalPodfile` runs the same patch on demand
+ * from the CLI.
  *
  * This can't remove the Podfile's `pod` line entirely: CocoaPods forbids `:path` in a
  * podspec's `spec.dependency`, so a local pod must be declared in a Podfile, not injected
@@ -117,15 +126,33 @@ class SharedCocoapodsPlugin : Plugin<Project> {
             "$PODS_END",
         )
 
+        // Nested one level inside a post_install block — either a host's pre-existing one, or
+        // one this plugin fabricates when there isn't one (see upsertPostInstall) — so these
+        // lines are indented for readability either way, and never include the surrounding
+        // `post_install do |installer|` / `end` themselves (those stay outside our markers, so
+        // a host's own pre-existing block, and anything else in it, is never touched).
+        val postInstallDirRel = rel(project.layout.buildDirectory.dir(LokalPostInstallSnippets.BUILD_RELATIVE_DIR).get().asFile)
+        val postInstallInner = listOf(
+            "  $POST_INSTALL_START (managed by the Lokal Payment SDK on Gradle sync) — DO NOT EDIT OR DELETE.",
+            "  # Regenerated every sync; manual edits between these markers are overwritten. Dispatches",
+            "  # every gateway's optional post-install Ruby snippet from here instead of any gateway",
+            "  # claiming this whole post_install block itself — see",
+            "  # com.getlokalapp.paymentsdk.host.LokalPostInstallSnippets for why.",
+            "  Dir.glob(File.join(__dir__, '$postInstallDirRel/*.rb')).sort.each do |f|",
+            "    eval(File.read(f), binding, f)",
+            "  end",
+            "  $POST_INSTALL_END",
+        )
+
         project.tasks.register("setupLokalPodfile") { task ->
             task.group = "lokal payment sdk"
             task.description = "Writes/refreshes the Lokal Payment SDK managed blocks in the consumer Podfile."
-            task.doLast { task.logger.lifecycle(patchPodfile(podfile, bootstrapBlock, podsBlock)) }
+            task.doLast { task.logger.lifecycle(patchPodfile(podfile, bootstrapBlock, podsBlock, postInstallInner)) }
         }
 
         // Auto-run on every Gradle sync (the configuration phase re-runs on sync).
         project.afterEvaluate {
-            val msg = patchPodfile(podfile, bootstrapBlock, podsBlock)
+            val msg = patchPodfile(podfile, bootstrapBlock, podsBlock, postInstallInner)
             if (msg.contains("patched")) project.logger.lifecycle(msg) else project.logger.info(msg)
         }
     }
@@ -137,6 +164,8 @@ class SharedCocoapodsPlugin : Plugin<Project> {
         const val BOOTSTRAP_END = "# <<< lokal-payment-sdk bootstrap"
         const val PODS_START = "# >>> lokal-payment-sdk pods"
         const val PODS_END = "# <<< lokal-payment-sdk pods"
+        const val POST_INSTALL_START = "# >>> lokal-payment-sdk post_install"
+        const val POST_INSTALL_END = "# <<< lokal-payment-sdk post_install"
 
         // No `$` appears here, so the triple-quoted string needs no escaping. The Ruby
         // `#{...}` below is Ruby interpolation, not Kotlin's `${...}`.
@@ -161,15 +190,17 @@ class SharedCocoapodsPlugin : Plugin<Project> {
 }
 
 /**
- * Idempotently writes two managed blocks into [podfile], both at the Podfile root before the
- * first `target`: a bootstrap region (runs the Gradle task + `require_relative`s the helper)
- * and a pods region (`lokal_ios_pods`, inherited by every target via CocoaPods' implicit root
- * abstract target). Marker-delimited regions are replaced/regenerated in place — and a pods
- * block left inside a target by an older version is relocated to the root. Writes only when
- * the text actually changes. Never throws on a missing or target-less Podfile (reported and
- * skipped so a Gradle sync isn't broken).
+ * Idempotently writes three managed regions into [podfile]: a bootstrap region and a pods
+ * region, both at the Podfile root before the first `target` (runs the Gradle task +
+ * `require_relative`s the helper; `lokal_ios_pods`, inherited by every target via CocoaPods'
+ * implicit root abstract target) — and a post-install dispatch region, nested inside a
+ * `post_install` block (see [upsertPostInstall]; the single dispatcher for every gateway's
+ * optional post-install snippet, see [LokalPostInstallSnippets]). Marker-delimited regions are
+ * replaced/regenerated in place — and a pods block left inside a target by an older version is
+ * relocated to the root. Writes only when the text actually changes. Never throws on a missing
+ * or target-less Podfile (reported and skipped so a Gradle sync isn't broken).
  */
-private fun patchPodfile(podfile: File, bootstrap: List<String>, pods: List<String>): String {
+private fun patchPodfile(podfile: File, bootstrap: List<String>, pods: List<String>, postInstallInner: List<String>): String {
     if (!podfile.exists()) return "Lokal: Podfile not found at ${podfile.path} — skipped"
 
     val original = podfile.readText()
@@ -188,11 +219,58 @@ private fun patchPodfile(podfile: File, bootstrap: List<String>, pods: List<Stri
 
     val podsAction = syncPodsAtRoot(lines, pods)
 
+    val postInstallAction = upsertPostInstall(lines, postInstallInner)
+
     val patched = lines.joinToString("\n")
-    val summary = "bootstrap=$bootstrapAction, pods=$podsAction"
+    val summary = "bootstrap=$bootstrapAction, pods=$podsAction, post_install=$postInstallAction"
     if (patched == original) return "Lokal Podfile already up to date ($summary)"
     podfile.writeText(patched)
     return "Lokal Podfile patched ($summary)"
+}
+
+private val POST_INSTALL_LINE = Regex("""^post_install\s+do\b""")
+
+/**
+ * Ensures [inner] (the snippet-dispatch lines, never the `post_install do |installer|` / `end`
+ * wrapper itself) runs exactly once per `pod install`, cooperating with a host-authored
+ * `post_install do ... end` block if one already exists instead of assuming ownership of the
+ * whole thing — CocoaPods' `post_install` hook doesn't chain, so a second, independent
+ * `post_install do ... end` would silently clobber whichever one CocoaPods evaluates last, with
+ * no error. A wrapper is fabricated (appended at the end of the file) only when the Podfile has
+ * none. Also migrates a Podfile still on an older version of this plugin, where the markers
+ * wrapped the *entire* `post_install do ... end` — that wrapper is stripped along with the
+ * managed region before re-attaching cleanly, rather than leaving orphaned `post_install do` /
+ * `end` lines behind. Mutates [lines] in place; returns a one-line status.
+ */
+private fun upsertPostInstall(lines: MutableList<String>, inner: List<String>): String {
+    var migrating = false
+    val start = lines.indexOfFirst { it.trimStart().startsWith("# >>> lokal-payment-sdk post_install") }
+    if (start >= 0) {
+        val end = (start until lines.size)
+            .firstOrNull { lines[it].trimStart().startsWith("# <<< lokal-payment-sdk post_install") }
+            ?: return "corrupt (found start without end; left unchanged)"
+        val existing = lines.subList(start, end + 1).toList()
+        val isOldWrapperShape = existing.any { POST_INSTALL_LINE.containsMatchIn(it.trimStart()) }
+        if (!isOldWrapperShape) {
+            if (existing == inner) return "unchanged"
+            repeat(end - start + 1) { lines.removeAt(start) }
+            lines.addAll(start, inner)
+            return "updated"
+        }
+        repeat(end - start + 1) { lines.removeAt(start) }
+        migrating = true
+    }
+
+    val hostPostInstall = lines.indexOfFirst { POST_INSTALL_LINE.containsMatchIn(it.trimStart()) }
+    val prefix = if (migrating) "migrated, " else ""
+    return if (hostPostInstall >= 0) {
+        lines.addAll(hostPostInstall + 1, inner)
+        "${prefix}inserted inside existing post_install"
+    } else {
+        // Trailing "" so the file still ends in a newline (matches replaceOrInsert's insert path).
+        lines.addAll(lines.size, listOf("post_install do |installer|") + inner + listOf("end", ""))
+        "${prefix}inserted (new post_install block)"
+    }
 }
 
 /**

@@ -1,7 +1,6 @@
 platform :ios, '16.0'
 use_frameworks!
 
-
 # >>> lokal-payment-sdk bootstrap (managed by the Lokal Payment SDK on Gradle sync) — DO NOT EDIT OR DELETE.
 # Regenerated on every Gradle sync; manual changes between these markers are overwritten.
 # Required to run the Lokal Payment SDK. Unpacks every Maven-sourced iOS pod source AND
@@ -26,12 +25,13 @@ target 'iosApp' do
 end
 
 post_install do |installer|
-  # Juspay's asset pipeline: downloads/places merchant assets for the clientId in
-  # MerchantConfig.txt. Without this, HyperSDK's "[CP-User] Validate Mandatory
-  # Files" build phase fails the app build.
-  fuse_path = "./Pods/HyperSDK/Fuse.rb"
-  clean_assets = false # pass true to force re-downloading all assets
-  if File.exist?(fuse_path)
-    system("ruby", fuse_path.to_s, clean_assets.to_s)
+  # >>> lokal-payment-sdk post_install (managed by the Lokal Payment SDK on Gradle sync) — DO NOT EDIT OR DELETE.
+  # Regenerated every sync; manual edits between these markers are overwritten. Dispatches
+  # every gateway's optional post-install Ruby snippet from here instead of any gateway
+  # claiming this whole post_install block itself — see
+  # com.getlokalapp.paymentsdk.host.LokalPostInstallSnippets for why.
+  Dir.glob(File.join(__dir__, '../composeApp/build/lokal/postInstall/*.rb')).sort.each do |f|
+    eval(File.read(f), binding, f)
   end
+  # <<< lokal-payment-sdk post_install
 end
