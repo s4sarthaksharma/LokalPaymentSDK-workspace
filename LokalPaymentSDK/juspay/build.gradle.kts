@@ -14,7 +14,7 @@ group = "com.getlokalapp.paymentsdk"
 
 // Single source for the iOS HyperSDK pod version — feeds the cocoapods block
 // and generateIosVendorVersion below, and (via the same catalog entry) the
-// juspay-cocoapods-host plugin's podspec pin, so none can drift.
+// juspay-cocoapods-host contributor's podspec pin, so none can drift.
 val iosVendorSdkVersion = libs.versions.juspay.pod.ios.get()
 
 // Bakes this module's own version (root gradle.properties) into commonMain,
@@ -27,7 +27,7 @@ val generateModuleVersion = registerModuleVersionTask(
 
 // Bakes gradle/libs.versions.toml's juspay-hypersdk entry into androidMain as
 // GatewayMetadata's Android vendorSdkVersion — the same version this module
-// compiles Android against (and JuspayHostPlugin.DEFAULT_SDK_VERSION pins the
+// compiles Android against (and JuspayAndroidHostPlugin.DEFAULT_SDK_VERSION pins the
 // host's runtime HyperSDK to), so it can't drift.
 val generateAndroidVendorVersion = registerVendorVersionTask(
     taskName = "generateAndroidVendorVersion",

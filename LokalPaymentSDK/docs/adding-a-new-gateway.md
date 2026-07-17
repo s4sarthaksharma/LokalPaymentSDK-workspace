@@ -222,13 +222,13 @@ shape (the Android-only variant, flipped):
   The one cost: because `NativeIapBridge` is a *local* pod (not trunk-hosted),
   the host has to add one static line to its own Podfile —
   `pod 'NativeIapBridge', :path => '<path-to-native-iap>/ios/NativeIapBridge'`
-  — since CocoaPods' `spec.dependency` (the mechanism `razorpay-cocoapods-host`/
-  `juspay-cocoapods-host` use to inject *trunk* pods with zero host lines)
+  — since CocoaPods' `spec.dependency` (the mechanism the razorpay and juspay
+  cocoapods-host contributors use to inject *trunk* pods with zero host lines)
   structurally cannot carry a filesystem `:path`; only a Podfile's own `pod`
   directive can. That line is static — it never changes per feature or per
   release — so it's a one-time integration cost, not an ongoing one. (It could
   be eliminated entirely by publishing `NativeIapBridge` to CocoaPods trunk or
-  a private Specs repo, letting a `native-iap-cocoapods-host-plugin` inject it
+  a private Specs repo, letting a `native-iap-host-contributor` inject it
   the same way the other two vendor pods are; not done here — real publishing
   infrastructure wasn't judged worth it yet for one local pod.)
   One naming gotcha hit building this: Kotlin/Native imports a Swift `@objc

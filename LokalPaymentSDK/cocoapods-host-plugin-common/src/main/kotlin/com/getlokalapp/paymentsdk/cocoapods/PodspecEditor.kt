@@ -3,10 +3,10 @@ package com.getlokalapp.paymentsdk.cocoapods
 import java.io.File
 
 /**
- * Shared podspec-editing logic for the per-gateway `*-cocoapods-host-plugin`
- * modules. This source file is compiled into each plugin via a `srcDir` entry
+ * Shared podspec-editing logic for the per-gateway `*-host-contributor`
+ * modules. This source file is compiled into each contributor via a `srcDir` entry
  * (see their `build.gradle.kts`) rather than a published artifact, so every
- * plugin jar stays self-contained.
+ * contributor jar stays self-contained.
  */
 internal object PodspecEditor {
 

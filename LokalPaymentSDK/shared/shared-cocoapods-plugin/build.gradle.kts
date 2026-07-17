@@ -18,7 +18,8 @@ dependencies {
     // LokalPaymentPlugin can discover it via ServiceLoader. Each contributor
     // self-gates to a no-op unless the host imports its gateway module, so
     // depending on all of them here does not make an unused gateway do anything.
-    implementation(project(":razorpay-checkout:razorpay-cocoapods-host-plugin"))
+    implementation(project(":razorpay-checkout:host-contributor"))
+    implementation(project(":juspay:host-contributor"))
 }
 
 // This module lives under :shared rather than any one gateway because its plugin is

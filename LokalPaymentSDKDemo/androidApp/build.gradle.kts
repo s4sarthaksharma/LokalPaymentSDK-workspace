@@ -1,11 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.compose.compiler)
-    alias(libs.plugins.lokalpaymentsdk.juspay.host)
-}
-
-lokalJuspayHost {
-    clientId = "lokalmatrimony"
+    alias(libs.plugins.lokalpaymentsdk.juspay.android.host)
 }
 
 android {

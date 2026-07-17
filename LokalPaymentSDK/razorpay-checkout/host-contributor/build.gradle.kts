@@ -5,7 +5,10 @@ plugins {
     `maven-publish`
 }
 
-group = "com.getlokalapp.paymentsdk"
+// Gateway-specific group so the bare `host-contributor` artifactId doesn't collide
+// with other gateways' contributors (e.g. juspay's) — each gateway namespaces its
+// own; classification is by the module path / group, not an artifactId prefix.
+group = "com.getlokalapp.paymentsdk.razorpay"
 
 kotlin {
     jvmToolchain(11)
