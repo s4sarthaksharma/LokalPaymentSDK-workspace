@@ -7,6 +7,8 @@ import com.getlokalapp.paymentsdk.hostcontext.topmostViewController
 import com.getlokalapp.paymentsdk.model.ClientStatus
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.useContents
+import platform.CoreGraphics.CGAffineTransformMakeScale
+import platform.CoreGraphics.CGPointMake
 import platform.CoreGraphics.CGRectMake
 import platform.CoreGraphics.CGSizeMake
 import platform.Foundation.NSCache
@@ -46,6 +48,9 @@ private const val MESSAGE_NO_ALLOWED_APP = "no_allowed_upi_app_installed"
 // Chooser UI strings.
 private const val DETENT_ID_FIT = "upiFit"
 private const val PICKER_TITLE = "Pay using UPI"
+
+// Home-screen-style press feedback on a chooser cell.
+private const val PRESS_SCALE = 0.88
 
 /**
  * iOS launcher. UPI works on iOS via `UIApplication.openURL`, but there is no
@@ -123,14 +128,21 @@ internal class IosUpiIntentClient : UpiIntentClient {
     }
 
     private fun openUrl(url: String) {
+        // Touch-blocking loader bridging the gap between the tap (or the chooser
+        // dismissing) and the UPI app taking over the screen — removed once
+        // openURL resolves either way.
+        val loader = topmostViewController()?.view?.let(::attachLoaderOverlay)
         UIApplication.sharedApplication.openURL(
             NSURL(string = url),
             options = emptyMap<Any?, Any?>(),
         ) { success ->
-            if (success) {
-                listener?.onPending(ClientStatus.UNKNOWN)
-            } else {
-                listener?.onFailure(ERROR_NO_UPI_APP, MESSAGE_OPEN_FAILED)
+            dispatch_async(dispatch_get_main_queue()) {
+                loader?.removeFromSuperview()
+                if (success) {
+                    listener?.onPending(ClientStatus.UNKNOWN)
+                } else {
+                    listener?.onFailure(ERROR_NO_UPI_APP, MESSAGE_OPEN_FAILED)
+                }
             }
         }
     }
@@ -210,6 +222,10 @@ private class UpiAppPickerController(
             iconCard.layer.setShadowOpacity(0.12f)
             iconCard.layer.setShadowRadius(3.0)
             iconCard.layer.setShadowOffset(CGSizeMake(0.0, 1.5))
+            // A plain UIView defaults to userInteractionEnabled=true, so it
+            // swallows touches meant for the button underneath — without this the
+            // icon (the whole visual target) is a dead tap zone.
+            iconCard.setUserInteractionEnabled(false)
 
             val icon = UIImageView(frame = CGRectMake(0.0, 0.0, 0.0, 0.0))
             // Fill the tile edge-to-edge like a real app icon (assets are square).
@@ -237,6 +253,15 @@ private class UpiAppPickerController(
             label.setNumberOfLines(1) // single line; UILabel truncates the tail with "…" by default
             cellButton.addSubview(iconCard)
             cellButton.addSubview(label)
+            cellButton.addAction(
+                UIAction.actionWithHandler { animatePress(cellButton, down = true) },
+                forControlEvents = UIControlEventTouchDown or UIControlEventTouchDragEnter,
+            )
+            cellButton.addAction(
+                UIAction.actionWithHandler { animatePress(cellButton, down = false) },
+                forControlEvents = UIControlEventTouchUpInside or UIControlEventTouchUpOutside or
+                    UIControlEventTouchCancel or UIControlEventTouchDragExit,
+            )
             cellButton.addAction(
                 UIAction.actionWithHandler {
                     picked = true
@@ -273,6 +298,44 @@ private class UpiAppPickerController(
         super.viewDidDisappear(animated)
         if (!picked) onCancel()
     }
+}
+
+/**
+ * Home-screen-style press feedback on a chooser cell: shrink + dim on
+ * touch-down, ease back on release/cancel.
+ */
+private fun animatePress(view: UIView, down: Boolean) {
+    val scale = if (down) PRESS_SCALE else 1.0
+    UIView.animateWithDuration(if (down) 0.10 else 0.18) {
+        view.setTransform(CGAffineTransformMakeScale(scale, scale))
+        view.setAlpha(if (down) 0.65 else 1.0)
+    }
+}
+
+/**
+ * Dimmed, touch-blocking overlay with a centered spinner, shown over [host]
+ * while `openURL` resolves. The caller removes it in the completion handler.
+ */
+private fun attachLoaderOverlay(host: UIView): UIView {
+    val overlay = UIView(frame = host.bounds)
+    overlay.setAutoresizingMask(UIViewAutoresizingFlexibleWidth or UIViewAutoresizingFlexibleHeight)
+    overlay.setBackgroundColor(UIColor.colorWithWhite(white = 0.0, alpha = 0.35))
+    overlay.setAlpha(0.0)
+
+    val spinner = UIActivityIndicatorView(activityIndicatorStyle = UIActivityIndicatorViewStyleLarge)
+    spinner.setColor(UIColor.whiteColor)
+    val (width, height) = host.bounds.useContents { size.width to size.height }
+    spinner.setCenter(CGPointMake(width / 2.0, height / 2.0))
+    spinner.setAutoresizingMask(
+        UIViewAutoresizingFlexibleLeftMargin or UIViewAutoresizingFlexibleRightMargin or
+            UIViewAutoresizingFlexibleTopMargin or UIViewAutoresizingFlexibleBottomMargin,
+    )
+    spinner.startAnimating()
+    overlay.addSubview(spinner)
+
+    host.addSubview(overlay)
+    UIView.animateWithDuration(0.15) { overlay.setAlpha(1.0) }
+    return overlay
 }
 
 // Process-wide logo cache keyed by URL, so re-presenting the chooser doesn't
