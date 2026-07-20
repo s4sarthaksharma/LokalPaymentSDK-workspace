@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Proxy Activity that owns the WebView. Merged into the host app so the
+         SDK is self-contained: consumers register nothing. Unlike the gateway
+         proxies this one is a normal (non-translucent) full-screen Activity —
+         the WebView is the visible UI. No auto-init provider: :webview is a
+         passive building block with no PaymentGatewayHandler to register
+         (ActivityTracker is installed by :shared). -->
+    <application>
+        <activity
+            android:name="com.getlokalapp.paymentsdk.webview.WebViewActivity"
+            android:exported="false"
+            android:configChanges="orientation|keyboardHidden|screenSize|screenLayout|smallestScreenSize" />
+    </application>
+
+</manifest>

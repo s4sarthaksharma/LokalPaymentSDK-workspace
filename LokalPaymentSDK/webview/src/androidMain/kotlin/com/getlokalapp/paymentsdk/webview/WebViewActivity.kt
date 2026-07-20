@@ -1,0 +1,146 @@
+package com.getlokalapp.paymentsdk.webview
+
+import android.annotation.SuppressLint
+import android.app.Activity
+import android.graphics.Bitmap
+import android.os.Bundle
+import android.view.ViewGroup
+import android.webkit.JavascriptInterface
+import android.webkit.WebResourceRequest
+import android.webkit.WebView
+import android.webkit.WebViewClient
+
+/**
+ * Internal proxy Activity that owns the `android.webkit.WebView`. Keeping it
+ * here means host apps never supply or receive a WebView — mirrors
+ * `:razorpay-checkout`'s RazorpayCheckoutActivity, except this one shows the
+ * WebView full-screen (it's the actual UI, not an invisible bridge). Picks up
+ * the in-flight [AndroidWebViewSession] from [WebViewLaunchBridge] and binds
+ * itself back to it so the session can drive the live WebView.
+ */
+@SuppressLint("SetJavaScriptEnabled")
+internal class WebViewActivity : Activity() {
+
+    private var session: AndroidWebViewSession? = null
+    private var webView: WebView? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        val current = WebViewLaunchBridge.pending
+        if (current == null) {
+            // No in-flight launch — e.g. process recreated after death. Nothing
+            // to drive; bail.
+            finish()
+            return
+        }
+        WebViewLaunchBridge.pending = null
+        session = current
+        current.activity = this
+        val config = current.config
+
+        val wv = WebView(this)
+        webView = wv
+        wv.settings.javaScriptEnabled = config.javaScriptEnabled
+        wv.settings.domStorageEnabled = config.domStorageEnabled
+
+        val dispatcher = BridgeDispatcher(config) { script -> runOnUiThread { wv.evaluateJavascript(script, null) } }
+        wv.addJavascriptInterface(
+            TransportBridge(
+                config = config,
+                dispatcher = dispatcher,
+                mainPost = ::runOnUiThread,
+                currentUrl = { wv.url },
+            ),
+            TRANSPORT_NAME,
+        )
+
+        wv.webViewClient = object : WebViewClient() {
+            override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+                // Inject the bridge as early as we can without androidx.webkit's
+                // document-start hook. Good enough for pages that call the bridge
+                // after DOM ready; see plan's known-limitations note.
+                wv.evaluateJavascript(androidBridgeShim(config.bridgeName), null)
+                config.listener?.onPageStarted(url.orEmpty())
+            }
+
+            override fun onPageFinished(view: WebView?, url: String?) {
+                config.listener?.onPageFinished(url.orEmpty())
+            }
+
+            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                val url = request?.url?.toString() ?: return false
+                return config.listener?.onNavigation(url) ?: false
+            }
+        }
+
+        setContentView(wv)
+        current.pendingRequest?.let { loadRequest(it) }
+        current.pendingRequest = null
+    }
+
+    fun loadRequest(request: WebViewRequest) {
+        val wv = webView ?: return
+        when (request) {
+            is WebViewRequest.Url ->
+                if (request.headers.isEmpty()) wv.loadUrl(request.url)
+                else wv.loadUrl(request.url, request.headers)
+            is WebViewRequest.Html ->
+                wv.loadDataWithBaseURL(request.baseUrl, request.html, "text/html", "utf-8", null)
+            is WebViewRequest.Post ->
+                wv.postUrl(request.url, request.body)
+        }
+    }
+
+    fun evaluateJs(script: String, onResult: ((String?) -> Unit)?) {
+        webView?.evaluateJavascript(script) { onResult?.invoke(it) }
+    }
+
+    override fun onBackPressed() {
+        val wv = webView
+        if (wv != null && wv.canGoBack()) wv.goBack() else super.onBackPressed()
+    }
+
+    override fun onDestroy() {
+        val current = session
+        if (current?.activity === this) current.activity = null
+        // Defensive: don't leave this session (and its host listener/handlers)
+        // pinned in the static slot if the launch was never consumed elsewhere.
+        if (WebViewLaunchBridge.pending === current) WebViewLaunchBridge.pending = null
+        current?.pendingRequest = null
+        current?.config?.listener?.onClosed()
+        session = null
+        // Full WebView teardown: detach the JS bridge, stop loads, and remove it
+        // from the view tree before destroy() so a stray reference can't keep the
+        // (Activity-context) WebView — and thus the Activity — alive.
+        webView?.let { wv ->
+            wv.stopLoading()
+            wv.removeJavascriptInterface(TRANSPORT_NAME)
+            (wv.parent as? ViewGroup)?.removeView(wv)
+            wv.destroy()
+        }
+        webView = null
+        super.onDestroy()
+    }
+}
+
+/**
+ * The `@JavascriptInterface` object the shim relays through (registered under
+ * [TRANSPORT_NAME]). `@JavascriptInterface` methods run on a background
+ * (JavaBridge) thread, so [postMessage] hops to the main thread before touching
+ * the WebView URL (origin check) and dispatching to handlers — matching iOS,
+ * which delivers on main.
+ */
+internal class TransportBridge(
+    private val config: WebViewConfig,
+    private val dispatcher: BridgeDispatcher,
+    private val mainPost: (Runnable) -> Unit,
+    private val currentUrl: () -> String?,
+) {
+    @JavascriptInterface
+    fun postMessage(message: String) {
+        mainPost(Runnable {
+            if (isOriginAllowed(config.allowedOrigins, currentUrl())) dispatcher.dispatch(message)
+        })
+    }
+}
