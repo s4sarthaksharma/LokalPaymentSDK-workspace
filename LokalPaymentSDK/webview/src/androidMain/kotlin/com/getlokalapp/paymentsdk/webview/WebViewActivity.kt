@@ -3,12 +3,18 @@ package com.getlokalapp.paymentsdk.webview
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.graphics.Bitmap
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import android.view.ViewGroup
 import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 
 /**
  * Internal proxy Activity that owns the `android.webkit.WebView`. Keeping it
@@ -39,6 +45,13 @@ internal class WebViewActivity : Activity() {
         current.activity = this
         val config = current.config
 
+        // targetSdk 35+ forces edge-to-edge, so opt in explicitly and inset the
+        // WebView ourselves — otherwise the page draws under the status/nav bars.
+        // A white window backing keeps the bar regions clean with dark icons.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.setBackgroundDrawable(ColorDrawable(Color.WHITE))
+        WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = true
+
         val wv = WebView(this)
         webView = wv
         wv.settings.javaScriptEnabled = config.javaScriptEnabled
@@ -61,6 +74,7 @@ internal class WebViewActivity : Activity() {
                 // document-start hook. Good enough for pages that call the bridge
                 // after DOM ready; see plan's known-limitations note.
                 wv.evaluateJavascript(androidBridgeShim(config.bridgeName), null)
+                config.userScripts.forEach { wv.evaluateJavascript(it, null) }
                 config.listener?.onPageStarted(url.orEmpty())
             }
 
@@ -75,24 +89,33 @@ internal class WebViewActivity : Activity() {
         }
 
         setContentView(wv)
+        // Pad the WebView by the system bars / cutout / IME so no content is
+        // hidden under them and the keyboard pushes the page up rather than over.
+        ViewCompat.setOnApplyWindowInsetsListener(wv) { view, insets ->
+            val bars = insets.getInsets(
+                WindowInsetsCompat.Type.systemBars() or
+                    WindowInsetsCompat.Type.displayCutout() or
+                    WindowInsetsCompat.Type.ime(),
+            )
+            view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            insets
+        }
+        ViewCompat.requestApplyInsets(wv)
+
         current.pendingRequest?.let { loadRequest(it) }
         current.pendingRequest = null
     }
 
-    fun loadRequest(request: WebViewRequest) {
+    internal fun loadRequest(request: WebViewRequest) {
         val wv = webView ?: return
         when (request) {
             is WebViewRequest.Url ->
                 if (request.headers.isEmpty()) wv.loadUrl(request.url)
                 else wv.loadUrl(request.url, request.headers)
-            is WebViewRequest.Html ->
-                wv.loadDataWithBaseURL(request.baseUrl, request.html, "text/html", "utf-8", null)
-            is WebViewRequest.Post ->
-                wv.postUrl(request.url, request.body)
         }
     }
 
-    fun evaluateJs(script: String, onResult: ((String?) -> Unit)?) {
+    internal fun evaluateJs(script: String, onResult: ((String?) -> Unit)?) {
         webView?.evaluateJavascript(script) { onResult?.invoke(it) }
     }
 

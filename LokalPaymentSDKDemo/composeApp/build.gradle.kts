@@ -45,6 +45,7 @@ kotlin {
             implementation(libs.lokalpaymentsdk.upi.intent)
             implementation(libs.lokalpaymentsdk.juspay)
             implementation(libs.lokalpaymentsdk.native.iap)
+            implementation(libs.lokalpaymentsdk.web.checkout)
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
 

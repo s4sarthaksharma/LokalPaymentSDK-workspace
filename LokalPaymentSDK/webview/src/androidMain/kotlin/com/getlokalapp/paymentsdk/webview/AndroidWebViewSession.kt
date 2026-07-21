@@ -26,12 +26,12 @@ internal object WebViewLaunchBridge {
  * host-supplied handle. Once the Activity is up it binds itself back via
  * [activity] so [evaluateJavascript] / [close] can reach the live WebView.
  */
-internal class AndroidWebViewSession(val config: WebViewConfig) : WebViewSession {
+internal class AndroidWebViewSession(internal val config: WebViewConfig) : WebViewSession {
 
     // Set by WebViewActivity.onCreate, cleared on its onDestroy. Read/written
     // from the main thread only (launch, bind, teardown all happen there).
     @Volatile
-    var activity: WebViewActivity? = null
+    internal var activity: WebViewActivity? = null
 
     private val main = Handler(Looper.getMainLooper())
 

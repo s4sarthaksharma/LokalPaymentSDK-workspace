@@ -7,19 +7,12 @@ import kotlin.experimental.ExperimentalNativeApi
 import kotlin.native.ref.WeakReference
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.ObjCSignatureOverride
-import kotlinx.cinterop.addressOf
-import kotlinx.cinterop.convert
-import kotlinx.cinterop.usePinned
-import platform.Foundation.NSData
 import platform.Foundation.NSMutableURLRequest
 import platform.Foundation.NSURL
-import platform.Foundation.create
-import platform.Foundation.setHTTPBody
-import platform.Foundation.setHTTPMethod
 import platform.Foundation.setValue
+import platform.UIKit.NSLayoutConstraint
+import platform.UIKit.UIColor
 import platform.UIKit.UIModalPresentationFullScreen
-import platform.UIKit.UIViewAutoresizingFlexibleHeight
-import platform.UIKit.UIViewAutoresizingFlexibleWidth
 import platform.UIKit.UIViewController
 import platform.WebKit.WKNavigation
 import platform.WebKit.WKNavigationAction
@@ -114,6 +107,15 @@ private class WebViewController(
                 forMainFrameOnly = true,
             ),
         )
+        config.userScripts.forEach { script ->
+            contentController.addUserScript(
+                WKUserScript(
+                    source = script,
+                    injectionTime = WKUserScriptInjectionTimeAtDocumentStart,
+                    forMainFrameOnly = true,
+                ),
+            )
+        }
         contentController.addScriptMessageHandler(WeakScriptMessageProxy(this), name = TRANSPORT_NAME)
         handlerAttached = true
 
@@ -121,9 +123,22 @@ private class WebViewController(
         configuration.userContentController = contentController
 
         val wv = WKWebView(frame = root.bounds, configuration = configuration)
-        wv.setAutoresizingMask(UIViewAutoresizingFlexibleWidth or UIViewAutoresizingFlexibleHeight)
         wv.navigationDelegate = this
+        // Pin to the safe-area layout guide (not raw bounds) so no content sits
+        // under the status bar / notch / home indicator. The margins show the
+        // controller's background.
+        root.setBackgroundColor(UIColor.whiteColor)
+        wv.setTranslatesAutoresizingMaskIntoConstraints(false)
         root.addSubview(wv)
+        val safeArea = root.safeAreaLayoutGuide
+        NSLayoutConstraint.activateConstraints(
+            listOf(
+                wv.topAnchor.constraintEqualToAnchor(safeArea.topAnchor),
+                wv.leadingAnchor.constraintEqualToAnchor(safeArea.leadingAnchor),
+                wv.trailingAnchor.constraintEqualToAnchor(safeArea.trailingAnchor),
+                wv.bottomAnchor.constraintEqualToAnchor(safeArea.bottomAnchor),
+            ),
+        )
         webView = wv
         // Reply evaluation always on main (this delegate/handler already runs there).
         dispatcher = BridgeDispatcher(config) { script -> wv.evaluateJavaScript(script, null) }
@@ -135,14 +150,6 @@ private class WebViewController(
             is WebViewRequest.Url -> {
                 val urlRequest = NSMutableURLRequest(uRL = NSURL(string = request.url))
                 request.headers.forEach { (key, value) -> urlRequest.setValue(value, forHTTPHeaderField = key) }
-                wv.loadRequest(urlRequest)
-            }
-            is WebViewRequest.Html ->
-                wv.loadHTMLString(request.html, baseURL = request.baseUrl?.let { NSURL(string = it) })
-            is WebViewRequest.Post -> {
-                val urlRequest = NSMutableURLRequest(uRL = NSURL(string = request.url))
-                urlRequest.setHTTPMethod("POST")
-                urlRequest.setHTTPBody(request.body.toNSData())
                 wv.loadRequest(urlRequest)
             }
         }
@@ -218,13 +225,5 @@ private class WeakScriptMessageProxy(
         didReceiveScriptMessage: WKScriptMessage,
     ) {
         handler.get()?.userContentController(userContentController, didReceiveScriptMessage)
-    }
-}
-
-/** ByteArray → NSData for `WebViewRequest.Post` bodies. */
-private fun ByteArray.toNSData(): NSData {
-    if (isEmpty()) return NSData()
-    return usePinned { pinned ->
-        NSData.create(bytes = pinned.addressOf(0), length = size.convert())
     }
 }

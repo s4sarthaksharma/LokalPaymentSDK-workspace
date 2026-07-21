@@ -186,6 +186,22 @@ private val SAMPLE_NATIVE_IAP_CREATE_ORDER_RESPONSE = """
 }
 """.trimIndent()
 
+// Hosted web-checkout gateway ("web_checkout"). gateway_config carries the
+// fully-built hosted-gateway URL the backend assembled (checkoutUrl-encoding +
+// provider baked in); the SDK opens it in a WebView and maps the page's reported
+// event to PaymentResult. The checkoutUrl below is a PLACEHOLDER — swap in a real
+// Dodo session URL from the backend to complete a live payment. As-is, the flow
+// runs to Dodo's page and the provider shows a session error (still exercises
+// /pay validation + redirect + the WebView presentation).
+private val SAMPLE_WEB_CHECKOUT_CREATE_ORDER_RESPONSE = """
+{
+  "gateway": "web_checkout",
+  "gateway_config": {
+    "gateway_url": "https://dev-web-pay.dostt.in/?checkoutUrl=https%3A%2F%2Ftest.checkout.dodopayments.com%2Fsession%2Fcks_0Njaeo2VjLvKBQxRRDcE3&provider=dodo"
+  }
+}
+""".trimIndent()
+
 // The SDK expects a typed PaymentOrder and no longer parses JSON itself, so
 // the host does it. A real host would decode into its own backend DTOs; here
 // we pull the two fields the SDK needs straight off the JSON tree.
@@ -306,6 +322,15 @@ fun App() {
                         modifier = Modifier.padding(top = 16.dp),
                     ) {
                         Text("Pay with Native IAP (StoreKit)")
+                    }
+                }
+                if (PaymentGateway.WEB_CHECKOUT in registeredGateways) {
+                    Button(
+                        enabled = !inFlight,
+                        onClick = { pay(SAMPLE_WEB_CHECKOUT_CREATE_ORDER_RESPONSE) },
+                        modifier = Modifier.padding(top = 16.dp),
+                    ) {
+                        Text("Pay with Web Checkout")
                     }
                 }
             }

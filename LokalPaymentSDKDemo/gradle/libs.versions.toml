@@ -26,6 +26,8 @@ lokalpaymentsdk-juspay = { module = "com.getlokalapp.paymentsdk:juspay", version
 
 lokalpaymentsdk-native-iap = { module = "com.getlokalapp.paymentsdk:native-iap", version.ref = "lokalPaymentSdk" }
 
+lokalpaymentsdk-web-checkout = { module = "com.getlokalapp.paymentsdk:web-checkout", version.ref = "lokalPaymentSdk" }
+
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidx-activityCompose" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerialization" }

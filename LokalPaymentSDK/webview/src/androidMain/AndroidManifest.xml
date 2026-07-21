@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- The WebView loads remote content. Normal permission, auto-granted;
+         merged into the host (virtually every app already declares it). -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <!-- Proxy Activity that owns the WebView. Merged into the host app so the
          SDK is self-contained: consumers register nothing. Unlike the gateway
          proxies this one is a normal (non-translucent) full-screen Activity —

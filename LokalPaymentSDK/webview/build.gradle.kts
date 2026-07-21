@@ -55,5 +55,10 @@ kotlin {
         commonTest.dependencies {
             implementation(libs.kotlin.test)
         }
+        androidMain.dependencies {
+            // Window-insets / edge-to-edge handling for the proxy Activity's
+            // WebView (ViewCompat/WindowCompat/WindowInsetsCompat). Views, no Compose.
+            implementation(libs.androidx.core)
+        }
     }
 }
