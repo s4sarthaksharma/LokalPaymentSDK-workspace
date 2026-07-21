@@ -13,8 +13,8 @@ regardless of which feature or module it touches.
 
 ## No Compose (CMP) in the SDK — KMP/KMM only
 
-`LokalPaymentSDK` and every module inside it (`:shared`, `:razorpay-checkout`,
-`:razorpay-customui`, and any gateway module added later) **must stay pure
+`LokalPaymentSDK` and every module inside it (`:shared`, `:gateways:razorpay-checkout`,
+`:gateways:razorpay-customui`, and any gateway module added later) **must stay pure
 Kotlin Multiplatform** — no dependency on Jetpack Compose or Compose
 Multiplatform (`org.jetbrains.compose`, `androidx.compose.*`), directly or
 transitively, in any of these modules' own `build.gradle.kts`.

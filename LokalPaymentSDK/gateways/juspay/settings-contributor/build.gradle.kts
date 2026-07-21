@@ -17,7 +17,7 @@ dependencies {
     // The settings-phase SPI (LokalGatewaySettingsContributor) this contributor
     // implements. Depended on rather than srcDir'd so exactly one copy of the SPI
     // types exists across the umbrella plugin and every contributor.
-    implementation(project(":settings-plugin-api"))
+    implementation(project(":gradle-plugins:settings-spi"))
     // Gradle API for org.gradle.api.initialization.Settings used by the contributor;
     // provided by the Gradle runtime on the host's settings classpath, never a
     // published dep.

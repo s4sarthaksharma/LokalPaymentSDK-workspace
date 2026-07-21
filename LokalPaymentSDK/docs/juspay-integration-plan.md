@@ -1,4 +1,4 @@
-# Juspay (HyperSDK / HyperCheckout) Integration Plan — `:juspay` module
+# Juspay (HyperSDK / HyperCheckout) Integration Plan — `:gateways:juspay` module
 
 > **HISTORICAL — partially superseded.** The module was implemented per this
 > plan, then its Android/iOS platform clients and host-facing API were
@@ -46,7 +46,7 @@ verify symbol names against the actual SDK version you resolve. Blocks marked
 
 LokalPaymentSDK is a **gateway-agnostic core (`:shared`)** plus **one opt-in leaf
 module per gateway**. The core knows nothing about any gateway; gateways know the
-core and self-register. You are adding a new leaf module `:juspay`. **You do not
+core and self-register. You are adding a new leaf module `:gateways:juspay`. **You do not
 edit `:shared`** (the one allowed exception — a `PaymentGateway` enum entry —
 already exists for Juspay; see Step 1).
 
@@ -108,12 +108,12 @@ sealed class PaymentResult {
 | D1 | Juspay product | **HyperSDK / HyperCheckout** (`in.juspay:hypersdk`, plugin `hypersdk.plugin`) |
 | D2 | Platform scope | **Multiplatform — real Android AND real iOS.** (Note: the matrimony reference is Android-only with an iOS no-op; iOS here is *new work with no reference* — see Risk R1.) |
 | D3 | `gateway_config` shape | Backend sends a **ready-made HyperSDK `process` payload** — opaque passthrough, decode only outer wrapper, never inspect/reshape (rulebook #5) |
-| D4 | Native SDK packaging | **Host app applies the Juspay `hypersdk` Gradle plugin**; the `:juspay` module compiles against HyperSDK APIs via **`compileOnly`** so it stays generic across hosts (see Risk R2) |
+| D4 | Native SDK packaging | **Host app applies the Juspay `hypersdk` Gradle plugin**; the `:gateways:juspay` module compiles against HyperSDK APIs via **`compileOnly`** so it stays generic across hosts (see Risk R2) |
 | D5 | clientId + init payload | **Host drives `initiate()`.** `JuspaySdk` exposes `initiate(initPayload)`; the host calls it from its bootstrap. **Android:** this only caches the payload — no `onResume()` re-forwarding needed (D10, a fresh engine boots per payment). **iOS:** the engine is longer-lived, so a production host should still re-call it from `onResume()`. `clientId` is a build-time Gradle-plugin value owned by the host (Android) / a `JuspayPlatformHandle` constructor param (iOS, R5). |
 | D6 | Success status set | **`charged`, `authorizing`, `pending_vbv` → Success** (matches matrimony); `backpressed`, `user_aborted` → Cancelled; everything else → Failure |
 | D7 | `signature` in Success | **Empty string `""`** — Juspay's SDK callback returns no signature; the host validates server-side (rulebook #4). `paymentId = epgTxnId`, `orderId = orderId`. |
 | D8 | Back-press forwarding to the *host* | **Not implemented — no host obligation on either platform.** Confirmed dead code: matrimony's `AndroidJuspayPaymentClient.onBackPressed()` exists but is never called from its `MainActivity` (only `onResume()` is wired). The iOS HyperSDK Objective-C API has no back-press method at all. `JuspaySdk`/`JuspayClient` expose no `onBackPressed()` to the host. (Internally, D10's `JuspayActivity` *does* forward to `HyperServiceHolder.onBackPressed()` — but that's the SDK's own proxy Activity, not a host obligation.) |
-| D9 | iOS pod build gate | **Set `SKIP_HYPERSDK_VALIDATION=true`** (via `launchctl setenv` in local/CI shells, or the CocoaPods pod's documented mechanism) when compiling `:juspay` generically. The `HyperSDK` pod's own `[CP-User] Validate Mandatory Files` script phase fails without it — it expects merchant assets from a client-specific `MerchantConfig.txt` + `Fuse.rb` `post_install` step that only the host's real Podfile runs. Confirmed via a live cinterop spike: with the flag set, `iosSimulatorArm64` cinterop against the real pod succeeds and produces a working `cocoapods.HyperSDK` package; without it, the synthetic Xcode build fails at that script phase. The host's real app build still runs the real asset pipeline unaffected. |
+| D9 | iOS pod build gate | **Set `SKIP_HYPERSDK_VALIDATION=true`** (via `launchctl setenv` in local/CI shells, or the CocoaPods pod's documented mechanism) when compiling `:gateways:juspay` generically. The `HyperSDK` pod's own `[CP-User] Validate Mandatory Files` script phase fails without it — it expects merchant assets from a client-specific `MerchantConfig.txt` + `Fuse.rb` `post_install` step that only the host's real Podfile runs. Confirmed via a live cinterop spike: with the flag set, `iosSimulatorArm64` cinterop against the real pod succeeds and produces a working `cocoapods.HyperSDK` package; without it, the synthetic Xcode build fails at that script phase. The host's real app build still runs the real asset pipeline unaffected. |
 | D10 | Android: SDK-owned proxy Activity (revised) | **`JuspayActivity`** (internal, mirrors `RazorpayCheckoutActivity`'s bridge pattern) satisfies `HyperServiceHolder`'s `FragmentActivity` requirement — the host's own Activity is never touched or cast. `JuspayPlatformHandle`'s Android `actual` only needs a plain `Activity` to call `startActivity()` on. Each `pay()` launches a fresh `JuspayActivity`, which boots its own `HyperServiceHolder`, calls `initiate()` then `process()`, delivers the result, and finishes — `AndroidJuspayClient.initiate()` now just caches the payload. Trade-off: a fresh-initiate latency cost per payment (vs. matrimony's persistent-holder design) in exchange for full host encapsulation and dropping the `onResume()` obligation entirely on Android. iOS is unaffected (no `FragmentActivity`-equivalent constraint exists there). |
 | D11 | Native loading indicator | Since neither `JuspayActivity` (Android) nor the host's given `UIViewController` (iOS) shows anything until HyperSDK finishes initiating, both platforms now show a plain **native** loader (no Compose — rulebook #2; no SwiftUI on iOS either, since Kotlin/Native cinterop doesn't bridge it) from `initiate()` until the `hide_loader` event: Android — a `ProgressBar` in a `FrameLayout` via `JuspayActivity.showLoader()`/`hideLoader()`; iOS — a `UIActivityIndicatorView(activityIndicatorStyle = UIActivityIndicatorViewStyleLarge)` added as a subview directly on `handle.viewController.view` via `IOSJuspayClient.showLoader()`/`hideLoader()`. |
 
@@ -122,7 +122,7 @@ sealed class PaymentResult {
 ## 3. Reference material map (read these files first)
 
 ### In this SDK repo — the templates to copy
-The canonical **multiplatform** gateway is `:razorpay-checkout`. Copy its shape.
+The canonical **multiplatform** gateway is `:gateways:razorpay-checkout`. Copy its shape.
 
 | File | What it teaches |
 |------|-----------------|
@@ -218,9 +218,9 @@ class JuspaySdk(handle: JuspayPlatformHandle) : PaymentGatewayHandler {
 `JuspayPlatformHandle`'s Android `actual` wraps `() -> Activity` — a **plain**
 Activity, not `FragmentActivity` (D10: the SDK's own `JuspayActivity` satisfies
 that requirement internally). iOS wraps a `UIViewController` + `tenantId`/`clientId`
-(R5). Model the platform handle the way `:razorpay-checkout` models
+(R5). Model the platform handle the way `:gateways:razorpay-checkout` models
 `PaymentPresenter`, but as your **own** type — do NOT reuse
-`:razorpay-checkout`'s `PaymentPresenter` (that would make leaf depend on leaf —
+`:gateways:razorpay-checkout`'s `PaymentPresenter` (that would make leaf depend on leaf —
 rulebook #3). (The `PaymentGatewayHandler` interface only mandates `pay`/`dispose`;
 extra methods like `initiate` are allowed — the interface's own kdoc says platform
 setup is a concrete-class concern.)
@@ -324,9 +324,9 @@ dependencyResolutionManagement {
 }
 // ...
 include(":shared")
-include(":razorpay-checkout")
-include(":razorpay-customui")
-include(":juspay")   // NEW
+include(":gateways:razorpay-checkout")
+include(":gateways:razorpay-customui")
+include(":gateways:juspay")   // NEW
 ```
 `gradle/libs.versions.toml` (SDK) — add versions + libraries for the HyperSDK
 artifacts confirmed in Spike A, e.g.:
@@ -500,7 +500,7 @@ internal interface JuspayClient {
 internal expect fun createJuspayClient(handle: JuspayPlatformHandle): JuspayClient
 ```
 ```kotlin
-// your own handle type; do NOT reuse :razorpay-checkout's PaymentPresenter
+// your own handle type; do NOT reuse :gateways:razorpay-checkout's PaymentPresenter
 package com.getlokalapp.paymentsdk.juspay
 expect class JuspayPlatformHandle   // android actual wraps () -> Activity (D10 — plain Activity, not FragmentActivity); ios actual wraps UIViewController + tenantId/clientId
 ```
@@ -599,7 +599,7 @@ good:
 - `shared/src/androidMain/.../json/JsonConversions.android.kt` — `JsonObject.toOrgJson(): org.json.JSONObject`
 - `shared/src/iosMain/.../json/JsonConversions.ios.kt` — `JsonObject.toPlainMap(): Map<Any?, Any?>`
 
-`:juspay` (and `razorpay-checkout`/`razorpay-customui`) just `import
+`:gateways:juspay` (and `razorpay-checkout`/`razorpay-customui`) just `import
 com.getlokalapp.paymentsdk.json.toOrgJson` / `.toPlainMap` / `.lenientJson` — all
 three already depend on `:shared` via `api(project(":shared"))`, so no new
 dependency was needed. This sidesteps rulebook #9's original filename-collision
@@ -681,14 +681,14 @@ internal class IOSJuspayClient(
 }
 ```
 Follow the `IOSRazorpayCheckoutClient.kt` conventions for the cinterop OptIn and
-Objective-C interop. **Build note (D9):** compiling `:juspay`'s iOS targets requires
+Objective-C interop. **Build note (D9):** compiling `:gateways:juspay`'s iOS targets requires
 `SKIP_HYPERSDK_VALIDATION=true` set in the environment (the pod's own asset-validation
 script phase fails otherwise) — document this in the module README and CI config.
 
 ### Step 11 — Unit tests (commonTest) — SKIPPED for now (by request)
 `JuspayConfigTest`/`JuspayResultMapperTest` were written and passing (9 tests, both
 Android and iOS) at one point in this build, then removed at the user's request — no
-`commonTest` source set currently exists for `:juspay`. Add back if/when tests are
+`commonTest` source set currently exists for `:gateways:juspay`. Add back if/when tests are
 wanted; the shapes below are what they covered:
 - `JuspayConfigTest` — decodes a representative `gateway_config` (use the real R3
   sample) into `JuspayConfig`; tolerates unknown sibling fields.
@@ -700,10 +700,10 @@ wanted; the shapes below are what they covered:
 ### Step 12 — Publish + host wiring (in `LokalPaymentSDKDemo`) — implemented, R4 resolved
 The SDK code needs **zero** host-dispatch edits, and — after D10 — **zero**
 host Activity-type edits either. Host steps, as actually done:
-1. **Publish:** `./gradlew :shared:publishToMavenLocal :razorpay-checkout:publishToMavenLocal :razorpay-customui:publishToMavenLocal :juspay:publishToMavenLocal`.
+1. **Publish:** `./gradlew :shared:publishToMavenLocal :gateways:razorpay-checkout:publishToMavenLocal :gateways:razorpay-customui:publishToMavenLocal :gateways:juspay:publishToMavenLocal`.
 2. **Host Gradle:**
-   - `gradle/libs.versions.toml`: `lokalpaymentsdk-juspay = { module = "com.getlokalapp.paymentsdk:juspay", version.ref = "lokalPaymentSdk" }`, plus a **versionless** plugin alias `lokalpaymentsdk-juspay-android-host = { id = "com.getlokalapp.paymentsdk.juspay-android-host" }`. No Juspay-related version appears anywhere in the host: the raw `hypersdk.plugin` pin (`2.0.6`) lives inside `:juspay:android-host-plugin` (below), and the plugin's own version is registered as a `pluginManagement` default by the `lokal-payment-settings` umbrella's Juspay contributor (below), so the umbrella settings plugin's single pin covers everything.
-   - `composeApp/build.gradle.kts`: `implementation(libs.lokalpaymentsdk.juspay)`, and applies **only** `com.getlokalapp.paymentsdk.lokal-payment` (it owns the `cocoapods {}` block). Nothing Juspay-specific is applied here: Juspay's iOS podspec injection is a `LokalGatewayHostContributor` (`JuspayHostContributor`) that the umbrella discovers via ServiceLoader and self-gates on the host importing `:juspay` — exactly like Razorpay. (This is also why applying anything with an Android half here previously failed, R4: `com.android.kotlin.multiplatform.library` modules don't expose the plain `implementation` configuration `hypersdk.plugin` injects into — so the Android half deliberately lives in a separate, Android-only plugin.)
+   - `gradle/libs.versions.toml`: `lokalpaymentsdk-juspay = { module = "com.getlokalapp.paymentsdk:juspay", version.ref = "lokalPaymentSdk" }`, plus a **versionless** plugin alias `lokalpaymentsdk-juspay-android-host = { id = "com.getlokalapp.paymentsdk.juspay-android-host" }`. No Juspay-related version appears anywhere in the host: the raw `hypersdk.plugin` pin (`2.0.6`) lives inside `:gateways:juspay:android-host-plugin` (below), and the plugin's own version is registered as a `pluginManagement` default by the `lokal-payment-settings` umbrella's Juspay contributor (below), so the umbrella settings plugin's single pin covers everything.
+   - `composeApp/build.gradle.kts`: `implementation(libs.lokalpaymentsdk.juspay)`, and applies **only** `com.getlokalapp.paymentsdk.lokal-payment` (it owns the `cocoapods {}` block). Nothing Juspay-specific is applied here: Juspay's iOS podspec injection is a `LokalGatewayHostContributor` (`JuspayHostContributor`) that the umbrella discovers via ServiceLoader and self-gates on the host importing `:gateways:juspay` — exactly like Razorpay. (This is also why applying anything with an Android half here previously failed, R4: `com.android.kotlin.multiplatform.library` modules don't expose the plain `implementation` configuration `hypersdk.plugin` injects into — so the Android half deliberately lives in a separate, Android-only plugin.)
    - `androidApp/build.gradle.kts` — **apply `com.getlokalapp.paymentsdk.juspay-android-host` here** (a conventional `com.android.application` module has the configuration the Android half expects):
      ```kotlin
      plugins { alias(libs.plugins.lokalpaymentsdk.juspay.android.host) }   // versionless alias — default registered by lokal-payment-settings
@@ -716,13 +716,13 @@ host Activity-type edits either. Host steps, as actually done:
      and 403s hard on an unregistered clientId, so a made-up placeholder can't get past
      this. Swap for this host's own clientId once issued. `sdkVersion` is **not**
      host-configurable — it's fixed inside `JuspayAndroidHostPlugin` to whatever
-     `:juspay` compiled against, so the runtime SDK a host fetches can never drift.
+     `:gateways:juspay` compiled against, so the runtime SDK a host fetches can never drift.
    - `settings.gradle.kts`: add `mavenLocal()` to `pluginManagement.repositories` (resolves the umbrella + its contributors) and apply `com.getlokalapp.paymentsdk.lokal-payment-settings` in the top-level `plugins {}` block. The host's `settings.gradle.kts` needs **zero** mentions of `maven.juspay.in` — the umbrella's Juspay contributor adds it to both `pluginManagement` and `dependencyResolutionManagement` on the host's behalf. This is the *only* settings-plugin id a host ever applies, regardless of how many gateways it uses.
 
    Juspay's host wiring is split across the platform boundary, because the two halves
    need different Gradle phases/modules and can't be one plugin:
 
-   **`:juspay:android-host-plugin`** — a plain `java-gradle-plugin` module (it can't be
+   **`:gateways:juspay:android-host-plugin`** — a plain `java-gradle-plugin` module (it can't be
    a KMP/Android-library module, since a Gradle plugin jar and a published KMP library
    are incompatible project shapes). `JuspayAndroidHostPlugin` (id
    `com.getlokalapp.paymentsdk.juspay-android-host`) is applied on the host's
@@ -731,40 +731,40 @@ host Activity-type edits either. Host steps, as actually done:
    directly — the version pin lives here, not in any host's catalog), forwards the
    client id read from the `juspayClientId` gradle property into the real
    `HyperSdkPluginExtension`, and pins `sdkVersion` (not host-configurable) to whatever
-   `:juspay` compiled against. The client id is a gradle property (shared across the
+   `:gateways:juspay` compiled against. The client id is a gradle property (shared across the
    host's modules, no per-module DSL); iOS receives tenantId/clientId at runtime via
    `JuspayPlatformHandle`. A typed `lokalPaymentSdk {}` extension was considered but
    deferred — a plain property covers a single shared value, and richer build-time
    config can reintroduce the extension later.
 
-   **`:juspay:host-contributor`** (published as `com.getlokalapp.paymentsdk.juspay:host-contributor` — a gateway-specific group keeps the bare `host-contributor` artifactId from colliding with other gateways') — the iOS half, a `LokalGatewayHostContributor`
+   **`:gateways:juspay:host-contributor`** (published as `com.getlokalapp.paymentsdk.juspay:host-contributor` — a gateway-specific group keeps the bare `host-contributor` artifactId from colliding with other gateways') — the iOS half, a `LokalGatewayHostContributor`
    (`JuspayHostContributor`), **not** a host-applied plugin. It's a plain jar the umbrella
    `lokal-payment` plugin bundles and discovers via ServiceLoader (mirroring Razorpay's
    contributor): on the module that owns `cocoapods {}` it hooks the `podspec` task to
    inject `spec.dependency 'HyperSDK'` at the `juspay-pod-ios` version, self-gating on the
-   host importing `:juspay`. So the host applies only `lokal-payment` on its iOS module —
+   host importing `:gateways:juspay`. So the host applies only `lokal-payment` on its iOS module —
    nothing Juspay-specific. (The Android half can't fold in here: `hypersdk.plugin` must be
    applied eagerly on the application module, which this umbrella-dispatched, afterEvaluate
    contributor is the wrong phase/module for.)
 
    **Umbrella settings plugin — `com.getlokalapp.paymentsdk.lokal-payment-settings`**
-   (originally shipped as a per-gateway `:juspay:host-settings-plugin`; since folded
+   (originally shipped as a per-gateway `:gateways:juspay:host-settings-plugin`; since folded
    into a single host-facing umbrella that mirrors the project-phase
    `lokal-payment`). The `LokalPaymentSettingsPlugin` (a `Plugin<Settings>`, applied
    from a host's `settings.gradle.kts` itself, not a module's `build.gradle.kts`)
-   lives in its own module `:shared:shared-settings-plugin` and does no
+   lives in its own module `:gradle-plugins:settings-plugin` and does no
    gateway-specific work: it discovers every `LokalGatewaySettingsContributor` on the
    settings classpath via `ServiceLoader` and calls `contribute(settings)`. The SPI
-   lives in its own plain jar, `:settings-plugin-api` (twin of
-   `:cocoapods-host-plugin-api`). It is a *separate* module from
-   `:shared:shared-cocoapods-plugin` deliberately: a `Plugin<Settings>` jar lands on
+   lives in its own plain jar, `:gradle-plugins:settings-spi` (twin of
+   `:gradle-plugins:cocoapods-host-spi`). It is a *separate* module from
+   `:gradle-plugins:cocoapods-host-plugin` deliberately: a `Plugin<Settings>` jar lands on
    the parent (settings) classpath visible to every project, so sharing a jar with
    the `lokal-payment` project plugin would leave that plugin "already on the
    classpath with an unknown version" and unappliable with an explicit version
    (confirmed failure).
 
-   **`:juspay:settings-contributor`** (new, replaces the old
-   `:juspay:host-settings-plugin`): a plain jar — **not** a `java-gradle-plugin` — that
+   **`:gateways:juspay:settings-contributor`** (new, replaces the old
+   `:gateways:juspay:host-settings-plugin`): a plain jar — **not** a `java-gradle-plugin` — that
    ships `JuspaySettingsContributor : LokalGatewaySettingsContributor` and registers
    it in `META-INF/services`. `contribute(settings)` calls
    `settings.pluginManagement.repositories.maven(...)` and
@@ -775,14 +775,14 @@ host Activity-type edits either. Host steps, as actually done:
    else juspay-specific) — otherwise loading it would itself require `maven.juspay.in`
    to already be resolvable, the exact repo it exists to add (a chicken-and-egg
    failure confirmed empirically when this was first tried as a second plugin ID
-   inside `:juspay:android-host-plugin`'s jar; Gradle resolves a module's whole dependency
+   inside `:gateways:juspay:android-host-plugin`'s jar; Gradle resolves a module's whole dependency
    graph as one unit regardless of which plugin ID is applied). Unlike the project-
    phase `LokalGatewayHostContributor`, settings contributors do **not** self-gate —
    the module dependency graph isn't known during settings evaluation, so they
    contribute unconditionally (an unused repo / an unapplied plugin's version pin are
    no-ops); real gating stays at the project level.
 
-   Publish alongside the rest: `./gradlew :juspay:android-host-plugin:publishToMavenLocal :juspay:host-contributor:publishToMavenLocal :juspay:settings-contributor:publishToMavenLocal :settings-plugin-api:publishToMavenLocal :shared:shared-settings-plugin:publishToMavenLocal :shared:shared-cocoapods-plugin:publishToMavenLocal`.
+   Publish alongside the rest: `./gradlew :gateways:juspay:android-host-plugin:publishToMavenLocal :gateways:juspay:host-contributor:publishToMavenLocal :gateways:juspay:settings-contributor:publishToMavenLocal :gradle-plugins:settings-spi:publishToMavenLocal :gradle-plugins:settings-plugin:publishToMavenLocal :gradle-plugins:cocoapods-host-plugin:publishToMavenLocal`.
    Deliberately **not** propagated to matrimony-kmp as part of this change — only
    `LokalPaymentSDKDemo` was migrated to it so far.
 3. **Compose glue** (`JuspayPresenter.kt`, alongside `PaymentPresenter.kt`) — `JuspaySdk`'s
@@ -866,9 +866,9 @@ host Activity-type edits either. Host steps, as actually done:
 ## 8. Verification checklist (playbook §6)
 ```bash
 # each module builds independently; :shared still pulls in no gateway SDK
-./gradlew :shared:build :razorpay-checkout:build :razorpay-customui:build :juspay:build
-./gradlew :juspay:publishToMavenLocal # then wire into LokalPaymentSDKDemo
-# No :juspay:allTests — Step 11's tests were dropped for now (by request).
+./gradlew :shared:build :gateways:razorpay-checkout:build :gateways:razorpay-customui:build :gateways:juspay:build
+./gradlew :gateways:juspay:publishToMavenLocal # then wire into LokalPaymentSDKDemo
+# No :gateways:juspay:allTests — Step 11's tests were dropped for now (by request).
 ```
 Then, in `LokalPaymentSDKDemo`:
 - Confirm `PaymentGateway.JUSPAY in LokalPaymentSdk.registeredGateways()` after

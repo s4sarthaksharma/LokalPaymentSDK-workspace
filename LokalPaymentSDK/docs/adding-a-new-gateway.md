@@ -22,8 +22,8 @@ nothing about any specific gateway; gateways know the core.
 ```
 :shared                — core: LokalPaymentSdk registry, PaymentGatewayHandler,
                           PaymentGateway enum, PaymentResult / LokalPaymentResult / PaymentError
-:razorpay-checkout     — the reference gateway: multiplatform (Android + iOS) — the §4 recipe follows it
-:razorpay-customui   — Android-only variant (iOS is a stub) — see §3
+:gateways:razorpay-checkout     — the reference gateway: multiplatform (Android + iOS) — the §4 recipe follows it
+:gateways:razorpay-customui   — Android-only variant (iOS is a stub) — see §3
 :your-new-gateway      — you add this, modeled on razorpay-checkout
 ```
 
@@ -147,7 +147,7 @@ unless you're building one.
 <details>
 <summary><b>Variant: Android-only gateway</b> (e.g. Razorpay Custom UI, Juspay) — the <code>razorpay-customui</code> pattern</summary>
 
-Real, shipped example: `:razorpay-customui`. Deltas from the canonical shape:
+Real, shipped example: `:gateways:razorpay-customui`. Deltas from the canonical shape:
 
 - **SDK entry object lives in `androidMain`**, not `commonMain`, with **no
   client `expect`/`actual`** — just plain Android classes. Its Android startup
@@ -174,14 +174,14 @@ Real, shipped example: `:razorpay-customui`. Deltas from the canonical shape:
   current Activity from `:shared`'s `ActivityTracker` and launches an internal
   proxy Activity (`RazorpayCustomUiActivity`) that owns the `WebView`, calls
   `submit()`, and handles its own `onActivityResult` — the host forwards
-  nothing. (Same proxy-Activity approach as `:razorpay-checkout`.)
+  nothing. (Same proxy-Activity approach as `:gateways:razorpay-checkout`.)
 
 </details>
 
 <details>
 <summary><b>Variant: iOS-only-for-now gateway</b> (e.g. NativeIap / StoreKit today, Play Billing on Android later) — mirror image of the Android-only variant</summary>
 
-Shipped: `:native-iap`, `PaymentGateway.NATIVE_IAP`. Deltas from the canonical
+Shipped: `:gateways:native-iap`, `PaymentGateway.NATIVE_IAP`. Deltas from the canonical
 shape (the Android-only variant, flipped):
 
 - **SDK entry object lives in `iosMain`**, not `commonMain`
@@ -393,14 +393,14 @@ Most gateways need nothing here. But if your gateway's native SDK lives in a
 `settings.gradle.kts`. Instead ship a `LokalGatewaySettingsContributor` — the
 settings-phase twin of the iOS `LokalGatewayHostContributor`:
 - Create a plain jar module (e.g. `:foo:settings-contributor`) — **not** a
-  `java-gradle-plugin` — depending only on `:settings-plugin-api` (never on the
+  `java-gradle-plugin` — depending only on `:gradle-plugins:settings-spi` (never on the
   gateway's own vendor artifact/repo; that would reintroduce the chicken-and-egg the
   contributor exists to solve).
 - Implement `LokalGatewaySettingsContributor.contribute(settings)` to add your repo
   to `pluginManagement` + `dependencyResolutionManagement`, register it in
   `META-INF/services/com.getlokalapp.paymentsdk.host.LokalGatewaySettingsContributor`,
   and add `implementation(project(":foo:settings-contributor"))` to
-  `:shared:shared-settings-plugin` so the umbrella discovers it.
+  `:gradle-plugins:settings-plugin` so the umbrella discovers it.
 - Contribute **unconditionally** — settings evaluation can't see the module
   dependency graph, so there's no self-gate (adding an unused repo is a harmless
   no-op). The host still applies only `com.getlokalapp.paymentsdk.lokal-payment-settings`.
@@ -452,7 +452,7 @@ settings-phase twin of the iOS `LokalGatewayHostContributor`:
 
 ```bash
 # each module compiles independently; :shared still pulls in no gateway SDK
-./gradlew :shared:build :razorpay-checkout:build :razorpay-customui:build :foo:build
+./gradlew :shared:build :gateways:razorpay-checkout:build :gateways:razorpay-customui:build :foo:build
 ./gradlew :foo:allTests                 # config decoder + result mapper unit tests
 ./gradlew :foo:publishToMavenLocal      # then wire into LokalPaymentSDKDemo
 ```

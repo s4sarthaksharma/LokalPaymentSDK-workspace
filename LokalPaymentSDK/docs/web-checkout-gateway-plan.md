@@ -1,4 +1,4 @@
-# `:web-checkout` — hosted web payment gateway — plan
+# `:gateways:web-checkout` — hosted web payment gateway — plan
 
 ## Goal
 A `PaymentGatewayHandler` that runs the existing hosted gateway web app
@@ -21,7 +21,7 @@ plan covers only the KMP/native side.
   gateway's own pages (`/callback`, `/cancel`, `/pay` error) may post events; the
   provider's checkout domain cannot.
 - `PAYMENT_SUCCESS → PaymentResult.Success`.
-- Module `:web-checkout`, gateway code `web_checkout`.
+- Module `:gateways:web-checkout`, gateway code `web_checkout`.
 - `provider` (dodo/stripe) stays **opaque** inside `gatewayConfig` — the SDK never
   names a provider, mirroring the web app.
 - The SDK does **not** duplicate `checkoutUrl` validation or provider status
@@ -37,7 +37,7 @@ exactly our `BridgeEnvelope` minus the optional `id`, so:
   our existing `LokalNativeTransport` channel.
 - `BridgeDispatcher` parses `{name, payload}` and **routes by `name`** — no
   dispatcher changes.
-- `:web-checkout` registers one `JsBridgeHandler` per event name. `reply` unused.
+- `:gateways:web-checkout` registers one `JsBridgeHandler` per event name. `reply` unused.
 
 Rejected alternative: detecting completion by intercepting `/callback` + `/cancel`
 navigations. It can't capture `PAYMENT_GATEWAY_ERROR` (reported only over the
@@ -48,7 +48,7 @@ design-aligned.
 ## `:webview` additions required (generic, no provider/RN knowledge baked in)
 1. **`WebViewConfig.userScripts: List<String>`** — extra JS injected at
    document-start alongside the existing bridge shim (Android: in `onPageStarted`;
-   iOS: a `WKUserScript` at `.atDocumentStart`). `:web-checkout` supplies the
+   iOS: a `WKUserScript` at `.atDocumentStart`). `:gateways:web-checkout` supplies the
    `window.ReactNativeWebView` shim here — `:webview` stays RN-agnostic.
 2. **Optional close/cancel chrome** (config-gated, e.g. `showCloseControl`) — a
    slim top bar / ✕ so the user always has an escape from a full-screen payment
@@ -82,8 +82,8 @@ Not doing for v1: an `onBackPressed` hook (provider-specific back handling). Use
 | `PAYMENT_GATEWAY_ERROR` | `Failure(code = reason, …)` |
 | (webview closed, no event) | `Cancelled` |
 
-## `:web-checkout` module shape
-- Build file mirrors `:razorpay-checkout` minus vendor pod/version-baking;
+## `:gateways:web-checkout` module shape
+- Build file mirrors `:gateways:razorpay-checkout` minus vendor pod/version-baking;
   `api(project(":webview"))`; `kotlin.serialization`. iOS: pure KMP, no pod.
 - `commonMain`:
   - `WebCheckoutSdk : PaymentGatewayHandler` — self-registers; `readiness()` Ready;
@@ -107,7 +107,7 @@ Not doing for v1: an `onBackPressed` hook (provider-specific back handling). Use
 ## Not in scope / open
 - Exact `gatewayConfig` field name(s) for the ready URL — confirm with backend
   (assume a single ready-to-open URL field).
-- Demo wiring for `:web-checkout` — separate step; needs a real/staging session.
+- Demo wiring for `:gateways:web-checkout` — separate step; needs a real/staging session.
 - No third-party pod, host-contributor, or iossrc (pure KMP + `:webview`).
 
 ## Verification (at the end, on request)

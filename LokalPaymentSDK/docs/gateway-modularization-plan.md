@@ -1,7 +1,7 @@
 # LokalPaymentSDK — Gateway Modularization Plan
 
 > **⚠️ HISTORICAL — this plan has been executed and superseded.** The module
-> split it describes (`:shared` / `:razorpay-checkout` / `:razorpay-customui`)
+> split it describes (`:shared` / `:gateways:razorpay-checkout` / `:gateways:razorpay-customui`)
 > shipped, but the final design diverged from this plan: it added a
 > `PaymentGatewayHandler` interface + `LokalPaymentSdk` registry (this doc
 > proposed "by convention, not a shared interface"), a `LokalPaymentResult`
@@ -47,8 +47,8 @@ reshaping this one.
 
 ```
 :shared              — core, gateway-agnostic (unchanged name, slimmed contents)
-:razorpay-checkout   — existing hosted Checkout flow, moved out of :shared as-is
-:razorpay-customui — new module, Android-only, modeled on matrimony-kmp's CustomUi client
+:gateways:razorpay-checkout   — existing hosted Checkout flow, moved out of :shared as-is
+:gateways:razorpay-customui — new module, Android-only, modeled on matrimony-kmp's CustomUi client
 ```
 
 Both leaf modules depend on `:shared` via `api(project(":shared"))` (not
@@ -87,7 +87,7 @@ The host app parses `CreateOrderResponse.gateway` (via
 `parseCreateOrderResponse`, staying in `:shared`) and calls whichever gateway
 module's `pay()` matches.
 
-## `:razorpay-checkout` — move existing code as-is
+## `:gateways:razorpay-checkout` — move existing code as-is
 
 Straight move, package `com.getlokalapp.paymentsdk.razorpay` unchanged:
 - commonMain: `RazorpayCheckoutClient.kt`, `RazorpayCheckoutClientFactory.kt`,
@@ -111,7 +111,7 @@ unchanged, including the "unsupported_gateway" guard for anything that isn't
 `razorpay-pod` cocoapods block and `libs.razorpay.checkout` Android
 dependency moved here from `:shared`.
 
-## `:razorpay-customui` — new module, Android-only
+## `:gateways:razorpay-customui` — new module, Android-only
 
 No iOS targets, no cocoapods block — just `androidLibrary {}` (this is a
 supported single-platform KMP module shape, consistent with the rest of the
@@ -126,7 +126,7 @@ project's Gradle conventions). Modeled directly on `matrimony-kmp`'s
     enum value already exists at `model/PaymentGateway.kt:12`, reserved and
     unused until now)
   - `RazorpayCustomUiResultListener.kt`, `RazorpayCustomUiResultMapper.kt`
-    — **not** shared with `:razorpay-checkout`'s versions: `Razorpay.submit()`'s
+    — **not** shared with `:gateways:razorpay-checkout`'s versions: `Razorpay.submit()`'s
     callback shape differs from `Checkout.open()`'s (richer `PaymentData`,
     different cancellation code). Confirmed from `matrimony-kmp`'s
     `PaymentsHelper.kt:66-67` — UPI intent cancellation is error code `5`,
@@ -143,7 +143,7 @@ project's Gradle conventions). Modeled directly on `matrimony-kmp`'s
     unwrap step.
 
 Android dependency: `implementation(libs.razorpay.customui)` — **not** the
-same artifact as `:razorpay-checkout`. Verified against matrimony-kmp's own
+same artifact as `:gateways:razorpay-checkout`. Verified against matrimony-kmp's own
 `build.gradle.kts` (which declares both `razorpay-checkout` *and*
 `razorpay-custom-ui` side by side) and by inspecting `customui-core`'s
 `classes.jar`: the `Razorpay` class (`submit()`/`setWebView()`) lives in
@@ -157,24 +157,24 @@ second third-party SDK dependency entirely, not just dead code.
 Checkout's — call this out explicitly since it's a real behavioral change for
 consumers):**
 
-> **Superseded during implementation.** The shipped `:razorpay-customui` module
+> **Superseded during implementation.** The shipped `:gateways:razorpay-customui` module
 > places *no* extra requirements on the host: it owns an internal proxy Activity
 > (`RazorpayCustomUiActivity`) that hosts the `WebView` and forwards
-> `onActivityResult` itself, same as `:razorpay-checkout`. The two requirements
+> `onActivityResult` itself, same as `:gateways:razorpay-checkout`. The two requirements
 > below reflect the original plan (matching matrimony-kmp), not the final design.
 1. Host must supply a `WebView` — required by Razorpay as a JS bridge for
    `submit()`, even though the SDK never shows it directly.
 2. Host's Activity must forward `onActivityResult` to the client (some UPI
    apps return control via an Android `Intent` result). Unlike
-   `:razorpay-checkout`, there's no SDK-owned proxy Activity here — the host
+   `:gateways:razorpay-checkout`, there's no SDK-owned proxy Activity here — the host
    Activity is the one hosting the WebView, so the SDK can't interpose one.
    Expose this as `AndroidRazorpayCustomUiClient.onActivityResult(...)`,
    matching `AndroidRazorpayPaymentClient.kt:56-58` in matrimony-kmp.
 
 ## Gradle wiring
 
-- `settings.gradle.kts`: add `include(":razorpay-checkout")` and
-  `include(":razorpay-customui")`.
+- `settings.gradle.kts`: add `include(":gateways:razorpay-checkout")` and
+  `include(":gateways:razorpay-customui")`.
 - Each new module's `build.gradle.kts`: `group = "com.getlokalapp.paymentsdk"`,
   its own `version`, its own Android `namespace` (e.g.
   `com.getlokalapp.paymentsdk.checkout` / `...customui`).
@@ -188,8 +188,8 @@ consumers):**
   matching catalog entries for the two new Maven coordinates, and the demo's
   publish step (`./gradlew :shared:publishToMavenLocal`, per the comment in
   `LokalPaymentSDKDemo/settings.gradle.kts`) becomes
-  `./gradlew :shared:publishToMavenLocal :razorpay-checkout:publishToMavenLocal`
-  (adding `:razorpay-customui:publishToMavenLocal` once the demo exercises it).
+  `./gradlew :shared:publishToMavenLocal :gateways:razorpay-checkout:publishToMavenLocal`
+  (adding `:gateways:razorpay-customui:publishToMavenLocal` once the demo exercises it).
 - `composeApp/build.gradle.kts:53` (`implementation(libs.lokalpaymentsdk.shared)`)
   gets a second line for `razorpay-checkout` (the demo's Pay button only
   exercises hosted Checkout today, so `razorpay-customui` isn't wired into
@@ -200,10 +200,10 @@ consumers):**
 
 ## Verification
 
-1. `./gradlew :shared:build :razorpay-checkout:build :razorpay-customui:build`
+1. `./gradlew :shared:build :gateways:razorpay-checkout:build :gateways:razorpay-customui:build`
    in `LokalPaymentSDK` — confirms each module compiles independently and
    `:shared` no longer pulls in Razorpay.
-2. `./gradlew :razorpay-checkout:allTests` — the two relocated test files
+2. `./gradlew :gateways:razorpay-checkout:allTests` — the two relocated test files
    (`RazorpayResultMapperTest`, `CreateOrderResponseMapperTest`) still pass
    unchanged.
 3. Publish all three to `mavenLocal`, update the demo's catalog + `App.kt` per

@@ -21,7 +21,7 @@ dependencies {
 // settings contributor. Published as a plain jar (not a Gradle plugin) so both
 // sides depend on ONE copy of the SPI types — srcDir'ing the interface into both
 // would put two identically-named classes on the compile classpath and fail to
-// compile. Mirrors :cocoapods-host-plugin-api, but for the settings phase.
+// compile. Mirrors :gradle-plugins:cocoapods-host-spi, but for the settings phase.
 publishing {
     publications {
         create<MavenPublication>("maven") {

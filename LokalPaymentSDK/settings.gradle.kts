@@ -34,19 +34,27 @@ dependencyResolutionManagement {
     }
 }
 
-include(":cocoapods-host-plugin-api")
-include(":settings-plugin-api")
+// Gateway-agnostic build plumbing (SPI jars + umbrella plugins). Gateway-specific
+// contributors live under their own gateway module (e.g. :gateways:juspay:host-contributor).
+// :gradle-plugins:cocoapods-host-contributor-support is not a project — it's shared
+// source srcDir'd into each host contributor, so it is intentionally not included.
+include(":gradle-plugins:cocoapods-host-spi")
+include(":gradle-plugins:cocoapods-host-plugin")
+include(":gradle-plugins:settings-spi")
+include(":gradle-plugins:settings-plugin")
+
+// Core runtime + building blocks shared by the gateways.
 include(":shared")
-include(":shared:shared-cocoapods-plugin")
-include(":shared:shared-settings-plugin")
-include(":razorpay-checkout")
-include(":razorpay-checkout:host-contributor")
-include(":razorpay-customui")
-include(":native-iap")
-include(":upi-intent")
 include(":webview")
-include(":web-checkout")
-include(":juspay")
-include(":juspay:android-host-plugin")
-include(":juspay:settings-contributor")
-include(":juspay:host-contributor")
+
+// Payment gateways / methods. Each gateway's own build-time contributors nest under it.
+include(":gateways:razorpay-checkout")
+include(":gateways:razorpay-checkout:host-contributor")
+include(":gateways:razorpay-customui")
+include(":gateways:native-iap")
+include(":gateways:upi-intent")
+include(":gateways:web-checkout")
+include(":gateways:juspay")
+include(":gateways:juspay:android-host-plugin")
+include(":gateways:juspay:settings-contributor")
+include(":gateways:juspay:host-contributor")

@@ -13,18 +13,17 @@ kotlin {
 dependencies {
     // The shared SPI (LokalGatewayHostContributor + lokalPaymentSdk extension)
     // LokalPaymentPlugin loads and dispatches to.
-    implementation(project(":cocoapods-host-plugin-api"))
+    implementation(project(":gradle-plugins:cocoapods-host-spi"))
     // Bundle each gateway's host contributor onto the buildscript classpath so
     // LokalPaymentPlugin can discover it via ServiceLoader. Each contributor
     // self-gates to a no-op unless the host imports its gateway module, so
     // depending on all of them here does not make an unused gateway do anything.
-    implementation(project(":razorpay-checkout:host-contributor"))
-    implementation(project(":juspay:host-contributor"))
+    implementation(project(":gateways:razorpay-checkout:host-contributor"))
+    implementation(project(":gateways:juspay:host-contributor"))
 }
 
-// This module lives under :shared rather than any one gateway because its plugin is
-// gateway-agnostic (it has no dependency on the :shared library — the nesting is
-// organisational).
+// This module lives in :gradle-plugins (gateway-agnostic build plumbing) rather than
+// under any one gateway or the :shared runtime library, which it has no dependency on.
 //
 // Only `lokal-payment` is exposed as an applicable plugin: the single host-facing
 // umbrella. It creates the `lokalPaymentSdk { }` DSL, dispatches to each gateway's

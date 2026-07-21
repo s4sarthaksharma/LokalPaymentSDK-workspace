@@ -42,7 +42,7 @@ Envelope parse, reply-script building, and origin gating live in a shared
 
 ## Files
 - `settings.gradle.kts` — `include(":webview")`.
-- `webview/build.gradle.kts` — mirrors `:razorpay-checkout` minus vendor pod &
+- `webview/build.gradle.kts` — mirrors `:gateways:razorpay-checkout` minus vendor pod &
   version-baking; adds `kotlin.serialization`; `api(project(":shared"))`.
 - `commonMain`: `WebViewRequest.kt`, `JsBridgeHandler.kt`, `WebViewListener.kt`,
   `WebViewConfig.kt`, `WebViewSession.kt`, `BridgeShim.kt`, `BridgeDispatcher.kt`.
