@@ -48,37 +48,43 @@ internal const val REACT_NATIVE_BRIDGE_SHIM = """
 """
 
 /**
- * One [JsBridgeHandler] per web-app event, each mapping the event to a terminal
- * [PaymentResult] and handing it to [onResult]. The web app posts exactly one
- * event per attempt and [onResult] is first-wins, so at most one fires. `reply`
- * is unused — the RN contract is fire-and-forget. `SUCCESS` maps to `Success`
- * (advisory — the host still confirms with its backend); `PROCESSING`/`PENDING`
- * map to `Pending`; `FAILED`/`EXPIRED`/`GATEWAY_ERROR` to `Failure`.
+ * Each web-app event mapped to the terminal [PaymentResult] it produces. Static
+ * — the mappers don't depend on the per-call result sink, so they're built once
+ * rather than on every `pay()`. `SUCCESS` maps to `Success` (advisory — the host
+ * still confirms with its backend); `PROCESSING`/`PENDING` to `Pending`;
+ * `FAILED`/`EXPIRED`/`GATEWAY_ERROR` to `Failure`; `CANCELLED` to `Cancelled`.
+ */
+private val EVENT_MAPPERS: Map<String, (JsonObject) -> PaymentResult> = mapOf(
+    EVENT_SUCCESS to { p ->
+        PaymentResult.Success(paymentId = p.str("paymentId").orEmpty(), orderId = null, signature = "")
+    },
+    EVENT_FAILED to { p ->
+        PaymentResult.Failure(PaymentError(code = p.str("status") ?: "failed", message = "payment_failed"))
+    },
+    EVENT_EXPIRED to {
+        PaymentResult.Failure(PaymentError(code = "expired", message = "payment_expired"))
+    },
+    EVENT_PROCESSING to ::pendingResult,
+    EVENT_PENDING to ::pendingResult,
+    EVENT_CANCELLED to {
+        PaymentResult.Cancelled(CancelReason.USER_DISMISSED)
+    },
+    EVENT_ERROR to { p ->
+        PaymentResult.Failure(PaymentError(code = p.str("reason") ?: "gateway_error", message = "payment_gateway_error"))
+    },
+)
+
+private fun pendingResult(p: JsonObject): PaymentResult =
+    PaymentResult.Pending(txnRef = p.str("paymentId").orEmpty(), clientHint = ClientStatus.UNKNOWN)
+
+/**
+ * One [JsBridgeHandler] per web-app event (see [EVENT_MAPPERS]), each handing its
+ * mapped result to [onResult]. The web app posts exactly one event per attempt
+ * and [onResult] is first-wins, so at most one fires. `reply` is unused — the RN
+ * contract is fire-and-forget.
  */
 internal fun webCheckoutHandlers(onResult: (PaymentResult) -> Unit): List<JsBridgeHandler> =
-    listOf(
-        eventHandler(EVENT_SUCCESS, onResult) { p ->
-            PaymentResult.Success(paymentId = p.str("paymentId").orEmpty(), orderId = null, signature = "")
-        },
-        eventHandler(EVENT_FAILED, onResult) { p ->
-            PaymentResult.Failure(PaymentError(code = p.str("status") ?: "failed", message = "payment_failed"))
-        },
-        eventHandler(EVENT_EXPIRED, onResult) {
-            PaymentResult.Failure(PaymentError(code = "expired", message = "payment_expired"))
-        },
-        eventHandler(EVENT_PROCESSING, onResult) { p ->
-            PaymentResult.Pending(txnRef = p.str("paymentId").orEmpty(), clientHint = ClientStatus.UNKNOWN)
-        },
-        eventHandler(EVENT_PENDING, onResult) { p ->
-            PaymentResult.Pending(txnRef = p.str("paymentId").orEmpty(), clientHint = ClientStatus.UNKNOWN)
-        },
-        eventHandler(EVENT_CANCELLED, onResult) {
-            PaymentResult.Cancelled(CancelReason.USER_DISMISSED)
-        },
-        eventHandler(EVENT_ERROR, onResult) { p ->
-            PaymentResult.Failure(PaymentError(code = p.str("reason") ?: "gateway_error", message = "payment_gateway_error"))
-        },
-    )
+    EVENT_MAPPERS.map { (event, map) -> eventHandler(event, onResult, map) }
 
 private fun eventHandler(
     event: String,
