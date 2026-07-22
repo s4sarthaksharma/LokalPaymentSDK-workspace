@@ -1,6 +1,6 @@
 import SwiftUI
 import UIKit
-import ComposeApp
+import LokalPaymentSDKDemo
 
 // Hosts the shared Compose UI. The Kotlin entry point
 // MainViewControllerKt.MainViewController() returns a ComposeUIViewController

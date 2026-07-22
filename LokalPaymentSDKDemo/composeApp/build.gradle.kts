@@ -9,8 +9,10 @@ plugins {
     alias(libs.plugins.lokalpaymentsdk.lokal.payment)
 }
 
+val hostXcFrameworkName = "LokalPaymentSDKDemo"
+
 lokalPaymentSdk {
-    xcFrameworkName = "ComposeApp"
+    xcFrameworkName = hostXcFrameworkName
 }
 
 kotlin {
@@ -24,10 +26,10 @@ kotlin {
         }
     }
 
-    val xcf = XCFramework("ComposeApp")
+    val xcf = XCFramework(hostXcFrameworkName)
     listOf(iosArm64(), iosSimulatorArm64()).forEach { target ->
         target.binaries.framework {
-            baseName = "ComposeApp"
+            baseName = hostXcFrameworkName
             isStatic = true
             xcf.add(this)
         }
