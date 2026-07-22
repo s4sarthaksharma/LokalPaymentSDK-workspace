@@ -6,7 +6,6 @@ plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.android.kotlin.multiplatform.library)
     alias(libs.plugins.kotlin.serialization)
-    id("org.jetbrains.kotlin.native.cocoapods")
     `maven-publish`
 }
 
@@ -42,6 +41,52 @@ val generateIosVendorVersion = registerVendorVersionTask(
     vendorSdkVersion = iosVendorSdkVersion,
 )
 
+// Fetches razorpay-pod's vendored Razorpay.xcframework straight from its GitHub tag
+// (no CocoaPods) so the cinterops below have real headers/module maps to compile
+// against — the SPM-era replacement for CocoaPods resolving `pod("razorpay-pod")`.
+// Cacheable via Gradle's normal input/output tracking (keyed on iosVendorSdkVersion);
+// re-fetches only when the pinned version changes. Requires network access at build
+// time — offline/CI caching of this artifact is a known follow-up, not solved here.
+val fetchRazorpayXcFramework = tasks.register("fetchRazorpayXcFramework") {
+    inputs.property("version", iosVendorSdkVersion)
+    val outputDir = layout.buildDirectory.dir("vendorXcFrameworks/Razorpay.xcframework")
+    outputs.dir(outputDir)
+    doLast {
+        val version = iosVendorSdkVersion
+        val out = outputDir.get().asFile
+        out.deleteRecursively()
+        out.parentFile.mkdirs()
+        val work = temporaryDir
+        val tarball = work.resolve("razorpay-pod-$version.tar.gz")
+        // Plain ProcessBuilder, not Project.exec: this Gradle version doesn't expose
+        // exec() on a lazily-registered task's doLast — and a portable shell-out to
+        // curl/tar needs nothing more (macOS ships both; this is an iOS-only build).
+        fun run(vararg command: String) {
+            val process = ProcessBuilder(*command).inheritIO().start()
+            check(process.waitFor() == 0) { "Command failed: ${command.joinToString(" ")}" }
+        }
+        run(
+            "curl", "-sL", "-o", tarball.absolutePath,
+            "https://codeload.github.com/razorpay/razorpay-pod/tar.gz/refs/tags/$version",
+        )
+        run(
+            "tar", "xzf", tarball.absolutePath, "-C", work.absolutePath,
+            "razorpay-pod-$version/Pod/Razorpay.xcframework",
+        )
+        work.resolve("razorpay-pod-$version/Pod/Razorpay.xcframework")
+            .copyRecursively(out, overwrite = true)
+    }
+}
+val razorpayXcFrameworkDir = fetchRazorpayXcFramework.map {
+    layout.buildDirectory.dir("vendorXcFrameworks/Razorpay.xcframework").get()
+}
+// Every generated cinterop-processing task must run fetchRazorpayXcFramework first —
+// cinterops are configured below via plain compilerOpts strings, so Gradle can't infer
+// this dependency on its own.
+tasks.matching { it.name.startsWith("cinteropRazorpay") }.configureEach {
+    dependsOn(fetchRazorpayXcFramework)
+}
+
 kotlin {
     compilerOptions {
         freeCompilerArgs.add("-Xexpect-actual-classes")
@@ -59,26 +104,29 @@ kotlin {
         withHostTest {}
     }
 
-    iosX64()
-    iosArm64()
-    iosSimulatorArm64()
-
-    cocoapods {
-        version = project.version.toString()
-        summary = "Lokal Payment SDK - Razorpay hosted Checkout"
-        homepage = "https://github.com/getlokalapp/LokalPaymentSDK"
-        ios.deploymentTarget = "16.0"
-        name = "RazorpayCheckout"
-
-        framework {
-            baseName = "RazorpayCheckout"
-            isStatic = true
+    // Direct Kotlin/Native cinterops against the fetched Razorpay.xcframework — no
+    // CocoaPods (see docs/cocoapods-to-spm-migration-plan.md, R1). Razorpay.def's
+    // `package = cocoapods.razorpay_pod` reproduces the cocoapods plugin's generated
+    // package exactly, so iosMain's existing imports need no changes. No `framework {}`
+    // block here: per the plan doc's umbrella-framework insight, only the CONSUMER
+    // (e.g. composeApp) needs to assemble an XCFramework — this module just needs to
+    // compile, and ships as a plain klib on Maven like every other target.
+    iosArm64 {
+        compilations.getByName("main").cinterops.create("Razorpay") {
+            defFile(project.file("src/nativeInterop/cinterop/Razorpay.def"))
+            compilerOpts("-fmodules", "-F${razorpayXcFrameworkDir.get().asFile}/ios-arm64")
         }
-
-        pod("razorpay-pod") {
-            version = iosVendorSdkVersion
-            moduleName = "Razorpay"
-            extraOpts += listOf("-compiler-option", "-fmodules")
+    }
+    iosX64 {
+        compilations.getByName("main").cinterops.create("Razorpay") {
+            defFile(project.file("src/nativeInterop/cinterop/Razorpay.def"))
+            compilerOpts("-fmodules", "-F${razorpayXcFrameworkDir.get().asFile}/ios-arm64_x86_64-simulator")
+        }
+    }
+    iosSimulatorArm64 {
+        compilations.getByName("main").cinterops.create("Razorpay") {
+            defFile(project.file("src/nativeInterop/cinterop/Razorpay.def"))
+            compilerOpts("-fmodules", "-F${razorpayXcFrameworkDir.get().asFile}/ios-arm64_x86_64-simulator")
         }
     }
 

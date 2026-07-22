@@ -1,0 +1,7 @@
+# Direct Kotlin/Native cinterop against Razorpay.xcframework (fetched by
+# fetchRazorpayXcFramework in build.gradle.kts), with ZERO CocoaPods. `package`
+# deliberately matches the cocoapods plugin's old generated package name so
+# iosMain's imports (cocoapods.razorpay_pod.*) compile unchanged.
+language = Objective-C
+modules = Razorpay
+package = cocoapods.razorpay_pod

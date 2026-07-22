@@ -40,3 +40,4 @@ kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref 
 jetbrains-compose = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }
 lokalpaymentsdk-juspay-android-host = { id = "com.getlokalapp.paymentsdk.juspay-android-host" }
 lokalpaymentsdk-lokal-payment = { id = "com.getlokalapp.paymentsdk.lokal-payment", version.ref = "lokalPaymentSdk" }
+lokalpaymentsdk-lokal-payment-spm = { id = "com.getlokalapp.paymentsdk.lokal-payment-spm", version.ref = "lokalPaymentSdk" }

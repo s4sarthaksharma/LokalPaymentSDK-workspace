@@ -70,6 +70,26 @@ Vendor SPM availability (verified 2026-07):
   **scheme pre-build action** plus a **`MerchantConfig.json`** (`{ "clientConfigs": { "<client-id>": {} } }`).
   This is the SPM relocation of today's `post_install` snippet — see S4 / Phase 2.3.
 
+> **Evaluated and rejected for R1/S2: JetBrains' own `swiftPMDependencies` /
+> SwiftPM-import KMP Gradle DSL** (2026-07-21). This is a real, officially-documented
+> feature (`kotlinlang.org/docs/multiplatform/multiplatform-spm-import.html`) that lets a
+> Kotlin/Native target import an Objective-C-compatible SwiftPM package directly, no
+> CocoaPods — on its face, a candidate to replace the hand-rolled cinterop in R1.
+> Confirmed working in production in the sibling `matrimony-kmp` repo (Facebook/MoEngage/
+> AppsFlyer iOS SDKs, zero CocoaPods anywhere in that repo, running on the same *stable*
+> Kotlin 2.4.0 this SDK pins — despite the docs stating `2.4.20-Beta1` as the minimum).
+> **Rejected because of where it's used, not whether it works:** every real usage found
+> (the docs' own examples, and matrimony-kmp's) is at the *final app module* — never
+> inside a published library later consumed by other apps. That's not incidental: the
+> docs explicitly state exporting a module that uses SwiftPM import as a Swift package
+> itself is **not yet supported** ([KT-84420](https://youtrack.jetbrains.com/issue/KT-84420)).
+> Our gateway modules exist specifically to encapsulate a vendor SDK behind a klib
+> published to Maven for *other teams'* apps to consume (see razorpay-checkout's own
+> `implementation, not api` comment on its Razorpay dependency) — the one thing this
+> feature doesn't yet support. Confirmed matrimony-kmp doesn't contradict this: Razorpay/
+> Juspay are Android-only in its Kotlin code entirely; iOS payment integration there is
+> hand-wired natively outside Kotlin. Revisit if/when KT-84420 closes.
+
 ---
 
 ## 3. Design decisions (locked)
