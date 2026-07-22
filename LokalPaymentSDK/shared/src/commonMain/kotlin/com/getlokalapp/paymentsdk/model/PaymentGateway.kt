@@ -57,8 +57,14 @@ enum class PaymentGateway(val code: String) {
  *
  * gatewayConfig stays opaque here — it's only parsed once matched against
  * [gateway] (e.g. RazorpayCheckoutConfig for PaymentGateway.RAZORPAY_CHECKOUT).
+ *
+ * [metadata] is host-owned passthrough: the SDK never reads it and no gateway
+ * ever sees it — whatever the host attaches here (its own order ref, analytics
+ * tags, screen context) is echoed back verbatim on [LokalPaymentResult.metadata]
+ * so the host can correlate the result to the call. `null` means none supplied.
  */
 data class PaymentOrder(
     val gateway: PaymentGateway,
     val gatewayConfig: JsonObject,
+    val metadata: JsonObject? = null,
 )

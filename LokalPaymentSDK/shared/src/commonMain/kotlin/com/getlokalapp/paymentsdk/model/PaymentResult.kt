@@ -1,5 +1,7 @@
 package com.getlokalapp.paymentsdk.model
 
+import kotlinx.serialization.json.JsonObject
+
 /**
  * Gateway-specific cancel codes are classified into this by the platform
  * actual (e.g. Razorpay's Android "payment cancelled" error code) before
@@ -99,8 +101,13 @@ sealed class PaymentResult {
  * gateway is already a resolved [PaymentGateway], so there's always a gateway
  * to name — even when [result] is a [PaymentResult.Failure] because no handler
  * was registered for that gateway.
+ *
+ * [metadata] is whatever the host attached to [PaymentOrder.metadata], echoed
+ * back verbatim (the SDK never reads or mutates it) so the host can correlate
+ * this result to the originating call. `null` when the order carried none.
  */
 data class LokalPaymentResult(
     val gateway: PaymentGateway,
     val result: PaymentResult,
+    val metadata: JsonObject? = null,
 )

@@ -74,6 +74,10 @@ private val SAMPLE_CREATE_ORDER_RESPONSE = """
           "KEY_ID": "rzp_test_RRHhT2F4OwJ6hF"
         },
         "order_row_id": 183452
+      },
+      "metadata": {
+        "source": "demo_checkout_screen",
+        "order_ref": "LKL-RZP-183452"
       }
     }
 """.trimIndent()
@@ -97,6 +101,10 @@ private val SAMPLE_UPI_INTENT_CREATE_ORDER_RESPONSE = """
       "_[flow]": "intent"
     },
     "order_row_id": 3299386
+  },
+  "metadata": {
+    "source": "demo_checkout_screen",
+    "order_ref": "LKL-RZPUPI-3299386"
   }
 }
 """.trimIndent()
@@ -126,6 +134,10 @@ private val SAMPLE_GENERIC_UPI_INTENT_CREATE_ORDER_RESPONSE = """
       { "name": "Google Pay", "package_name": "com.google.android.apps.nbu.paisa.user", "url_scheme": "tez"},
       { "name": "Paytm", "package_name": "net.one97.paytm", "url_scheme": "paytmmp", "logo_url": "https://placehold.co/96x96/00baf2/ffffff/png?text=Paytm" }
     ]
+  },
+  "metadata": {
+    "source": "demo_checkout_screen",
+    "order_ref": "LKL-UPI-OM2607151300225570627163V"
   }
 }
 """.trimIndent()
@@ -166,6 +178,10 @@ private val SAMPLE_JUSPAY_CREATE_ORDER_RESPONSE = """
           "currTime": "2026-07-08T12:12:15Z",
           "xRoutingId": "308184"
         }
+      },
+      "metadata": {
+        "source": "demo_checkout_screen",
+        "order_ref": "LKL-JUSPAY-pU7GMJx25h39ogiVtkgq"
       }
     }
 """.trimIndent()
@@ -182,6 +198,10 @@ private val SAMPLE_NATIVE_IAP_CREATE_ORDER_RESPONSE = """
   "gateway_config": {
     "product_id": "com.getlokalapp.lokalpaymentsdk.demo.tier1",
     "app_account_token": "2816973c-4c74-4e8d-b7f9-ba2607a4fe7d"
+  },
+  "metadata": {
+    "source": "demo_checkout_screen",
+    "order_ref": "LKL-IAP-2816973c"
   }
 }
 """.trimIndent()
@@ -198,6 +218,10 @@ private val SAMPLE_WEB_CHECKOUT_CREATE_ORDER_RESPONSE = """
   "gateway": "web_checkout",
   "gateway_config": {
     "gateway_url": "https://dev-web-pay.dostt.in/?checkoutUrl=https%3A%2F%2Ftest.checkout.dodopayments.com%2Fsession%2Fcks_0Njaeo2VjLvKBQxRRDcE3&provider=dodo"
+  },
+  "metadata": {
+    "source": "demo_checkout_screen",
+    "order_ref": "LKL-WEB-cks_0Njaeo2VjLvKBQxRRDcE3"
   }
 }
 """.trimIndent()
@@ -220,6 +244,11 @@ private fun parseOrder(orderResponseJson: String): PaymentOrder {
     return PaymentOrder(
         gateway = gateway,
         gatewayConfig = root.getValue("gateway_config").jsonObject,
+        // Host-owned passthrough: the SDK never reads this and no gateway sees
+        // it — it comes straight back on LokalPaymentResult.metadata (see
+        // render()), which is how a real host correlates a result to the call
+        // that started it. Optional, so an order without it still parses.
+        metadata = root["metadata"]?.jsonObject,
     )
 }
 
@@ -382,5 +411,8 @@ private fun render(payment: LokalPaymentResult): String {
             clientHint = ${result.clientHint}
         """.trimIndent()
     }
-    return "$header\n$body"
+    // Echoed straight back from PaymentOrder.metadata — the host set it (see
+    // parseOrder), the SDK carried it through untouched.
+    val meta = payment.metadata?.let { "\nmetadata = $it" } ?: ""
+    return "$header\n$body$meta"
 }

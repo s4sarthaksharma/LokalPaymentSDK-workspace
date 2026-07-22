@@ -104,9 +104,11 @@ object LokalPaymentSdk {
                 LokalPaymentResult(
                     gateway = order.gateway,
                     result = PaymentResult.Failure(unavailableError(order.gateway)),
+                    metadata = order.metadata,
                 ),
             )
-        return handler.pay(order.gatewayConfig).map { LokalPaymentResult(order.gateway, it) }
+        return handler.pay(order.gatewayConfig)
+            .map { LokalPaymentResult(order.gateway, it, order.metadata) }
     }
 
     private fun unavailableError(gateway: PaymentGateway): PaymentError {

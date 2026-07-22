@@ -24,9 +24,6 @@ kotlin {
         }
     }
 
-    // SPM combined proof (docs/cocoapods-to-spm-migration-plan.md, Phase 2.1): the
-    // umbrella is now an XCFramework consumed via a local Package.swift instead of a
-    // cocoapods-plugin framework — see LokalPaymentPlugin.
     val xcf = XCFramework("ComposeApp")
     listOf(iosArm64(), iosSimulatorArm64()).forEach { target ->
         target.binaries.framework {
