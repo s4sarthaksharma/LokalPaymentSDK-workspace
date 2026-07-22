@@ -2,6 +2,33 @@
   "originHash" : "23722e93b5701c196195336160cbf8a736f963f85a0307e229be155d2ccc28ea",
   "pins" : [
     {
+      "identity" : "hypercore-ios",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/juspay/hypercore-ios.git",
+      "state" : {
+        "revision" : "41ca7b4cf21c5c7986102fb47c23a522c6d973d1",
+        "version" : "1.0.4"
+      }
+    },
+    {
+      "identity" : "hypersdk-ios",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/juspay/hypersdk-ios",
+      "state" : {
+        "revision" : "01aef15d3ae8ca8c0c428d3993f23abc6ec94e58",
+        "version" : "2.2.8"
+      }
+    },
+    {
+      "identity" : "juspaysafebrowser-ios",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/juspay/juspaysafebrowser-ios.git",
+      "state" : {
+        "revision" : "a086ac9b6533929877d80c1489f340d476d4542a",
+        "version" : "0.1.94"
+      }
+    },
+    {
       "identity" : "razorpay-pod",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/razorpay/razorpay-pod",

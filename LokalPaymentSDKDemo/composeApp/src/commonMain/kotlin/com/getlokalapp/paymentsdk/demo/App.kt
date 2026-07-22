@@ -22,9 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.getlokalapp.paymentsdk.LokalPaymentSdk
-// :juspay isn't SPM-migrated yet (see docs/cocoapods-to-spm-migration-plan.md, Phase
-// 2.1) — excluded from this SPM build, so its class isn't on the compile classpath.
-// import com.getlokalapp.paymentsdk.juspay.JuspaySdk
+import com.getlokalapp.paymentsdk.juspay.JuspaySdk
 import com.getlokalapp.paymentsdk.model.LokalPaymentResult
 import com.getlokalapp.paymentsdk.model.PaymentGateway
 import com.getlokalapp.paymentsdk.model.PaymentOrder
@@ -231,7 +229,7 @@ fun App() {
         Surface(modifier = Modifier.fillMaxSize()) {
 
             val gatewayStatus = remember {
-                // JuspaySdk.initialize(SAMPLE_JUSPAY_INIT_PAYLOAD, clientId = "lokalmatrimony")
+                JuspaySdk.initialize(SAMPLE_JUSPAY_INIT_PAYLOAD, clientId = "lokalmatrimony")
                 LokalPaymentSdk.gatewayStatus()
             }
             val registeredGateways = gatewayStatus.available.map { it.gateway }

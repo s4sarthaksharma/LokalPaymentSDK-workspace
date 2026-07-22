@@ -43,11 +43,7 @@ kotlin {
             implementation(libs.lokalpaymentsdk.razorpay.customui)
             implementation(libs.lokalpaymentsdk.upi.intent)
             implementation(libs.lokalpaymentsdk.native.iap)
-            // juspay is NOT YET migrated off CocoaPods (its build.gradle.kts still needs
-            // `pod(...)` to compile, and HyperSDK has no SPM linking path here yet).
-            // Excluded from this SPM build rather than left in to silently break the final
-            // XCFramework link; re-add once its own Phase 2 migration step lands.
-            // implementation(libs.lokalpaymentsdk.juspay)
+            implementation(libs.lokalpaymentsdk.juspay)
             implementation(libs.lokalpaymentsdk.web.checkout)
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)

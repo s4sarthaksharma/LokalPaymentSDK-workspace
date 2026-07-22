@@ -16,6 +16,14 @@ juspay-hypersdk = "2.2.8-rc.01"
 # `juspay-hypersdk-ios`) so they don't nest under the existing juspay-hypersdk
 # leaf, which would turn that accessor into a group and break `.get()`.
 juspay-pod-ios = "2.2.8.1"
+# iOS HyperSDK under SPM (github.com/juspay/hypersdk-ios). Separate from the
+# CocoaPods `juspay-pod-ios` above: the SPM repo's tags track their own train, and
+# tag `2.2.8` maps cleanly to the `2.2.8/HyperSDK.zip` xcframework release — one
+# version drives BOTH the SDK-side cinterop fetch (build.gradle.kts) and the
+# consumer-side `.package(url:, exact:)` pin (juspay spm-host-contributor), so they
+# can't drift. Named `juspay-spm-ios` (not `-hypersdk-ios`) to avoid nesting under
+# the `juspay-hypersdk` leaf, same reason as `*-pod-ios` above.
+juspay-spm-ios = "2.2.8"
 razorpay-pod-ios = "1.4.3"
 androidx-fragment = "1.8.5"
 androidx-startup = "1.2.0"

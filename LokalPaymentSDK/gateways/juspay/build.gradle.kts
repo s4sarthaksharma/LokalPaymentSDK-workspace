@@ -6,16 +6,18 @@ plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.android.kotlin.multiplatform.library)
     alias(libs.plugins.kotlin.serialization)
-    id("org.jetbrains.kotlin.native.cocoapods")
     `maven-publish`
 }
 
 group = "com.getlokalapp.paymentsdk"
 
-// Single source for the iOS HyperSDK pod version — feeds the cocoapods block
-// and generateIosVendorVersion below, and (via the same catalog entry) the
-// juspay-cocoapods-host contributor's podspec pin, so none can drift.
-val iosVendorSdkVersion = libs.versions.juspay.pod.ios.get()
+// Single source for the iOS HyperSDK version under SPM — drives the
+// fetchHyperSdkXcFramework task below (the xcframework the cinterops compile against)
+// and generateIosVendorVersion, and (via the same catalog entry) the juspay
+// spm-host-contributor's `.package(url:, exact:)` pin, so none can drift. This is the
+// SPM train (2.2.8), separate from the legacy CocoaPods `juspay-pod-ios` (2.2.8.1)
+// the CocoaPods host-contributor still pins until Phase 3 retires it.
+val iosVendorSdkVersion = libs.versions.juspay.spm.ios.get()
 
 // Bakes this module's own version (root gradle.properties) into commonMain,
 // same pattern as :shared's generatePaymentSdkVersion — so GatewayMetadata's
@@ -43,6 +45,64 @@ val generateIosVendorVersion = registerVendorVersionTask(
     vendorSdkVersion = iosVendorSdkVersion,
 )
 
+// HyperCore and Airborne are HyperSDK's transitive iOS dependencies — HyperSDK.framework's
+// headers `#import <HyperCore/…>` and `@import Airborne`, so all three xcframeworks must be
+// on the cinterop framework search path. These versions are exactly what hypersdk-ios
+// $iosVendorSdkVersion's Package.swift pins; kept here rather than in the catalog because
+// only this SDK-side cinterop needs them — the CONSUMER resolves the whole graph
+// automatically through the single hypersdk-ios SPM package (juspay spm-host-contributor).
+val hyperCoreVersion = "1.0.4"
+val airborneVersion = "0.37.0"
+
+// Fetches HyperSDK.xcframework (+ HyperCore, Airborne) straight from Juspay's public release
+// CDN — the same zips github.com/juspay/hypersdk-ios's binary targets point at — so the
+// cinterops below have real headers/module maps to compile against. The SPM-era replacement
+// for CocoaPods resolving `pod("HyperSDK")`. No CocoaPods synthetic build, so the pod's
+// "[CP-User] Validate Mandatory Files" gate (and the old SKIP_HYPERSDK_VALIDATION workaround)
+// is gone entirely; the merchant-asset pipeline is a consumer-side concern now (juspay
+// spm-host-contributor). Cacheable via input/output tracking; re-fetches only on version
+// change. Requires network at build time (an iOS-only, macOS-only build).
+val fetchHyperSdkXcFramework = tasks.register("fetchHyperSdkXcFramework") {
+    inputs.property("hypersdk", iosVendorSdkVersion)
+    inputs.property("hypercore", hyperCoreVersion)
+    inputs.property("airborne", airborneVersion)
+    val outputDir = layout.buildDirectory.dir("vendorXcFrameworks")
+    outputs.dir(outputDir)
+    doLast {
+        val out = outputDir.get().asFile
+        out.deleteRecursively()
+        out.mkdirs()
+        val work = temporaryDir
+        // Plain ProcessBuilder, not Project.exec (unavailable on a lazily-registered task's
+        // doLast in this Gradle version) — mirrors razorpay-checkout's fetch task. Each zip
+        // has its <Name>.xcframework at the root, so unzip and copy it straight out.
+        fun run(vararg command: String) {
+            val process = ProcessBuilder(*command).inheritIO().start()
+            check(process.waitFor() == 0) { "Command failed: ${command.joinToString(" ")}" }
+        }
+        fun fetch(name: String, version: String, cdnPath: String) {
+            val zip = work.resolve("$name-$version.zip")
+            run(
+                "curl", "-sL", "-o", zip.absolutePath,
+                "https://public.releases.juspay.in/release/ios/$cdnPath/$version/$name.zip",
+            )
+            run("unzip", "-q", "-o", zip.absolutePath, "-d", work.absolutePath)
+            work.resolve("$name.xcframework").copyRecursively(out.resolve("$name.xcframework"), overwrite = true)
+        }
+        fetch("HyperSDK", iosVendorSdkVersion, "hyper-sdk")
+        fetch("HyperCore", hyperCoreVersion, "hyper-core")
+        fetch("Airborne", airborneVersion, "airborne")
+    }
+}
+val vendorXcFrameworksDir = fetchHyperSdkXcFramework.map {
+    layout.buildDirectory.dir("vendorXcFrameworks").get()
+}
+// cinterops are configured below with plain compilerOpts strings, so Gradle can't infer this
+// dependency on its own — same wiring as razorpay-checkout's fetch task.
+tasks.matching { it.name.startsWith("cinteropHyperSDK") }.configureEach {
+    dependsOn(fetchHyperSdkXcFramework)
+}
+
 kotlin {
     compilerOptions {
         freeCompilerArgs.add("-Xexpect-actual-classes")
@@ -60,31 +120,31 @@ kotlin {
         withHostTest {}
     }
 
-    iosX64()
-    iosArm64()
-    iosSimulatorArm64()
-
-    cocoapods {
-        version = project.version.toString()
-        summary = "Lokal Payment SDK - Juspay HyperCheckout"
-        homepage = "https://github.com/getlokalapp/LokalPaymentSDK"
-        ios.deploymentTarget = "16.0"
-        name = "Juspay"
-
-        framework {
-            baseName = "Juspay"
-            isStatic = true
-        }
-
-        // D9: compiling this module's iOS targets requires
-        // SKIP_HYPERSDK_VALIDATION=true set in the environment — the pod's own
-        // "Validate Mandatory Files" script phase expects merchant assets from a
-        // client-specific MerchantConfig.txt + Fuse.rb post_install step that
-        // only the host's real Podfile runs. See docs/juspay-integration-plan.md.
-        pod("HyperSDK") {
-            version = iosVendorSdkVersion
+    // Direct Kotlin/Native cinterops against the fetched HyperSDK.xcframework — no
+    // CocoaPods (see docs/cocoapods-to-spm-migration-plan.md, R1/S2). HyperSDK.def's
+    // `package = cocoapods.HyperSDK` reproduces the cocoapods plugin's generated package
+    // exactly, so iosMain's existing `import cocoapods.HyperSDK.HyperServices` needs no
+    // change. No `framework {}` block: per the umbrella-framework insight only the CONSUMER
+    // assembles an XCFramework; this module just compiles and ships as a plain klib on Maven.
+    // All three vendor frameworks go on the -F path per slice: HyperSDK's module can't be
+    // resolved without HyperCore (imported by its headers) and Airborne (@import'd by its
+    // Swift header) alongside it. Device targets use the ios-arm64 slice; simulator targets
+    // the ios-arm64_x86_64-simulator slice.
+    fun org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget.hyperSdkCinterop(slice: String) {
+        compilations.getByName("main").cinterops.create("HyperSDK") {
+            defFile(project.file("src/nativeInterop/cinterop/HyperSDK.def"))
+            val base = vendorXcFrameworksDir.get().asFile
+            compilerOpts(
+                "-fmodules",
+                "-F${base}/HyperSDK.xcframework/$slice",
+                "-F${base}/HyperCore.xcframework/$slice",
+                "-F${base}/Airborne.xcframework/$slice",
+            )
         }
     }
+    iosArm64 { hyperSdkCinterop("ios-arm64") }
+    iosX64 { hyperSdkCinterop("ios-arm64_x86_64-simulator") }
+    iosSimulatorArm64 { hyperSdkCinterop("ios-arm64_x86_64-simulator") }
 
     sourceSets {
         commonMain {

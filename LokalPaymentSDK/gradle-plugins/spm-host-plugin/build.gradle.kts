@@ -19,6 +19,7 @@ dependencies {
     // unless the host imports its gateway module.
     implementation(project(":gateways:razorpay-checkout:spm-host-contributor"))
     implementation(project(":gateways:native-iap:spm-host-contributor"))
+    implementation(project(":gateways:juspay:spm-host-contributor"))
 }
 
 // This module lives in :gradle-plugins (gateway-agnostic build plumbing), parallel
