@@ -145,6 +145,13 @@ at a time" seam:
 3. **`razorpay-checkout`** — direct cinterop vs. Razorpay XCFramework + `razorpay-pod` SPM package.
 4. **`juspay`** — direct cinterop vs. HyperSDK XCFramework + `hypersdk-ios` SPM package + rewrite contributor (`Fuse.rb` → scheme pre-build action, `MerchantConfig.txt` → `.json`). **Last, most work.**
 
+> **Status — ALL gateways migrated (2026-07-22).** Actual order run: `razorpay-checkout`
+> first (as the hardest-vendor pilot), then `native-iap`, then `juspay`; the pure-KMP
+> gateways rode in for free. Every gateway builds + links via SPM through the demo app
+> (Debug + Release, `xcodebuild` confirmed: each vendor framework `otool -L`-linked into
+> the app binary). Only **Phase 3 (drop CocoaPods)** remains, gated on on-device
+> validation across the consuming apps — see §5.
+
 ---
 
 ## 5. Phased plan
@@ -219,23 +226,68 @@ Prove the end-to-end loop with **no third-party unknowns**:
 > intentionally carries only what Razorpay needs today (YAGNI); extend it when Juspay's
 > SPM contributor is built (Phase 2.3).
 
-### Phase 2 — Migrate vendor cinterops one at a time
-1. **`razorpay-checkout`** → direct cinterop vs. Razorpay XCFramework; contributor
-   contributes the `razorpay/razorpay-pod` SPM package instead of injecting a podspec
-   `spec.dependency`. Test a Razorpay checkout end-to-end.
-2. **`web-checkout` / `upi-intent` / `razorpay-customui`** → verify they still fold into
-   the XCFramework umbrella (no vendor work). Quick.
-3. **`juspay`** → direct cinterop vs. HyperSDK XCFramework; contribute the
-   `juspay/hypersdk-ios` SPM package; rewrite `JuspayHostContributor`:
-   - `writePostInstallSnippet` (drops `juspay.rb` into `post_install`) → **configure an
-     Xcode scheme pre-build action** running `Fuse.rb` + `ValidateHyperSDK.rb`.
-   - `writeMerchantConfig` (emits `.txt`) → **emit `MerchantConfig.json`** in HyperSDK's
-     `{ "clientConfigs": { "<client-id>": {} } }` shape.
-   - URL-schemes generation is Pods-agnostic and stays.
-   Test a Juspay payment end-to-end.
+### Phase 2 — Migrate vendor cinterops one at a time — ✅ DONE (2026-07-22)
+1. **`razorpay-checkout`** ✅ → direct cinterop vs. Razorpay XCFramework (`fetchRazorpayXcFramework`
+   fetches the git-tag tarball); `RazorpaySpmContributor` contributes the `razorpay/razorpay-pod`
+   SPM package. Builds + links through the demo, Debug + Release.
+   - **As-built decision (S1):** the umbrella binaryTarget wires the **release** XCFramework only
+     (`XCFrameworks/release/`). A binaryTarget's `path:` is static and SPM validates it before any
+     Run Script phase, so per-configuration swapping is impossible — instead ship ONE release
+     binary (config is orthogonal to slice), which links correctly in every Xcode configuration,
+     exactly like a normal vendored SDK. Enabled `kotlin.mpp.enableCInteropCommonization=true`
+     (the hierarchical `iosMain` needs it to see the per-target cinterop).
+2. **`web-checkout` / `upi-intent` / `razorpay-customui`** ✅ → pure-KMP; fold into the umbrella as
+   plain klibs, verified by the demo build. No vendor work.
+3. **`native-iap`** ✅ → no vendor SDK, but owns `NativeIapBridge.swift`. Needed a new
+   **source-target** contribution shape: SDK-side, `generateNativeIapBridgeInterface` runs
+   `swiftc -emit-objc-header` + a modulemap for the cinterop (no binary — headers only);
+   consumer-side, `NativeIapSpmContributor` ships the Swift (resolved from the `iossrc` Maven
+   artifact) into the umbrella `Package.swift` as a `.target` linking `StoreKit`. Extended
+   `SpmContribution` with `SpmSourceTarget`. Builds + links (StoreKit + bridge symbols confirmed).
+4. **`juspay`** ✅ → direct cinterop vs. HyperSDK XCFramework (`fetchHyperSdkXcFramework` fetches
+   HyperSDK **+ its transitive HyperCore + Airborne** xcframeworks from Juspay's public release CDN
+   — the headers `#import <HyperCore/…>` / `@import Airborne`); `JuspaySpmContributor` contributes
+   the `juspay/hypersdk-ios` SPM package (which pulls the whole transitive graph on the consumer
+   side). Builds + links (HyperSDK/HyperCore/JuspaySafeBrowser/Airborne all `otool -L`-linked).
+   - `writePostInstallSnippet` (`juspay.rb` in `post_install`) → **Xcode scheme pre-build action**
+     running `Fuse.rb` + `ValidateHyperSDK.rb`. A Gradle plugin can't inject a scheme pre-action,
+     so this is a documented one-time host step (like adding the SPM package itself).
+   - `writeMerchantConfig` (`.txt`) → **`MerchantConfig.json`** (`{ "clientConfigs": { "<id>": {} } }`),
+     auto-emitted by the contributor.
+   - **Correction to the original plan:** URL-schemes generation does **not** "stay" — it was a
+     `post_install` snippet, which SPM has no host for. It's no longer needed: `ValidateHyperSDK.rb`
+     (run by the pre-build action) writes Juspay's URL/query schemes into `Info.plist` itself.
+   - **D9 dropped:** `SKIP_HYPERSDK_VALIDATION` was only for the CocoaPods synthetic build's
+     "Validate Mandatory Files" script phase; a direct cinterop runs no script phase, so it's gone.
+   - **Left to on-device:** live asset download (Fuse.rb) + a real sandbox transaction.
 
-### Phase 3 — Drop CocoaPods
-Once every gateway passes on SPM across the consuming apps:
+### Phase 3 — Drop CocoaPods — ✅ DONE (2026-07-22, after on-device validation)
+Executed once the SPM path was confirmed on-device. What was removed / changed:
+- Deleted `cocoapods-host-spi`, `cocoapods-host-plugin`, `cocoapods-host-contributor-support`,
+  and each gateway's CocoaPods `host-contributor` (razorpay-checkout, juspay).
+- Deleted all `.podspec` files (shared, native-iap, NativeIapBridge, demo composeApp) and the
+  demo's `Podfile`, `Podfile.lock`, `Pods/`, `iosApp.xcworkspace`.
+- Removed the `org.jetbrains.kotlin.native.cocoapods` plugin + `cocoapods {}` blocks from
+  `shared` and `webview` (now plain klibs).
+- The sole umbrella plugin took the plain id `com.getlokalapp.paymentsdk.lokal-payment`
+  (dropped the `-spm` suffix now that there's no CocoaPods sibling); D5 (the CocoaPods/SPM
+  choice) is gone.
+- Renamed the cinterop packages `cocoapods.*` → `vendor.*` (def files + iosMain imports) so no
+  `cocoapods` label remains in source.
+- **KEPT** `registerIosPodSourcePublication` / the `iossrc` artifact — repurposed to ship
+  native-iap's Swift source to its SPM source target (dropped the `*.podspec` include).
+- **UPI query schemes**: were injected via the CocoaPods `post_install`; now a static
+  `LSApplicationQueriesSchemes` list already committed in the demo's `Info.plist` (a documented
+  one-time step for consumers).
+
+Verified: full SDK `publishToMavenLocal` + demo `assembleComposeAppReleaseXCFramework` +
+`xcodebuild` (Debug) all green with zero CocoaPods anywhere.
+
+Follow-up (optional, not done): rename the remaining `Spm`/`spm` qualifiers on modules
+(`spm-host-*`), classes (`LokalPaymentSpmPlugin`, `LokalGatewaySpmContributor`, …) and the
+`lokalPaymentSdkSpm { }` extension, now that SPM is the only flavor.
+
+Original checklist, for reference:
 - Delete all `.podspec` files, the Podfile-management code, `lokal_ios_pods.rb`
   generation, and the `org.jetbrains.kotlin.native.cocoapods` plugin usages.
 - Remove the Pods/SPM flag (D5) and any dead cocoapods host-contributor code paths.

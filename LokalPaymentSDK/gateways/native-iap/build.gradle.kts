@@ -29,7 +29,7 @@ group = "com.getlokalapp.paymentsdk"
 //     cinterop only needs the ObjC interface; the actual Swift is compiled and linked
 //     on the consumer side. The interface is arch-independent, so all three targets
 //     share one generated dir (unlike razorpay's per-slice framework dirs).
-//   * Consumer side: :native-iap:spm-host-contributor ships NativeIapBridge.swift into
+//   * Consumer side: :native-iap:host-contributor ships NativeIapBridge.swift into
 //     the app's generated umbrella Package.swift as a source target linking StoreKit,
 //     resolved from this module's `iossrc` Maven artifact (registerIosPodSourcePublication
 //     below). That contributor replaces the local `:path` CocoaPod a host used to name in
@@ -58,7 +58,7 @@ val generateIosVendorVersion = registerVendorVersionTask(
 // building the local NativeIapBridge pod and generating its cinterop. Only the *interface* is
 // produced (no compiled binary): cinterop resolves symbols at bindings-generation time, and
 // the Swift is actually compiled/linked on the consumer side via the SPM source target (see
-// :native-iap:spm-host-contributor). The generated header is arch-independent, so one dir
+// :native-iap:host-contributor). The generated header is arch-independent, so one dir
 // serves all three iOS targets. Requires `xcrun`/`swiftc` at build time (already an iOS-only,
 // macOS-only build). Cacheable via normal input/output tracking; re-runs only when the Swift
 // source changes.
@@ -130,8 +130,8 @@ kotlin {
     // Direct Kotlin/Native cinterops against NativeIapBridge's generated Objective-C
     // interface (generateNativeIapBridgeInterface above) — no CocoaPods. All three targets
     // share the one arch-independent interface dir. NativeIapBridge.def's
-    // `package = cocoapods.NativeIapBridge` reproduces the cocoapods plugin's generated
-    // package exactly, so iosMain's existing imports need no changes. No `framework {}`
+    // `package = vendor.NativeIapBridge` is where the generated bindings land — iosMain
+    // imports it as vendor.NativeIapBridge.*. No `framework {}`
     // block: per the umbrella-framework insight only the CONSUMER assembles an XCFramework;
     // this module just needs to compile, and ships as a plain klib on Maven.
     val configureNativeIapBridgeCinterop: org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget.() -> Unit = {

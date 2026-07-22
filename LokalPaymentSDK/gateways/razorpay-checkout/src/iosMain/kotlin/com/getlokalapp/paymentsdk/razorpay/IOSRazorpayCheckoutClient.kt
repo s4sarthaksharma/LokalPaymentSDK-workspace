@@ -1,7 +1,7 @@
 package com.getlokalapp.paymentsdk.razorpay
 
-import cocoapods.razorpay_pod.RazorpayCheckout
-import cocoapods.razorpay_pod.RazorpayPaymentCompletionProtocolWithDataProtocol
+import vendor.razorpay.RazorpayCheckout
+import vendor.razorpay.RazorpayPaymentCompletionProtocolWithDataProtocol
 import com.getlokalapp.paymentsdk.hostcontext.topmostViewController
 import com.getlokalapp.paymentsdk.json.toPlainMap
 import kotlinx.cinterop.ExperimentalForeignApi

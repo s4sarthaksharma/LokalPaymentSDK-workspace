@@ -5,7 +5,6 @@ plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.android.kotlin.multiplatform.library)
     alias(libs.plugins.kotlin.serialization)
-    id("org.jetbrains.kotlin.native.cocoapods")
     `maven-publish`
 }
 
@@ -37,22 +36,12 @@ kotlin {
         withHostTest {}
     }
 
+    // Plain klib targets — no framework/pod output. Under SPM this module folds into the
+    // consumer-assembled umbrella XCFramework (see docs/cocoapods-to-spm-migration-plan.md,
+    // the umbrella-framework insight); it ships as a klib on Maven like every gateway.
     iosX64()
     iosArm64()
     iosSimulatorArm64()
-
-    cocoapods {
-        version = project.version.toString()
-        summary = "Lokal Payment SDK shared module"
-        homepage = "https://github.com/getlokalapp/LokalPaymentSDK"
-        ios.deploymentTarget = "16.0"
-        name = "Shared"
-
-        framework {
-            baseName = "Shared"
-            isStatic = true
-        }
-    }
 
     sourceSets {
         commonMain {

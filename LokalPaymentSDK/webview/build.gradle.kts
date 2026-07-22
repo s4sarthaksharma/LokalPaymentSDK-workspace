@@ -4,7 +4,6 @@ plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.android.kotlin.multiplatform.library)
     alias(libs.plugins.kotlin.serialization)
-    id("org.jetbrains.kotlin.native.cocoapods")
     `maven-publish`
 }
 
@@ -27,22 +26,11 @@ kotlin {
         withHostTest {}
     }
 
+    // Plain klib targets — no framework/pod output; folds into the consumer umbrella
+    // XCFramework under SPM (see docs/cocoapods-to-spm-migration-plan.md).
     iosX64()
     iosArm64()
     iosSimulatorArm64()
-
-    cocoapods {
-        version = project.version.toString()
-        summary = "Lokal Payment SDK - generic WebView + JS bridge"
-        homepage = "https://github.com/getlokalapp/LokalPaymentSDK"
-        ios.deploymentTarget = "16.0"
-        name = "LokalWebView"
-
-        framework {
-            baseName = "LokalWebView"
-            isStatic = true
-        }
-    }
 
     sourceSets {
         commonMain.dependencies {

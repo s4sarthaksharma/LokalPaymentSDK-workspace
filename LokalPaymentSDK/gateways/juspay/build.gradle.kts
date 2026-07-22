@@ -14,7 +14,7 @@ group = "com.getlokalapp.paymentsdk"
 // Single source for the iOS HyperSDK version under SPM — drives the
 // fetchHyperSdkXcFramework task below (the xcframework the cinterops compile against)
 // and generateIosVendorVersion, and (via the same catalog entry) the juspay
-// spm-host-contributor's `.package(url:, exact:)` pin, so none can drift. This is the
+// host-contributor's `.package(url:, exact:)` pin, so none can drift. This is the
 // SPM train (2.2.8), separate from the legacy CocoaPods `juspay-pod-ios` (2.2.8.1)
 // the CocoaPods host-contributor still pins until Phase 3 retires it.
 val iosVendorSdkVersion = libs.versions.juspay.spm.ios.get()
@@ -50,7 +50,7 @@ val generateIosVendorVersion = registerVendorVersionTask(
 // on the cinterop framework search path. These versions are exactly what hypersdk-ios
 // $iosVendorSdkVersion's Package.swift pins; kept here rather than in the catalog because
 // only this SDK-side cinterop needs them — the CONSUMER resolves the whole graph
-// automatically through the single hypersdk-ios SPM package (juspay spm-host-contributor).
+// automatically through the single hypersdk-ios SPM package (juspay host-contributor).
 val hyperCoreVersion = "1.0.4"
 val airborneVersion = "0.37.0"
 
@@ -60,7 +60,7 @@ val airborneVersion = "0.37.0"
 // for CocoaPods resolving `pod("HyperSDK")`. No CocoaPods synthetic build, so the pod's
 // "[CP-User] Validate Mandatory Files" gate (and the old SKIP_HYPERSDK_VALIDATION workaround)
 // is gone entirely; the merchant-asset pipeline is a consumer-side concern now (juspay
-// spm-host-contributor). Cacheable via input/output tracking; re-fetches only on version
+// host-contributor). Cacheable via input/output tracking; re-fetches only on version
 // change. Requires network at build time (an iOS-only, macOS-only build).
 val fetchHyperSdkXcFramework = tasks.register("fetchHyperSdkXcFramework") {
     inputs.property("hypersdk", iosVendorSdkVersion)
@@ -122,9 +122,9 @@ kotlin {
 
     // Direct Kotlin/Native cinterops against the fetched HyperSDK.xcframework — no
     // CocoaPods (see docs/cocoapods-to-spm-migration-plan.md, R1/S2). HyperSDK.def's
-    // `package = cocoapods.HyperSDK` reproduces the cocoapods plugin's generated package
-    // exactly, so iosMain's existing `import cocoapods.HyperSDK.HyperServices` needs no
-    // change. No `framework {}` block: per the umbrella-framework insight only the CONSUMER
+    // `package = vendor.HyperSDK` is where the generated bindings land, so iosMain imports
+    // `import vendor.HyperSDK.HyperServices`.
+    // No `framework {}` block: per the umbrella-framework insight only the CONSUMER
     // assembles an XCFramework; this module just compiles and ships as a plain klib on Maven.
     // All three vendor frameworks go on the -F path per slice: HyperSDK's module can't be
     // resolved without HyperCore (imported by its headers) and Airborne (@import'd by its

@@ -1,6 +1,6 @@
 package com.getlokalapp.paymentsdk.juspay
 
-import cocoapods.HyperSDK.HyperServices
+import vendor.HyperSDK.HyperServices
 import com.getlokalapp.paymentsdk.hostcontext.topmostViewController
 import com.getlokalapp.paymentsdk.json.toPlainMap
 import kotlinx.cinterop.ExperimentalForeignApi

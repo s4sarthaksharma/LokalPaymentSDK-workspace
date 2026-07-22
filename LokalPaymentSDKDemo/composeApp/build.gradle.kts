@@ -6,10 +6,10 @@ plugins {
     alias(libs.plugins.android.kotlinMultiplatformLibrary)
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.jetbrains.compose)
-    alias(libs.plugins.lokalpaymentsdk.lokal.payment.spm)
+    alias(libs.plugins.lokalpaymentsdk.lokal.payment)
 }
 
-lokalPaymentSdkSpm {
+lokalPaymentSdk {
     xcFrameworkName = "ComposeApp"
 }
 
@@ -26,7 +26,7 @@ kotlin {
 
     // SPM combined proof (docs/cocoapods-to-spm-migration-plan.md, Phase 2.1): the
     // umbrella is now an XCFramework consumed via a local Package.swift instead of a
-    // cocoapods-plugin framework — see LokalPaymentSpmPlugin.
+    // cocoapods-plugin framework — see LokalPaymentPlugin.
     val xcf = XCFramework("ComposeApp")
     listOf(iosArm64(), iosSimulatorArm64()).forEach { target ->
         target.binaries.framework {
@@ -47,7 +47,6 @@ kotlin {
             implementation(libs.lokalpaymentsdk.web.checkout)
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
-
             implementation(compose.runtime)
             implementation(compose.foundation)
             implementation(compose.material3)

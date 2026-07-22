@@ -2,13 +2,13 @@
 
 package com.getlokalapp.paymentsdk.nativeiap
 
-import cocoapods.NativeIapBridge.NativeIapBridge
-import cocoapods.NativeIapBridge.NativeIapOutcomeCancelled
-import cocoapods.NativeIapBridge.NativeIapOutcomeFailure
-import cocoapods.NativeIapBridge.NativeIapOutcomePending
-import cocoapods.NativeIapBridge.NativeIapOutcomeSuccess
-import cocoapods.NativeIapBridge.NativeIapOutcomeUnverified
-import cocoapods.NativeIapBridge.NativeIapResult as SwiftNativeIapResult
+import vendor.NativeIapBridge.NativeIapBridge
+import vendor.NativeIapBridge.NativeIapOutcomeCancelled
+import vendor.NativeIapBridge.NativeIapOutcomeFailure
+import vendor.NativeIapBridge.NativeIapOutcomePending
+import vendor.NativeIapBridge.NativeIapOutcomeSuccess
+import vendor.NativeIapBridge.NativeIapOutcomeUnverified
+import vendor.NativeIapBridge.NativeIapResult as SwiftNativeIapResult
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.channels.awaitClose
