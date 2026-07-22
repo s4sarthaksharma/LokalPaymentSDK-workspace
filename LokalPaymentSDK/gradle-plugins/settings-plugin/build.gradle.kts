@@ -20,14 +20,14 @@ dependencies {
     implementation(project(":gateways:juspay:settings-contributor"))
 }
 
-// A DEDICATED module, NOT folded into :gradle-plugins:cocoapods-host-plugin. Applying a
+// A DEDICATED module, NOT folded into :gradle-plugins:host-plugin. Applying a
 // Settings plugin puts its whole jar on the parent (settings) classpath, visible to
 // every project. If this shared a jar with the `lokal-payment` PROJECT plugin, that
 // project plugin would then be "already on the classpath with an unknown version"
 // and a module could no longer apply `lokal-payment` with an explicit version
 // (confirmed failure). Keeping the settings umbrella in its own jar avoids leaking
 // the project plugin onto the settings classpath. It sits in :gradle-plugins
-// (gateway-agnostic build plumbing) alongside :gradle-plugins:cocoapods-host-plugin
+// (gateway-agnostic build plumbing) alongside :gradle-plugins:host-plugin
 // and has no dependency on the :shared runtime library.
 gradlePlugin {
     plugins {

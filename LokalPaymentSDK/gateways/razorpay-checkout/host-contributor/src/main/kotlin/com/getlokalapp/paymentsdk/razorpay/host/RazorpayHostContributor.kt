@@ -12,7 +12,7 @@ import org.gradle.api.Project
  * plugin must link into the generated `Package.swift` — the SPM-flavored sibling of
  * `RazorpayHostContributor` (:host-contributor), which does the equivalent by
  * injecting `spec.dependency 'razorpay-pod'` into the host's generated podspec.
- * Discovered by the umbrella `com.getlokalapp.paymentsdk.lokal-payment-spm` plugin
+ * Discovered by the umbrella `com.getlokalapp.paymentsdk.lokal-payment` plugin
  * via ServiceLoader.
  *
  * Self-gates on the host actually depending on :razorpay-checkout, identically to

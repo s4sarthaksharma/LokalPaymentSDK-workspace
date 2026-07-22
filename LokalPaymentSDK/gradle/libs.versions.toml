@@ -9,22 +9,24 @@ kotlinx-serialization-json = "1.11.0"
 razorpay-checkout = "1.6.41"
 razorpay-customui = "3.9.22"
 juspay-hypersdk = "2.2.8-rc.01"
-# iOS pod versions — deliberately separate from the Android entries above.
-# The iOS pods track a different release train: Android juspay-hypersdk is
-# 2.2.8-rc.01 while the iOS HyperSDK pod is 2.2.8.1; Android razorpay-checkout
-# is 1.6.41 while the iOS razorpay-pod is 1.4.3. Named `*-pod-ios` (not
-# `juspay-hypersdk-ios`) so they don't nest under the existing juspay-hypersdk
-# leaf, which would turn that accessor into a group and break `.get()`.
-juspay-pod-ios = "2.2.8.1"
-# iOS HyperSDK under SPM (github.com/juspay/hypersdk-ios). Separate from the
-# CocoaPods `juspay-pod-ios` above: the SPM repo's tags track their own train, and
-# tag `2.2.8` maps cleanly to the `2.2.8/HyperSDK.zip` xcframework release — one
-# version drives BOTH the SDK-side cinterop fetch (build.gradle.kts) and the
-# consumer-side `.package(url:, exact:)` pin (juspay spm-host-contributor), so they
-# can't drift. Named `juspay-spm-ios` (not `-hypersdk-ios`) to avoid nesting under
-# the `juspay-hypersdk` leaf, same reason as `*-pod-ios` above.
+# iOS vendor SDK versions under SPM — deliberately separate from the Android
+# entries above, since the iOS SDKs track their own release trains (Android
+# juspay-hypersdk is 2.2.8-rc.01 while iOS HyperSDK is 2.2.8; Android
+# razorpay-checkout is 1.6.41 while the iOS razorpay-pod is 1.4.3).
+#
+# iOS HyperSDK under SPM (github.com/juspay/hypersdk-ios): tag `2.2.8` maps cleanly
+# to the `2.2.8/HyperSDK.zip` xcframework release — one version drives BOTH the
+# SDK-side cinterop fetch (build.gradle.kts) and the consumer-side
+# `.package(url:, exact:)` pin (juspay spm-host-contributor), so they can't drift.
+# Named `juspay-spm-ios` (not `-hypersdk-ios`) to avoid nesting under the
+# `juspay-hypersdk` leaf, which would turn that accessor into a group and break `.get()`.
 juspay-spm-ios = "2.2.8"
-razorpay-pod-ios = "1.4.3"
+# github.com/razorpay/razorpay-pod at tag 1.4.3 — the same repo/tag drives both the
+# SDK-side xcframework fetch and the consumer-side SPM `.package(url:, exact:)` pin,
+# so they can't drift. (The repo slug is `razorpay-pod`, a vendor name, not CocoaPods
+# — removed in Phase 3.) Named `razorpay-spm-ios` (not `-checkout-ios`) to avoid
+# nesting under the `razorpay-checkout` leaf, which would break `.get()`.
+razorpay-spm-ios = "1.4.3"
 androidx-fragment = "1.8.5"
 androidx-startup = "1.2.0"
 androidx-core = "1.15.0"

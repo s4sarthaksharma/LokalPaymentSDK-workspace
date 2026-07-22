@@ -9,11 +9,10 @@ import java.io.File
 import java.util.ServiceLoader
 
 /**
- * The SPM-flavored sibling of `LokalPaymentPlugin`
- * (:gradle-plugins:cocoapods-host-plugin). A host applies EITHER this OR
- * `lokal-payment`, never both — see docs/cocoapods-to-spm-migration-plan.md (D5).
- * Applied to the module that declares the host's `XCFramework("<name>")` and
- * produces the umbrella framework.
+ * The sole iOS umbrella plugin (`com.getlokalapp.paymentsdk.lokal-payment`); it took
+ * over the plain `lokal-payment` id when the CocoaPods umbrella was removed in Phase 3
+ * — see docs/cocoapods-to-spm-migration-plan.md (D5). Applied to the module that
+ * declares the host's `XCFramework("<name>")` and produces the umbrella framework.
  *
  * Generates `build/lokal/spmPackage/Package.swift`: a `binaryTarget` wrapping the
  * host's own XCFramework (named via [LokalPaymentSdkExtension.xcFrameworkName]),
@@ -47,7 +46,7 @@ class LokalPaymentPlugin : Plugin<Project> {
         // (their import self-gate), same timing as LokalPaymentPlugin.
         project.afterEvaluate {
             val xcFrameworkName = requireNotNull(config.xcFrameworkName) {
-                "Host applies 'com.getlokalapp.paymentsdk.lokal-payment-spm' but has " +
+                "Host applies 'com.getlokalapp.paymentsdk.lokal-payment' but has " +
                     "not set 'lokalPaymentSdk { xcFrameworkName = \"...\" }' — " +
                     "required to locate the assembled .xcframework this plugin wraps."
             }

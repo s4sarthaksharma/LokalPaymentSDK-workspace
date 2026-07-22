@@ -14,7 +14,7 @@ import org.gradle.api.Project
  * Each gateway that must link a vendor SPM package into the host's iOS build ships
  * one implementation and registers it in
  * `META-INF/services/com.getlokalapp.paymentsdk.host.LokalGatewayHostContributor`.
- * Discovered by the umbrella `com.getlokalapp.paymentsdk.lokal-payment-spm` plugin
+ * Discovered by the umbrella `com.getlokalapp.paymentsdk.lokal-payment` plugin
  * via [java.util.ServiceLoader], exactly like [LokalGatewayHostContributor].
  *
  * Implementations MUST self-gate: return `null` unless the host actually declares

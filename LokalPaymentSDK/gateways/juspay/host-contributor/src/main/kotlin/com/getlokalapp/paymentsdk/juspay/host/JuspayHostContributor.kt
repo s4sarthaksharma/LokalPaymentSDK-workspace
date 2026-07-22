@@ -10,7 +10,7 @@ import org.gradle.api.Project
  * Juspay's build-time contribution to an iOS host under SPM. The SPM-flavored sibling of
  * `JuspayHostContributor` (:host-contributor), which injects `spec.dependency 'HyperSDK'`
  * into the CocoaPods podspec. Discovered by the umbrella
- * `com.getlokalapp.paymentsdk.lokal-payment-spm` plugin via ServiceLoader; self-gates on
+ * `com.getlokalapp.paymentsdk.lokal-payment` plugin via ServiceLoader; self-gates on
  * the host depending on :juspay (this jar is always on the buildscript classpath).
  *
  * Two responsibilities, both mirroring `JuspayHostContributor`'s CocoaPods equivalents:

@@ -11,10 +11,11 @@ plugins {
 
 group = "com.getlokalapp.paymentsdk"
 
-// Single source for the iOS Razorpay pod version — feeds the cocoapods block
-// and generateIosVendorVersion below, and (via the same catalog entry) the
-// razorpay-cocoapods-host plugin's podspec pin, so none can drift.
-val iosVendorSdkVersion = libs.versions.razorpay.pod.ios.get()
+// Single source for the iOS Razorpay SDK version — feeds fetchRazorpayXcFramework
+// (the xcframework the cinterops compile against) and generateIosVendorVersion below,
+// and (via the same catalog entry) the razorpay host-contributor's
+// `.package(url:, exact:)` pin, so none can drift.
+val iosVendorSdkVersion = libs.versions.razorpay.spm.ios.get()
 
 // Bakes this module's own version (root gradle.properties) into commonMain,
 // same pattern as :shared's generatePaymentSdkVersion — so GatewayMetadata's

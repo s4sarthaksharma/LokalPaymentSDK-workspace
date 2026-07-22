@@ -14,9 +14,7 @@ group = "com.getlokalapp.paymentsdk"
 // Single source for the iOS HyperSDK version under SPM — drives the
 // fetchHyperSdkXcFramework task below (the xcframework the cinterops compile against)
 // and generateIosVendorVersion, and (via the same catalog entry) the juspay
-// host-contributor's `.package(url:, exact:)` pin, so none can drift. This is the
-// SPM train (2.2.8), separate from the legacy CocoaPods `juspay-pod-ios` (2.2.8.1)
-// the CocoaPods host-contributor still pins until Phase 3 retires it.
+// host-contributor's `.package(url:, exact:)` pin, so none can drift.
 val iosVendorSdkVersion = libs.versions.juspay.spm.ios.get()
 
 // Bakes this module's own version (root gradle.properties) into commonMain,

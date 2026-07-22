@@ -22,7 +22,7 @@ dependencies {
     compileOnly(gradleApi())
 }
 
-// Bakes gradle/libs.versions.toml's razorpay-pod-ios entry into a
+// Bakes gradle/libs.versions.toml's razorpay-spm-ios entry into a
 // VENDOR_SDK_VERSION constant this contributor pins the generated Package.swift's
 // `.package(url:, exact:)` to — the same catalog entry :razorpay-checkout links its
 // cinterop bindings against, so the linked package can't drift from the bindings
@@ -32,7 +32,7 @@ dependencies {
 val generatePackageVersion = registerVendorVersionTask(
     taskName = "generatePackageVersion",
     packageName = "com.getlokalapp.paymentsdk.razorpay.host",
-    vendorSdkVersion = libs.versions.razorpay.pod.ios.get(),
+    vendorSdkVersion = libs.versions.razorpay.spm.ios.get(),
     asActual = false,
 )
 
