@@ -78,9 +78,18 @@ Inspect the repo and determine each of the following. If any is ambiguous,
    `iosSimulatorArm64()` and an Xcode app under `iosApp/` (or similar)? If the
    host is **Android-only**, skip the iOS-only steps (the
    `lokalPaymentSdk {}` / XCFramework config in §5.2).
-5. **Which gateways** does the host want enabled? Default to only what the user
+5. **Locate the real `.xcodeproj` and `Info.plist` paths** — don't assume the
+   demo's `../iosApp/iosApp.xcodeproj` / `../iosApp/iosApp/Info.plist` layout.
+   `find` the actual `*.xcodeproj` and the `Info.plist` the app target uses (a
+   host can have multiple plists — schemes, extensions, test targets — so make
+   sure it's the one the shipping app target references), then write both paths
+   in §5.2 relative to `<module>`. XcodeGen/Tuist hosts regenerate their
+   `.pbxproj` from a spec — leave `iosXcodeProject` unset for those (§5.2 note)
+   and point `iosInfoPlist` at the committed plist the spec references, not a
+   generated one.
+6. **Which gateways** does the host want enabled? Default to only what the user
    names; otherwise ask. (Core `:shared` is always required.)
-6. **Juspay?** If Juspay is in scope, the Juspay Maven repo must be reachable
+7. **Juspay?** If Juspay is in scope, the Juspay Maven repo must be reachable
    (see §2).
 
 ---
@@ -185,14 +194,22 @@ val hostXcFrameworkName = "MyHostApp" // pick a stable name for THIS host
 lokalPaymentSdk {
     xcFrameworkName = hostXcFrameworkName
 
-    // Optional. Hand-managed .xcodeproj only (like the demo): the plugin wires the
-    // generated local SPM package into it for you on every sync — the "Add Local…" step,
-    // automated and idempotent. OMIT for XcodeGen/Tuist hosts (they own the generated
-    // project; declare the package in the spec instead). Sibling of iosInfoPlist below.
-    // iosXcodeProject = "../iosApp/iosApp.xcodeproj"
+    // Optional. Hand-managed .xcodeproj only: the plugin wires the generated local SPM
+    // package into it for you on every sync — the "Add Local…" step, automated and
+    // idempotent. OMIT for XcodeGen/Tuist hosts (they own the generated project; declare
+    // the package in the spec instead). Sibling of iosInfoPlist below. Path is relative to
+    // <module> — use the REAL path you found in §1 step 5, not this placeholder (the demo's
+    // is "../iosApp/iosApp.xcodeproj", but every host's iOS folder name/nesting differs).
+    iosXcodeProject = "<path-to-the-hosts-.xcodeproj-relative-to-module>"
 
-    // Optional. Point at the committed Info.plist and the plugin merges UPI query schemes.
-    // iosInfoPlist = "../iosApp/iosApp/Info.plist"
+    // Set this even for a core-only (no-gateway) host: the plugin merges a BASELINE set
+    // of UPI query schemes into LSApplicationQueriesSchemes unconditionally — it's a
+    // :shared concern, not gated behind any gateway — plus whatever additional schemes
+    // active gateways contribute. Point it at the committed Info.plist the shipping app
+    // target actually uses (§1 step 5) — again, a real detected path, not this placeholder
+    // (the demo's is "../iosApp/iosApp/Info.plist"). The merge is idempotent (only adds
+    // missing entries, never touches the rest).
+    iosInfoPlist = "<path-to-the-hosts-Info.plist-relative-to-module>"
 }
 ```
 
@@ -313,7 +330,10 @@ The smallest working wiring, for a KMP+iOS host with a catalog:
    `import <xcFrameworkName>` via a local SPM package at `<module>/build/lokal/spmPackage`
    (add it once by hand, or set `lokalPaymentSdk { iosXcodeProject = "…" }` for a
    hand-managed `.xcodeproj` and the plugin wires it in on every sync)
-5. Glue: `parseOrder` → `LokalPaymentSdk.pay(order).collect { render(it) }`
+5. Also set `lokalPaymentSdk { iosInfoPlist = "…" }` (iOS hosts) — this applies even
+   with zero gateways, since the baseline UPI query schemes are an ungated `:shared`
+   concern, merged into the host's `Info.plist` on every sync
+6. Glue: `parseOrder` → `LokalPaymentSdk.pay(order).collect { render(it) }`
 
 Add gateways later by dropping one catalog entry + one `implementation(...)` line
 per gateway (and any gateway-specific init/repo). Nothing else changes.

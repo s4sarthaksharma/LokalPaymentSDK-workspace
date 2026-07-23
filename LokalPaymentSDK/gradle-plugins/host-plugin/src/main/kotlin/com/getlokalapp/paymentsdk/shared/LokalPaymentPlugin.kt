@@ -589,12 +589,11 @@ class LokalPaymentPlugin : Plugin<Project> {
         val localRefComment = "XCLocalSwiftPackageReference \"${packageDir.name}\""
 
         // 1. PBXBuildFile object (one-liner, exactly Xcode's shape) + its Frameworks files entry.
+        // Newer Xcode projects (file-system-synchronized groups) can lack a PBXBuildFile section
+        // entirely, so create it if absent — same as the two package sections added below.
         val buildFileObject = "\t\t$buildFileId /* $umbrellaProductName in Frameworks */ = " +
             "{isa = PBXBuildFile; productRef = $productDepId /* $umbrellaProductName */; };\n"
-        text = requireInsertBefore(
-            text, "/* End PBXBuildFile section */", buildFileObject, pbxproj,
-            "PBXBuildFile section",
-        )
+        text = addObjectToSection(text, "PBXBuildFile", buildFileObject)
         text = insertIntoArrayById(
             text, frameworksPhaseId, "files",
             "\t\t\t\t$buildFileId /* $umbrellaProductName in Frameworks */,\n", pbxproj,
@@ -719,19 +718,6 @@ class LokalPaymentPlugin : Plugin<Project> {
             val section = "\n$begin\n$objectText$end\n"
             text.replace("\t};\n\trootObject = ", section + "\t};\n\trootObject = ")
         }
-    }
-
-    private fun requireInsertBefore(
-        text: String,
-        anchor: String,
-        insertion: String,
-        pbxproj: File,
-        what: String,
-    ): String {
-        if (!text.contains(anchor)) {
-            throw GradleException("$pbxproj has no $what to extend — not a well-formed project.")
-        }
-        return text.replace(anchor, insertion + anchor)
     }
 
     /** Quotes a pbxproj scalar value when it isn't a bare identifier/path token. */
