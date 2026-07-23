@@ -22,8 +22,21 @@ package com.getlokalapp.paymentsdk.host
  * instead surfacing the same entries as an `INTEGRATION.md` note for the host to add by
  * hand. Point it at the plist a hand-managed `.xcodeproj` references (the demo) or the
  * committed plist an XcodeGen/Tuist spec references — not a fully generated one.
+ *
+ * [iosXcodeProject] is the exact `.xcodeproj` sibling of [iosInfoPlist]: point it at the
+ * host app's hand-managed `.xcodeproj` (or its `project.pbxproj`) and the plugin wires the
+ * generated local Swift package in as a package product dependency on every sync — the
+ * one-time "Add Local…" step, automated. Same lifecycle as [iosInfoPlist]: a path resolved
+ * with `Project.file(...)`, an idempotent edit (a project already pointing at the package
+ * is left untouched, zero-diff) of a git-tracked file the host owns, and opt-in — leave it
+ * unset and the plugin edits nothing, surfacing the manual "Add Local…" steps as an
+ * `INTEGRATION.md` note instead. **Hand-managed `.xcodeproj` only** (the demo). XcodeGen/Tuist
+ * hosts regenerate their `pbxproj` from a spec and must declare the package there instead —
+ * they simply leave this unset, exactly as they leave [iosInfoPlist] pointed at a committed
+ * plist rather than a generated one.
  */
 open class LokalPaymentSdkExtension {
     var xcFrameworkName: String? = null
     var iosInfoPlist: String? = null
+    var iosXcodeProject: String? = null
 }

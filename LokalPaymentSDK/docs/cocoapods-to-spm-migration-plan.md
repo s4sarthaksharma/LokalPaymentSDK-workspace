@@ -106,6 +106,20 @@ Vendor SPM availability (verified 2026-07):
   instead of `:path` pods. The consuming app adds **one local package dependency**. This
   replaces Podfile-region editing. Rationale: declarative, diffable, and far less fragile
   than patching `project.pbxproj`.
+  - **D2a — opt-in `.xcodeproj` auto-wiring (added post-migration).** The default above
+    stands: the SDK does not touch `project.pbxproj`, and XcodeGen/Tuist hosts wire the
+    package in their spec. But a *hand-managed* `.xcodeproj` (the demo's shape) otherwise
+    needs a manual one-time "Add Local…". For that case only, the plugin exposes
+    `lokalPaymentSdk { iosXcodeProject = "<path>.xcodeproj" }` — the exact sibling of the
+    existing `iosInfoPlist` opt-in: a path the host sets, an **idempotent** edit (a project
+    already pointing at the package is left byte-for-byte untouched) of a git-tracked file
+    the host owns, and off by default (unset → the manual steps are surfaced in
+    `INTEGRATION.md` instead). It performs the same edit Xcode's "Add Local…" writes —
+    an `XCLocalSwiftPackageReference` + `XCSwiftPackageProductDependency` + `PBXBuildFile`
+    and their three array references — via targeted, formatting-preserving text insertion
+    (never a full reserialize), keeping D2's "diffable, minimal-diff" property intact.
+    XcodeGen/Tuist hosts never set it (they'd regenerate the `pbxproj` and clobber the edit),
+    exactly as they leave `iosInfoPlist` pointed at a committed plist, not a generated one.
 - **D3 — Distribution stays on Maven.** Maven remains the source of truth for first-party
   artifacts (klibs, and any first-party iOS source such as `NativeIapBridge`). The
   consumer-side plugin unpacks from Maven and generates local SPM targets. We are *not*

@@ -81,16 +81,23 @@ So the umbrella-product name and the import name deliberately differ by the
    folder only exists after a Gradle run. If Xcode can't find it, you built
    nothing yet.
 
-2. **Add the local package to Xcode, once, by hand.** The plugin deliberately
-   does **not** edit `project.pbxproj` (no `pod install`-equivalent), so this is
-   a one-time manual step; every later regeneration is picked up automatically
-   on Xcode's next build.
+2. **Add the local package to Xcode, once.** By default the plugin does **not**
+   edit `project.pbxproj` (no `pod install`-equivalent), so this is a one-time
+   manual step; every later regeneration is picked up automatically on Xcode's
+   next build.
    - *File ▸ Add Package Dependencies… ▸ Add Local…* → select
      `<module>/build/lokal/spmPackage`.
    - Add the **`<xcFrameworkName>Umbrella`** library product to the app target.
    - (In the demo `iosApp.xcodeproj` this shows up as an
      `XCLocalSwiftPackageReference` with
      `relativePath = ../composeApp/build/lokal/spmPackage`.)
+   - **Automate it (hand-managed `.xcodeproj` only).** Instead of the manual
+     "Add Local…", set `lokalPaymentSdk { iosXcodeProject = "<path>.xcodeproj" }`
+     in the module's `build.gradle.kts` and the plugin performs this wiring for you
+     on every Gradle sync — idempotently (a project already wired is left untouched),
+     the exact sibling of the `iosInfoPlist` opt-in. **Do not** set it on an
+     XcodeGen/Tuist host: those regenerate `project.pbxproj` from a spec and would
+     clobber the edit — declare the package in the spec instead (see below).
 
 3. **Import the binary framework** (name == `xcFrameworkName`, *not* the umbrella)
    and bridge the controller:

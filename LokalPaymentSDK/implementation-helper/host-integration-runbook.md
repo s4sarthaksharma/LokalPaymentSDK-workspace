@@ -184,6 +184,15 @@ val hostXcFrameworkName = "MyHostApp" // pick a stable name for THIS host
 
 lokalPaymentSdk {
     xcFrameworkName = hostXcFrameworkName
+
+    // Optional. Hand-managed .xcodeproj only (like the demo): the plugin wires the
+    // generated local SPM package into it for you on every sync — the "Add Local…" step,
+    // automated and idempotent. OMIT for XcodeGen/Tuist hosts (they own the generated
+    // project; declare the package in the spec instead). Sibling of iosInfoPlist below.
+    // iosXcodeProject = "../iosApp/iosApp.xcodeproj"
+
+    // Optional. Point at the committed Info.plist and the plugin merges UPI query schemes.
+    // iosInfoPlist = "../iosApp/iosApp/Info.plist"
 }
 ```
 
@@ -261,9 +270,17 @@ Do not declare done until this passes.
     e.g. for the demo: `:composeApp:assembleLokalPaymentSDKDemoReleaseXCFramework`.
   - Then build the Xcode app. Because Xcode consumes the **local** SPM package,
     it re-resolves the regenerated manifest on each build — no re-add needed
-    after the initial one-time package setup.
-- Launch the host, confirm `gatewayStatus()` lists the expected gateways, and
-  run one `pay(...)` end to end for at least one gateway.
+    after the initial one-time package setup. (That one-time setup can be
+    automated for a hand-managed `.xcodeproj`: set `lokalPaymentSdk {
+    iosXcodeProject = "…" }` (§5.2) and the plugin wires the package in on every
+    sync, idempotently — it does nothing if it's already there.)
+- Launch the host and verify:
+  - **With gateways:** `gatewayStatus()` lists the expected gateways; run one
+    `pay(...)` end to end for at least one gateway.
+  - **Core-only (`:shared`, no gateways):** `gatewayStatus()` is **empty** — that's
+    correct, and there's no `pay(...)` to exercise yet. Verify instead that the app
+    builds and links against the package and the SDK's API is importable; runtime
+    `pay(...)` verification waits until at least one gateway is added.
 
 If the only failure is that `com.getlokalapp.paymentsdk:*` can't be resolved,
 **stop and report** — that's the repo-access prerequisite from §2, not something
@@ -294,6 +311,8 @@ The smallest working wiring, for a KMP+iOS host with a catalog:
    add `XCFramework` binaries, `implementation(libs.lokalpaymentsdk.shared)`
 4. Entry points: Android Activity hosts `App()`; iOS `MainViewController()` + Swift
    `import <xcFrameworkName>` via a local SPM package at `<module>/build/lokal/spmPackage`
+   (add it once by hand, or set `lokalPaymentSdk { iosXcodeProject = "…" }` for a
+   hand-managed `.xcodeproj` and the plugin wires it in on every sync)
 5. Glue: `parseOrder` → `LokalPaymentSdk.pay(order).collect { render(it) }`
 
 Add gateways later by dropping one catalog entry + one `implementation(...)` line
