@@ -69,10 +69,22 @@ class LokalPaymentPlugin : Plugin<Project> {
                     "not set 'lokalPaymentSdk { xcFrameworkName = \"...\" }' — " +
                     "required to locate the assembled .xcframework this plugin wraps."
             }
-            val contributions = ServiceLoader.load(
+            // Gate once, here — not once per contributor. Discover every contributor keyed by
+            // the module it owns, then scan the host's declared dependencies a single time:
+            // group `com.getlokalapp.paymentsdk` narrows the host's whole dependency set down to
+            // our gateway modules, keyed by module name. Call only the contributor whose module
+            // the host actually imports, handing it the resolved Dependency (native-iap reads its
+            // version/coordinate off it). A contributor may still return null for a
+            // present-but-inapplicable case (e.g. a missing artifact).
+            val contributors = ServiceLoader.load(
                 LokalGatewayHostContributor::class.java,
                 LokalGatewayHostContributor::class.java.classLoader,
-            ).mapNotNull { it.contribute(project, config) }
+            ).associateBy { it.module }
+            val contributions = project.configurations.asSequence()
+                .flatMap { it.dependencies.asSequence() }
+                .filter { it.group == SDK_GROUP }
+                .associateBy { it.name }
+                .mapNotNull { (name, dep) -> contributors[name]?.contribute(project, config, dep) }
 
             val umbrellaTargetName = "${xcFrameworkName}Umbrella"
             writePackageSwift(project, xcFrameworkName, umbrellaTargetName, contributions)
@@ -858,6 +870,10 @@ class LokalPaymentPlugin : Plugin<Project> {
     }
 
     private companion object {
+        // The Maven group shared by every Lokal Payment SDK gateway module. Gating the host's
+        // dependency scan on it is what isolates "which of our gateways did the host import".
+        const val SDK_GROUP = "com.getlokalapp.paymentsdk"
+
         const val QUERIES_SCHEMES_KEY = "LSApplicationQueriesSchemes"
 
         /**

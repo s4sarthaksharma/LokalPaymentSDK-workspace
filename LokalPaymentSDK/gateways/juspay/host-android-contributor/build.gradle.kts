@@ -1,3 +1,5 @@
+import com.getlokalapp.paymentsdk.buildsrc.registerOwnedModuleTask
+
 plugins {
     id("org.jetbrains.kotlin.jvm")
     `maven-publish`
@@ -24,6 +26,18 @@ dependencies {
     // Gradle API for org.gradle.api.* used by the contributor; provided by the Gradle
     // runtime on the host's buildscript classpath, never a published dep.
     compileOnly(gradleApi())
+}
+
+// Bakes the owning gateway module name (this module's parent, `juspay`) into an
+// OWNED_MODULE constant, so JuspayHostAndroidContributor.module can't drift from the
+// artifactId the umbrella plugin gates on. Same codegen idiom as the iOS host-contributor.
+val generateOwnedModule = registerOwnedModuleTask(
+    taskName = "generateOwnedModule",
+    packageName = "com.getlokalapp.paymentsdk.juspay.host",
+)
+
+sourceSets.main {
+    kotlin.srcDir(generateOwnedModule)
 }
 
 // Not a Gradle plugin a host applies (no `java-gradle-plugin`): a plain contributor jar

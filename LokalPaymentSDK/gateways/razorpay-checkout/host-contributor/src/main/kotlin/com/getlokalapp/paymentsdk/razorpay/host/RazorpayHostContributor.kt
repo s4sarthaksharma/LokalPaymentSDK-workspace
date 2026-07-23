@@ -5,6 +5,7 @@ import com.getlokalapp.paymentsdk.host.LokalPaymentSdkExtension
 import com.getlokalapp.paymentsdk.host.HostContribution
 import com.getlokalapp.paymentsdk.host.VendorPackage
 import org.gradle.api.Project
+import org.gradle.api.artifacts.Dependency
 
 /**
  * Razorpay's build-time contribution to an iOS host under SPM: declares
@@ -15,11 +16,10 @@ import org.gradle.api.Project
  * Discovered by the umbrella `com.getlokalapp.paymentsdk.lokal-payment` plugin
  * via ServiceLoader.
  *
- * Self-gates on the host actually depending on :razorpay-checkout, identically to
- * `RazorpayHostContributor`. This jar is always on the buildscript classpath (the
- * umbrella depends on it), so "razorpay not used" is a `null` return: nothing is
- * added to the generated manifest and no razorpay-pod package is linked unless
- * razorpay-checkout is imported.
+ * Gated by the umbrella plugin on [module] (`razorpay-checkout`): this jar is always on
+ * the buildscript classpath (the umbrella depends on it), but [contribute] is only called
+ * when the host actually imports :razorpay-checkout — "not used" is "never called", so no
+ * razorpay-pod package is linked and nothing is added to the generated manifest.
  *
  * `packageName` is `"razorpay-pod"` — the URL slug, NOT `"RazorpayCheckout"` (the
  * pinned tag's own `Package(name: ...)` declaration). Confirmed empirically via
@@ -34,12 +34,13 @@ import org.gradle.api.Project
  */
 class RazorpayHostContributor : LokalGatewayHostContributor {
 
-    override fun contribute(target: Project, config: LokalPaymentSdkExtension): HostContribution? {
-        val importsRazorpay = target.configurations
-            .flatMap { it.dependencies }
-            .any { it.group == SDK_GROUP && it.name == RAZORPAY_CHECKOUT_MODULE }
-        if (!importsRazorpay) return null
+    override val module = OWNED_MODULE
 
+    override fun contribute(
+        target: Project,
+        config: LokalPaymentSdkExtension,
+        dependency: Dependency,
+    ): HostContribution? {
         return HostContribution(
             vendorPackage = VendorPackage(
                 url = "https://github.com/razorpay/razorpay-pod",
@@ -48,10 +49,5 @@ class RazorpayHostContributor : LokalGatewayHostContributor {
                 productName = "RazorpayCheckout",
             ),
         )
-    }
-
-    private companion object {
-        const val SDK_GROUP = "com.getlokalapp.paymentsdk"
-        const val RAZORPAY_CHECKOUT_MODULE = "razorpay-checkout"
     }
 }

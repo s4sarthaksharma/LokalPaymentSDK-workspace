@@ -1,6 +1,7 @@
 package com.getlokalapp.paymentsdk.shared
 
 import com.getlokalapp.paymentsdk.host.LokalGatewayHostAndroidContributor
+import com.getlokalapp.paymentsdk.host.transitiveSdkModules
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import java.util.ServiceLoader
@@ -15,12 +16,14 @@ import java.util.ServiceLoader
  * host applying a separate vendor plugin id per gateway.
  *
  * The project-phase Android twin of [LokalPaymentPlugin] (the iOS umbrella) and
- * [LokalPaymentSettingsPlugin] (the settings umbrella). Unlike the iOS umbrella, this
- * dispatches **eagerly** — not in an `afterEvaluate` — because an Android vendor plugin
- * must be applied eagerly on the application module. Each contributor guards its own
- * work with `target.plugins.withId("com.android.application") { … }` (see
- * [LokalGatewayHostAndroidContributor]), so the eager dispatch is harmless on a
- * non-application module.
+ * [LokalPaymentSettingsPlugin] (the settings umbrella). It registers a single
+ * `plugins.withId("com.android.application") { … }` **eagerly** during `apply` — that eager
+ * registration is what the vendor plugins need, since the withId listener must be in place
+ * before the app plugin is applied. It then gates once, in the app module's `afterEvaluate`
+ * (where declared dependencies are finally visible): a single [transitiveSdkModules] walk
+ * yields which gateways the app ships (directly or transitively via a shared KMP module), and
+ * only the contributors whose [LokalGatewayHostAndroidContributor.module] is in that set are
+ * invoked — not each contributor re-walking the graph and self-gating.
  *
  * Kept in its own jar (not folded into :gradle-plugins:host-plugin) so the vendor
  * Android plugins the contributors pull in never leak onto the iOS host's classpath.
@@ -28,9 +31,28 @@ import java.util.ServiceLoader
 class LokalPaymentHostAndroidPlugin : Plugin<Project> {
 
     override fun apply(project: Project) {
-        ServiceLoader.load(
+        val contributors = ServiceLoader.load(
             LokalGatewayHostAndroidContributor::class.java,
             LokalGatewayHostAndroidContributor::class.java.classLoader,
-        ).forEach { it.contribute(project) }
+        ).associateBy { it.module }
+        if (contributors.isEmpty()) return
+
+        // Register eagerly (the withId listener must be in place before the app plugin is
+        // applied), but gate in afterEvaluate where declared deps are visible. One graph walk,
+        // targeted at exactly the modules we have contributors for, decides which gateways the
+        // app ships (and short-circuits once all are found); call only those, on the app module.
+        project.plugins.withId("com.android.application") {
+            project.afterEvaluate { app ->
+                app.transitiveSdkModules(SDK_GROUP, contributors.keys).forEach { module ->
+                    contributors.getValue(module).contribute(app)
+                }
+            }
+        }
+    }
+
+    private companion object {
+        // The Maven group shared by every Lokal Payment SDK gateway module — the group the
+        // transitive dependency walk filters on to find which gateways the app ships.
+        const val SDK_GROUP = "com.getlokalapp.paymentsdk"
     }
 }

@@ -5,6 +5,7 @@ import com.getlokalapp.paymentsdk.host.LokalPaymentSdkExtension
 import com.getlokalapp.paymentsdk.host.HostContribution
 import com.getlokalapp.paymentsdk.host.SourceTarget
 import org.gradle.api.Project
+import org.gradle.api.artifacts.Dependency
 
 /**
  * native-iap's build-time contribution to an iOS host under SPM. Unlike
@@ -22,10 +23,11 @@ import org.gradle.api.Project
  * an external consumer never needs the monorepo. The unzipped directory is handed to the
  * umbrella plugin, which copies the `.swift` into `Sources/NativeIapBridge/`.
  *
- * Self-gates on the host actually depending on :native-iap, identically to
- * `RazorpayHostContributor`. This jar is always on the buildscript classpath (the umbrella
- * depends on it), so "native-iap not used" is a `null` return: no source target is added
- * and nothing is compiled unless native-iap is imported.
+ * Gated by the umbrella plugin on [module] (`native-iap`): this jar is always on the
+ * buildscript classpath (the umbrella depends on it), but [contribute] is only called when
+ * the host actually imports :native-iap — "not used" is "never called", so no source target
+ * is added and nothing is compiled. It still returns `null` when the module is imported
+ * without a version (the iossrc coordinate can't be built), a present-but-inapplicable case.
  *
  * Deliberately does NOT add a cinterop to the host module: the Kotlin bindings already ride
  * in via the published :native-iap klib (Maven, compiled against a direct header cinterop
@@ -34,25 +36,32 @@ import org.gradle.api.Project
  */
 class NativeIapHostContributor : LokalGatewayHostContributor {
 
-    override fun contribute(target: Project, config: LokalPaymentSdkExtension): HostContribution? {
-        val nativeIapDep = target.configurations
-            .flatMap { it.dependencies }
-            .firstOrNull { it.group == SDK_GROUP && it.name == NATIVE_IAP_MODULE && it.version != null }
-            ?: return null
+    override val module = OWNED_MODULE
+
+    override fun contribute(
+        target: Project,
+        config: LokalPaymentSdkExtension,
+        dependency: Dependency,
+    ): HostContribution? {
+        // The umbrella plugin only calls us when the host imports :native-iap, but building the
+        // iossrc artifact coordinate needs a version — a versionless declaration can't be
+        // fetched, so bail (present-but-inapplicable). group/name/version come straight off the
+        // resolved dependency the plugin handed us, so nothing is hand-repeated here.
+        val version = dependency.version ?: return null
 
         // `@jar` = artifact-only (skip the KMP variant/metadata + klib graph); the lenient
         // view yields nothing if the iossrc classifier isn't published — mirrors
         // SharedCocoapodsPlugin's resolution, pinned to the host's own declared version.
         val iossrc = target.configurations.detachedConfiguration(
             target.dependencies.create(
-                "$SDK_GROUP:$NATIVE_IAP_MODULE:${nativeIapDep.version}:iossrc@jar",
+                "${dependency.group}:${dependency.name}:$version:iossrc@jar",
             ),
         ).apply { isTransitive = false }
             .incoming.artifactView { it.isLenient = true }.files
         val jar = iossrc.files.firstOrNull() ?: return null
 
         val outDir = target.layout.buildDirectory
-            .dir("lokal/spmSources/$NATIVE_IAP_MODULE").get().asFile
+            .dir("lokal/spmSources/$OWNED_MODULE").get().asFile
         outDir.deleteRecursively()
         target.copy { copy ->
             copy.from(target.zipTree(jar)) { spec ->
@@ -72,8 +81,6 @@ class NativeIapHostContributor : LokalGatewayHostContributor {
     }
 
     private companion object {
-        const val SDK_GROUP = "com.getlokalapp.paymentsdk"
-        const val NATIVE_IAP_MODULE = "native-iap"
         const val BRIDGE_TARGET = "NativeIapBridge"
     }
 }

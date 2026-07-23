@@ -15,9 +15,11 @@ import java.util.ServiceLoader
  *
  * Settings-phase twin of [LokalPaymentPlugin] (the project-phase umbrella). Like it,
  * this plugin depends on every gateway settings contributor, so all are present on
- * the settings buildscript classpath. Contributors do not self-gate (see
- * [LokalGatewaySettingsContributor]); their work is harmless when the owning gateway
- * is unused.
+ * the settings buildscript classpath. But where the project-phase umbrella *gates* —
+ * calling only the contributor whose module the host imports — this one calls every
+ * contributor unconditionally: settings contributions can't be gated on the owning
+ * gateway (no dependency graph yet, and the contribution is often load-bearing for the
+ * bundled plugin classpath — see [LokalGatewaySettingsContributor]).
  *
  * This and all contributor jars deliberately resolve from generic repos only (no
  * vendor repos): a contributor's whole job may be to ADD a vendor repo, so it must

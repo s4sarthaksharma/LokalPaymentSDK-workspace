@@ -7,13 +7,15 @@ import com.getlokalapp.paymentsdk.host.ConsumerSetupNote
 import com.getlokalapp.paymentsdk.host.PrebuildStep
 import com.getlokalapp.paymentsdk.host.VendorPackage
 import org.gradle.api.Project
+import org.gradle.api.artifacts.Dependency
 
 /**
  * Juspay's build-time contribution to an iOS host under SPM. The SPM-flavored sibling of
  * `JuspayHostContributor` (:host-contributor), which injects `spec.dependency 'HyperSDK'`
  * into the CocoaPods podspec. Discovered by the umbrella
- * `com.getlokalapp.paymentsdk.lokal-payment` plugin via ServiceLoader; self-gates on
- * the host depending on :juspay (this jar is always on the buildscript classpath).
+ * `com.getlokalapp.paymentsdk.lokal-payment` plugin via ServiceLoader, which gates on
+ * [module] (`juspay`) and only calls this when the host imports :juspay — this jar is
+ * always on the buildscript classpath, so "not used" is "never called", not absence.
  *
  * Two responsibilities, both mirroring `JuspayHostContributor`'s CocoaPods equivalents:
  *
@@ -51,12 +53,13 @@ import org.gradle.api.Project
  */
 class JuspayHostContributor : LokalGatewayHostContributor {
 
-    override fun contribute(target: Project, config: LokalPaymentSdkExtension): HostContribution? {
-        val importsJuspay = target.configurations
-            .flatMap { it.dependencies }
-            .any { it.group == SDK_GROUP && it.name == JUSPAY_MODULE }
-        if (!importsJuspay) return null
+    override val module = OWNED_MODULE
 
+    override fun contribute(
+        target: Project,
+        config: LokalPaymentSdkExtension,
+        dependency: Dependency,
+    ): HostContribution? {
         writeMerchantConfig(target)
 
         return HostContribution(
@@ -113,9 +116,6 @@ class JuspayHostContributor : LokalGatewayHostContributor {
     }
 
     private companion object {
-        const val SDK_GROUP = "com.getlokalapp.paymentsdk"
-        const val JUSPAY_MODULE = "juspay"
-
         /**
          * `/bin/sh` snippet run by the umbrella plugin's pre-build dispatcher before each Xcode
          * build. HyperSDK resolves as an SPM package into Xcode's DerivedData, so its checkout

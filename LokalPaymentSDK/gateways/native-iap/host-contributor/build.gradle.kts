@@ -1,3 +1,5 @@
+import com.getlokalapp.paymentsdk.buildsrc.registerOwnedModuleTask
+
 plugins {
     id("org.jetbrains.kotlin.jvm")
     `maven-publish`
@@ -24,6 +26,18 @@ dependencies {
 // no versioned vendor package to pin. Its contribution is first-party Swift source
 // (NativeIapBridge), resolved from :native-iap's own `iossrc` Maven artifact at the
 // dependency's own version — so there's nothing to bake in here.
+
+// Bakes the owning gateway module name (this module's parent, `native-iap`) into an
+// OWNED_MODULE constant, so NativeIapHostContributor.module can't drift from the artifactId
+// the umbrella plugin gates on (also reused as the spmSources output dir name).
+val generateOwnedModule = registerOwnedModuleTask(
+    taskName = "generateOwnedModule",
+    packageName = "com.getlokalapp.paymentsdk.nativeiap.host",
+)
+
+sourceSets.main {
+    kotlin.srcDir(generateOwnedModule)
+}
 
 // Not a Gradle plugin a host applies: a plain contributor jar the umbrella
 // `com.getlokalapp.paymentsdk.lokal-payment` plugin bundles and discovers via

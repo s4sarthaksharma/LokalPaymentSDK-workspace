@@ -1,6 +1,7 @@
 package com.getlokalapp.paymentsdk.host
 
 import org.gradle.api.Project
+import org.gradle.api.artifacts.Dependency
 
 /**
  * A gateway's build-time contribution to the host's generated local Swift package
@@ -17,11 +18,21 @@ import org.gradle.api.Project
  * Discovered by the umbrella `com.getlokalapp.paymentsdk.lokal-payment` plugin
  * via [java.util.ServiceLoader], exactly like [LokalGatewayHostContributor].
  *
- * Implementations MUST self-gate: return `null` unless the host actually declares
- * the owning gateway module as a dependency — every contributor jar is always on
- * the classpath (the umbrella depends on each), so "this gateway isn't used" is a
- * `null` return, not absence.
+ * Gating is the umbrella plugin's job, not the contributor's: it scans the host's
+ * declared dependencies once (all under group `com.getlokalapp.paymentsdk`) and calls
+ * [contribute] only for the contributor whose [module] the host actually imports,
+ * passing that resolved [Dependency]. Every contributor jar is always on the classpath
+ * (the umbrella depends on each), so a gateway the host doesn't import is simply never
+ * called — no per-contributor self-gate scan. [contribute] returns `null` only for a
+ * present-but-inapplicable case (e.g. a required artifact isn't published).
  */
 interface LokalGatewayHostContributor {
-    fun contribute(target: Project, config: LokalPaymentSdkExtension): HostContribution?
+    /** The SDK module (group `com.getlokalapp.paymentsdk`) this gateway owns, e.g. `"juspay"`. */
+    val module: String
+
+    fun contribute(
+        target: Project,
+        config: LokalPaymentSdkExtension,
+        dependency: Dependency,
+    ): HostContribution?
 }

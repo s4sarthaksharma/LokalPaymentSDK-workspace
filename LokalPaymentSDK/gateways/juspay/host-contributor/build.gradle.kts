@@ -1,3 +1,4 @@
+import com.getlokalapp.paymentsdk.buildsrc.registerOwnedModuleTask
 import com.getlokalapp.paymentsdk.buildsrc.registerVendorVersionTask
 
 plugins {
@@ -35,8 +36,17 @@ val generatePackageVersion = registerVendorVersionTask(
     asActual = false,
 )
 
+// Bakes the owning gateway module name (this module's parent, `juspay`) into an
+// OWNED_MODULE constant, so JuspayHostContributor.module can't drift from the artifactId
+// the umbrella plugin gates on. Same codegen idiom as generatePackageVersion above.
+val generateOwnedModule = registerOwnedModuleTask(
+    taskName = "generateOwnedModule",
+    packageName = "com.getlokalapp.paymentsdk.juspay.host",
+)
+
 sourceSets.main {
     kotlin.srcDir(generatePackageVersion)
+    kotlin.srcDir(generateOwnedModule)
 }
 
 // Not a Gradle plugin a host applies: a plain contributor jar the umbrella

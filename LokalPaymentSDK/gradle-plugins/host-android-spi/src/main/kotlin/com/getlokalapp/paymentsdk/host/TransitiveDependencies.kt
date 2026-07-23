@@ -4,11 +4,19 @@ import org.gradle.api.Project
 import org.gradle.api.artifacts.ProjectDependency
 
 /**
- * True when this project ships the module [group]:[name] — directly, or transitively
- * through a `project()` dependency such as a shared KMP module. The self-gate a
- * [LokalGatewayHostAndroidContributor] uses to wire its vendor SDK only when the host
- * actually depends on the gateway (mirroring the iOS contributors' import gate), without
+ * Which of the [wanted] SDK gateway modules (artifactIds under [group]) this project ships —
+ * directly, or transitively through a `project()` dependency such as a shared KMP module. Walks
+ * the project's declared-dependency graph so the umbrella Android plugin can gate every
+ * [LokalGatewayHostAndroidContributor] at once with a membership test, instead of each
+ * contributor re-walking the graph. Mirrors the iOS contributors' import gate, without
  * requiring a redundant declaration on the `com.android.application` module.
+ *
+ * Pass the modules that actually have a contributor (the umbrella's `contributors.keys`): the
+ * walk targets only those and **short-circuits as soon as it has found all of them**, so in a
+ * large multi-module product it stops descending once the shipped gateways are located rather
+ * than visiting the whole reachable project graph. A gateway's *absence* has no early exit,
+ * though — confirming a module isn't shipped still requires walking the full reachable graph
+ * (cheap: a linear, `visited`-guarded traversal of declared deps).
  *
  * Walks *declared* dependencies only, so it never resolves a runtime classpath — AGP
  * disallows resolving those at configuration time (it locks the configuration before a
@@ -27,19 +35,23 @@ import org.gradle.api.artifacts.ProjectDependency
  * NOTE: cross-project reads like this are not configuration-cache compatible; the SDK
  * builds with the configuration cache off.
  */
-fun Project.transitivelyDependsOn(group: String, name: String): Boolean {
+fun Project.transitiveSdkModules(group: String, wanted: Set<String>): Set<String> {
     val visited = mutableSetOf<String>()
-    fun visit(project: Project): Boolean {
-        if (!visited.add(project.path)) return false
-        return project.configurations.any { configuration ->
-            configuration.dependencies.any { dependency ->
+    val found = mutableSetOf<String>()
+    fun visit(project: Project) {
+        // Stop descending once every wanted module is found (empty `wanted` → true immediately,
+        // so nothing is walked), or when this project has already been visited.
+        if (found.containsAll(wanted) || !visited.add(project.path)) return
+        project.configurations.forEach { configuration ->
+            configuration.dependencies.forEach { dependency ->
                 when (dependency) {
                     is ProjectDependency ->
-                        dependency.path !in visited && visit(evaluationDependsOn(dependency.path))
-                    else -> dependency.group == group && dependency.name == name
+                        if (dependency.path !in visited) visit(evaluationDependsOn(dependency.path))
+                    else -> if (dependency.group == group && dependency.name in wanted) found += dependency.name
                 }
             }
         }
     }
-    return visit(this)
+    visit(this)
+    return found
 }

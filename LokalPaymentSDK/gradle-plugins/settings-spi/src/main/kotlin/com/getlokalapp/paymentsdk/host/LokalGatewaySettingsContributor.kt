@@ -15,12 +15,27 @@ import org.gradle.api.initialization.Settings
  * It is the settings-phase twin of `LokalGatewayHostContributor` (the project-phase
  * SPI dispatched by `com.getlokalapp.paymentsdk.lokal-payment`).
  *
- * Unlike the project-phase contributor, implementations do NOT self-gate: the module
- * dependency graph is not yet known during settings evaluation, so a contributor
- * cannot tell whether its gateway is actually in use. Contribute unconditionally —
- * adding an unused Maven repo or pinning the version of a plugin that is never
- * applied are both harmless no-ops. Real gating stays at the project level (whether
- * the host applies the gateway's project plugin / imports its module).
+ * **These run unconditionally, and — unlike the project-phase contributors — cannot be
+ * gated on the owning gateway.** The project-phase SPIs are gated by their umbrella plugin
+ * (it scans the host's declared dependencies and calls only the contributor whose module the
+ * host imports); this one can't be, for two independent reasons:
+ *  1. **Lifecycle** — the module dependency graph doesn't exist yet during settings
+ *     evaluation, so nothing here can tell whether a gateway is in use, and settings-phase
+ *     repositories (`pluginManagement` / `dependencyResolutionManagement`) must be declared
+ *     *now*, before that graph is ever known.
+ *  2. **The contribution is often load-bearing for the bundled classpath** — e.g. the android
+ *     umbrella unconditionally bundles the Juspay host contributor, which transitively pulls
+ *     `in.juspay:hypersdk.plugin`, so `in.juspay` must be in `pluginManagement` for *any* host
+ *     that applies that umbrella, just to resolve the plugin classpath. `JuspaySettingsContributor`
+ *     adding that repo is precisely what makes the bundled plugin resolvable; gating it away would
+ *     break the build rather than merely skip a no-op.
+ *
+ * Design rule that follows: **keep a settings contributor to the minimum that must happen
+ * before the graph exists** (a repo needed to resolve the unconditionally-bundled classpath),
+ * and put anything gateable in the gateway's project-phase contributor
+ * ([LokalGatewayHostContributor] / `LokalGatewayHostAndroidContributor`), which *is* gated.
+ * Adding an unused Maven repo here is otherwise a harmless no-op (ideally scoped with repository
+ * content filtering so a host that doesn't use the gateway never consults it).
  */
 interface LokalGatewaySettingsContributor {
     fun contribute(settings: Settings)
