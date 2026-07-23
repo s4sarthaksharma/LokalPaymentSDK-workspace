@@ -13,6 +13,7 @@ val hostXcFrameworkName = "LokalPaymentSDKDemo"
 
 lokalPaymentSdk {
     xcFrameworkName = hostXcFrameworkName
+    iosInfoPlist = "../iosApp/iosApp/Info.plist"
 }
 
 kotlin {

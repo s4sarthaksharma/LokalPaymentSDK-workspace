@@ -12,7 +12,18 @@ package com.getlokalapp.paymentsdk.host
  * passes to the KMP `XCFramework(...)` DSL — the umbrella plugin needs it to locate
  * the assembled `.xcframework` under `build/XCFrameworks/` and wrap it as the
  * generated package's binary target.
+ *
+ * [iosInfoPlist] optionally points the plugin at the host app's `Info.plist` so it can
+ * merge in the entries active gateways contribute (e.g. UPI apps'
+ * `LSApplicationQueriesSchemes` — see [InfoPlistContribution]). A path string the plugin
+ * resolves with `Project.file(...)` (relative to the applying module, like any Gradle
+ * path). The merge is idempotent (only adds missing entries) and mutates a git-tracked
+ * file the host owns, so it is opt-in: leave it unset and the plugin patches nothing,
+ * instead surfacing the same entries as an `INTEGRATION.md` note for the host to add by
+ * hand. Point it at the plist a hand-managed `.xcodeproj` references (the demo) or the
+ * committed plist an XcodeGen/Tuist spec references — not a fully generated one.
  */
 open class LokalPaymentSdkExtension {
     var xcFrameworkName: String? = null
+    var iosInfoPlist: String? = null
 }

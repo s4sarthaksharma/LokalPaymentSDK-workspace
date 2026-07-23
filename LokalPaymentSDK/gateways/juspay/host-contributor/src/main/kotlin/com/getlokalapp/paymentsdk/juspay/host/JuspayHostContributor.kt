@@ -3,6 +3,8 @@ package com.getlokalapp.paymentsdk.juspay.host
 import com.getlokalapp.paymentsdk.host.LokalGatewayHostContributor
 import com.getlokalapp.paymentsdk.host.LokalPaymentSdkExtension
 import com.getlokalapp.paymentsdk.host.HostContribution
+import com.getlokalapp.paymentsdk.host.ConsumerSetupNote
+import com.getlokalapp.paymentsdk.host.PrebuildStep
 import com.getlokalapp.paymentsdk.host.VendorPackage
 import org.gradle.api.Project
 
@@ -28,17 +30,22 @@ import org.gradle.api.Project
  *     `MerchantConfig.txt`; same `juspayClientId` gradle property the Android host plugin
  *     forwards, so a host declares its Juspay clientId exactly once.
  *
+ *  3. **Contribute the `Fuse.rb` pre-build step** ([HostContribution.prebuildStep]) —
+ *     HyperSDK's merchant-asset download (its "Validate Mandatory Files" build phase fails
+ *     without it) needs Xcode's build environment to locate HyperSDK's resolved SPM checkout
+ *     under DerivedData, so it can't run at Gradle-sync time. Under CocoaPods this rode in a
+ *     managed `post_install`; here it rides in the umbrella plugin's generated pre-build
+ *     dispatcher, which the app registers as a single scheme pre-build action (see
+ *     [PrebuildStep]). The step also runs `ValidateHyperSDK.rb` when the resolved HyperSDK
+ *     ships it — that's what writes Juspay's URL/query schemes into `Info.plist`, so this
+ *     contributor patches no plist itself.
+ *
  * What this deliberately does NOT do (and why it can't):
- *  - **Run `Fuse.rb`** — under CocoaPods this rode in a managed `post_install`; SPM has no
- *    `post_install`. HyperSDK requires it as an Xcode **scheme pre-build action** running
- *    `Fuse.rb` + `ValidateHyperSDK.rb` (see the SDK's docs for the exact snippet). A Gradle
- *    plugin can't inject a scheme pre-action without editing the consumer's project, which
- *    this SDK avoids (same reason adding the SPM package is a one-time manual step). It is a
- *    documented one-time host step.
- *  - **Patch Info.plist URL/query schemes** — `JuspayHostContributor` did this via a
- *    `post_install` Ruby snippet; under SPM, HyperSDK's own `ValidateHyperSDK.rb` (run by
- *    the pre-build action above) writes the URL and query schemes into Info.plist itself, so
- *    there's nothing for this contributor to do.
+ *  - **Register the scheme pre-build action** — a Gradle plugin can't edit the consumer's
+ *    scheme without touching their Xcode project, which this SDK avoids (same reason adding
+ *    the SPM package is a one-time manual step). Adding the *one* dispatcher pre-action is a
+ *    documented host step surfaced in the generated `INTEGRATION.md`; every gateway's step
+ *    (including this one) then runs through it with no further scheme edits.
  *  - **Add a cinterop** — the Kotlin bindings already ride in via the published :juspay klib
  *    (Maven), compiled against the direct HyperSDK.xcframework cinterop (R1/S2).
  */
@@ -58,6 +65,23 @@ class JuspayHostContributor : LokalGatewayHostContributor {
                 exactVersion = VENDOR_SDK_VERSION,
                 packageName = "hypersdk-ios",
                 productName = "HyperSDK",
+            ),
+            prebuildStep = PrebuildStep(name = "juspay", script = FUSE_PREBUILD_SCRIPT),
+            consumerNotes = listOf(
+                ConsumerSetupNote(
+                    heading = "Juspay (HyperSDK)",
+                    steps = listOf(
+                        "Juspay's `Fuse.rb` asset download runs via the SDK's pre-build action " +
+                            "(§5) — you only need to register that one action. Its " +
+                            "`ValidateHyperSDK.rb` also writes Juspay's URL/query schemes into " +
+                            "your `Info.plist`, so you do NOT add an `LSApplicationQueriesSchemes` " +
+                            "entry for Juspay by hand.",
+                        "A `MerchantConfig.json` is generated for you at `iosApp/MerchantConfig.json` " +
+                            "(beside your `.xcodeproj`) from the `juspayClientId` Gradle property; " +
+                            "make sure it is a member of your app target so HyperSDK's asset " +
+                            "pipeline can read it.",
+                    ),
+                ),
             ),
         )
     }
@@ -91,6 +115,38 @@ class JuspayHostContributor : LokalGatewayHostContributor {
     private companion object {
         const val SDK_GROUP = "com.getlokalapp.paymentsdk"
         const val JUSPAY_MODULE = "juspay"
+
+        /**
+         * `/bin/sh` snippet run by the umbrella plugin's pre-build dispatcher before each Xcode
+         * build. HyperSDK resolves as an SPM package into Xcode's DerivedData, so its checkout
+         * path isn't known until build time — this locates it from `$BUILD_DIR`, then runs
+         * `Fuse.rb false` (asset download; `false` = don't force re-download, mirroring the
+         * CocoaPods-era `post_install` invocation) and `ValidateHyperSDK.rb` when the resolved
+         * version ships it. Fails loudly if the checkout can't be found — the most common cause
+         * is the pre-build action not being set to provide build settings from the app target.
+         */
+        val FUSE_PREBUILD_SCRIPT = """
+            set -eu
+            # Locate HyperSDK's resolved SPM checkout (Xcode places SPM packages under DerivedData).
+            sdk_dir=""
+            for cand in \
+              "${'$'}{BUILD_DIR:-}/../../SourcePackages/checkouts/hypersdk-ios" \
+              "${'$'}{BUILD_DIR:-}/../../../SourcePackages/checkouts/hypersdk-ios"; do
+              if [ -f "${'$'}cand/Fuse.rb" ]; then sdk_dir="${'$'}cand"; break; fi
+            done
+            if [ -z "${'$'}sdk_dir" ] && [ -n "${'$'}{BUILD_ROOT:-}" ]; then
+              found=${'$'}(find "${'$'}{BUILD_ROOT%%/Build/*}" -path '*hypersdk-ios*/Fuse.rb' 2>/dev/null | head -n 1)
+              [ -n "${'$'}found" ] && sdk_dir=${'$'}(dirname -- "${'$'}found")
+            fi
+            if [ -z "${'$'}sdk_dir" ]; then
+              echo "error: Lokal Payment SDK could not find HyperSDK's Fuse.rb. Ensure this" >&2
+              echo "       pre-build action provides build settings from your app target." >&2
+              exit 1
+            fi
+            echo "Lokal Payment SDK: Juspay HyperSDK setup in ${'$'}sdk_dir"
+            ruby "${'$'}sdk_dir/Fuse.rb" false
+            if [ -f "${'$'}sdk_dir/ValidateHyperSDK.rb" ]; then ruby "${'$'}sdk_dir/ValidateHyperSDK.rb"; fi
+        """.trimIndent()
 
         // Same gradle property JuspayAndroidHostPlugin and JuspayHostContributor read — one
         // host-declared value shared across both platforms and both iOS integration modes.
