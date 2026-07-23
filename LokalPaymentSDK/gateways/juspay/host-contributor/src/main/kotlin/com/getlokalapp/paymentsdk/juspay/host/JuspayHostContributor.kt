@@ -148,7 +148,7 @@ class JuspayHostContributor : LokalGatewayHostContributor {
             if [ -f "${'$'}sdk_dir/ValidateHyperSDK.rb" ]; then ruby "${'$'}sdk_dir/ValidateHyperSDK.rb"; fi
         """.trimIndent()
 
-        // Same gradle property JuspayAndroidHostPlugin and JuspayHostContributor read — one
+        // Same gradle property JuspayHostAndroidContributor and JuspayHostContributor read — one
         // host-declared value shared across both platforms and both iOS integration modes.
         const val CLIENT_ID_PROPERTY = "juspayClientId"
     }

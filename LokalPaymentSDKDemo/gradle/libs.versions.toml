@@ -38,5 +38,5 @@ android-kotlinMultiplatformLibrary = { id = "com.android.kotlin.multiplatform.li
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 jetbrains-compose = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }
-lokalpaymentsdk-juspay-android-host = { id = "com.getlokalapp.paymentsdk.juspay-android-host" }
+lokalpaymentsdk-lokal-payment-android = { id = "com.getlokalapp.paymentsdk.lokal-payment-android", version.ref = "lokalPaymentSdk" }
 lokalpaymentsdk-lokal-payment = { id = "com.getlokalapp.paymentsdk.lokal-payment", version.ref = "lokalPaymentSdk" }

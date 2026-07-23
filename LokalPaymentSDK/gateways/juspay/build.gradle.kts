@@ -27,7 +27,7 @@ val generateModuleVersion = registerModuleVersionTask(
 
 // Bakes gradle/libs.versions.toml's juspay-hypersdk entry into androidMain as
 // GatewayMetadata's Android vendorSdkVersion — the same version this module
-// compiles Android against (and JuspayAndroidHostPlugin.DEFAULT_SDK_VERSION pins the
+// compiles Android against (and JuspayHostAndroidContributor.DEFAULT_SDK_VERSION pins the
 // host's runtime HyperSDK to), so it can't drift.
 val generateAndroidVendorVersion = registerVendorVersionTask(
     taskName = "generateAndroidVendorVersion",

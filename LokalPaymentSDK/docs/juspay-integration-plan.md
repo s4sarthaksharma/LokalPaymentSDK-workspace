@@ -722,6 +722,25 @@ host Activity-type edits either. Host steps, as actually done:
    Juspay's host wiring is split across the platform boundary, because the two halves
    need different Gradle phases/modules and can't be one plugin:
 
+   > **SUPERSEDED (Android half).** The standalone `juspay-android-host` plugin
+   > described in this subsection was later folded into a generic host/contributor
+   > axis, mirroring the iOS/settings umbrellas. The host now applies one
+   > vendor-agnostic umbrella — `com.getlokalapp.paymentsdk.lokal-payment-android`
+   > (module `:gradle-plugins:host-android-plugin`, SPI `:gradle-plugins:host-android-spi`
+   > with `LokalGatewayHostAndroidContributor`) — on its `com.android.application`
+   > module, and Juspay's Android wiring rides it as
+   > `:gateways:juspay:host-android-contributor` (`JuspayHostAndroidContributor`), a
+   > plain jar bundled onto the umbrella's classpath and discovered via ServiceLoader —
+   > exactly like the iOS `host-contributor`. It self-gates on the app module declaring
+   > the `:juspay` dependency (in `afterEvaluate`, since `dependencies {}` is evaluated
+   > after `plugins {}`), so the vendor-agnostic umbrella wires HyperSDK only when Juspay
+   > is actually used. Once the gate passes, a missing `juspayClientId` hard-fails with an
+   > explicit message rather than relying on HyperSDK's own error. Because there's no longer a `juspay-android-host`
+   > plugin id for a host to apply, the settings-contributor no longer pins its version
+   > (and its version-resource baking was removed); the host declares the umbrella's
+   > version once in its catalog alias, like `lokal-payment`. The paragraphs below
+   > describe the original design and are kept for rationale only.
+
    **`:gateways:juspay:android-host-plugin`** — a plain `java-gradle-plugin` module (it can't be
    a KMP/Android-library module, since a Gradle plugin jar and a published KMP library
    are incompatible project shapes). `JuspayAndroidHostPlugin` (id
@@ -782,7 +801,7 @@ host Activity-type edits either. Host steps, as actually done:
    contribute unconditionally (an unused repo / an unapplied plugin's version pin are
    no-ops); real gating stays at the project level.
 
-   Publish alongside the rest: `./gradlew :gateways:juspay:android-host-plugin:publishToMavenLocal :gateways:juspay:host-contributor:publishToMavenLocal :gateways:juspay:settings-contributor:publishToMavenLocal :gradle-plugins:settings-spi:publishToMavenLocal :gradle-plugins:settings-plugin:publishToMavenLocal :gradle-plugins:cocoapods-host-plugin:publishToMavenLocal`.
+   Publish alongside the rest (Android half now via the host-android umbrella + contributor): `./gradlew :gradle-plugins:host-android-spi:publishToMavenLocal :gradle-plugins:host-android-plugin:publishToMavenLocal :gateways:juspay:host-android-contributor:publishToMavenLocal :gateways:juspay:host-contributor:publishToMavenLocal :gateways:juspay:settings-contributor:publishToMavenLocal :gradle-plugins:settings-spi:publishToMavenLocal :gradle-plugins:settings-plugin:publishToMavenLocal`.
    Deliberately **not** propagated to matrimony-kmp as part of this change — only
    `LokalPaymentSDKDemo` was migrated to it so far.
 3. **Compose glue** (`JuspayPresenter.kt`, alongside `PaymentPresenter.kt`) — `JuspaySdk`'s

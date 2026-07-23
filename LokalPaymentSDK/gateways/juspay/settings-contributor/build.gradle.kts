@@ -34,20 +34,3 @@ publishing {
         }
     }
 }
-
-// Bakes this build's version (root gradle.properties) into the jar so
-// JuspaySettingsContributor can register it as the pluginManagement default for the
-// sibling juspay-android-host plugin — both publish at the same version.
-val generateVersionResource by tasks.registering {
-    val pluginVersion = version.toString()
-    val outDir = layout.buildDirectory.dir("generated/versionResource")
-    inputs.property("pluginVersion", pluginVersion)
-    outputs.dir(outDir)
-    doLast {
-        outDir.get().asFile.resolve("lokalpaymentsdk-plugin-version.txt").writeText(pluginVersion)
-    }
-}
-
-sourceSets.main {
-    resources.srcDir(generateVersionResource)
-}

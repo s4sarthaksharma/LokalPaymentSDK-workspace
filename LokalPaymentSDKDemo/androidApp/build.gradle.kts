@@ -1,7 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.compose.compiler)
-    alias(libs.plugins.lokalpaymentsdk.juspay.android.host)
+    alias(libs.plugins.lokalpaymentsdk.lokal.payment.android)
 }
 
 android {
