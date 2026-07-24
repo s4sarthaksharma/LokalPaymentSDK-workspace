@@ -188,9 +188,12 @@ private class UpiAppPickerController(
     private val titleLabel = UILabel()
     private val cells = mutableListOf<PickerCell>()
 
+    // String -> NSString bridges at runtime in Kotlin/Native; the compiler flags
+    // the cast as CAST_NEVER_SUCCEEDS (e.g. logoUrl as NSString for the cache key).
+    @Suppress("CAST_NEVER_SUCCEEDS")
     override fun viewDidLoad() {
         super.viewDidLoad()
-        val root: UIView = view ?: return
+        val root: UIView = view
         root.backgroundColor = UIColor.clearColor
 
         val glass = UIVisualEffectView(effect = UIBlurEffect.effectWithStyle(UIBlurEffectStyle.UIBlurEffectStyleSystemThinMaterial))
@@ -276,7 +279,7 @@ private class UpiAppPickerController(
 
     override fun viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        val root: UIView = view ?: return
+        val root: UIView = view
         val totalWidth = root.bounds.useContents { size.width }
 
         titleLabel.setFrame(CGRectMake(0.0, 16.0, totalWidth, 24.0))
@@ -350,6 +353,7 @@ private val logoCache = NSCache()
  * during loading. Callers handle the cache-hit case, so this always fetches.
  * UIKit retains [target] while the sheet is presented.
  */
+@Suppress("CAST_NEVER_SUCCEEDS") // url as NSString bridges at runtime in Kotlin/Native
 private fun loadRemoteLogo(url: String, target: UIImageView, fallback: () -> UIImage?) {
     val key = url as NSString
     val nsUrl = NSURL(string = url)
@@ -367,6 +371,7 @@ private fun loadRemoteLogo(url: String, target: UIImageView, fallback: () -> UII
  * as an app tile, not a circle. The call site in [UpiAppPickerController] doesn't
  * change.
  */
+@Suppress("CAST_NEVER_SUCCEEDS") // letter as NSString bridges at runtime in Kotlin/Native
 private fun monogramIcon(name: String): UIImage? {
     val dim = ICON_SIZE
     UIGraphicsBeginImageContextWithOptions(CGSizeMake(dim, dim), false, 0.0)

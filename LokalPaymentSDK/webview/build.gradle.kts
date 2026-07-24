@@ -14,7 +14,7 @@ kotlin {
         freeCompilerArgs.add("-Xexpect-actual-classes")
     }
 
-    androidLibrary {
+    android {
         namespace = "com.getlokalapp.paymentsdk.webview"
         compileSdk = libs.versions.android.compileSdk.get().toInt()
         minSdk = libs.versions.android.minSdk.get().toInt()
@@ -47,6 +47,7 @@ kotlin {
             // Window-insets / edge-to-edge handling for the proxy Activity's
             // WebView (ViewCompat/WindowCompat/WindowInsetsCompat). Views, no Compose.
             implementation(libs.androidx.core)
+            implementation(libs.androidx.activity)
         }
     }
 }

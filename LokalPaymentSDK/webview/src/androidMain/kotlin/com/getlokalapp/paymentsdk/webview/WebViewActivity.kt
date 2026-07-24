@@ -1,7 +1,6 @@
 package com.getlokalapp.paymentsdk.webview
 
 import android.annotation.SuppressLint
-import android.app.Activity
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
@@ -11,6 +10,8 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -25,7 +26,7 @@ import androidx.core.view.WindowInsetsControllerCompat
  * itself back to it so the session can drive the live WebView.
  */
 @SuppressLint("SetJavaScriptEnabled")
-internal class WebViewActivity : Activity() {
+internal class WebViewActivity : ComponentActivity() {
 
     private var session: AndroidWebViewSession? = null
     private var webView: WebView? = null
@@ -54,6 +55,22 @@ internal class WebViewActivity : Activity() {
 
         val wv = WebView(this)
         webView = wv
+
+        // Back navigates the WebView history first; when there's nowhere to go
+        // back, disable this callback and re-dispatch so the platform default
+        // (finish) runs.
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                val current = webView
+                if (current != null && current.canGoBack()) {
+                    current.goBack()
+                } else {
+                    isEnabled = false
+                    onBackPressedDispatcher.onBackPressed()
+                }
+            }
+        })
+
         wv.settings.javaScriptEnabled = config.javaScriptEnabled
         wv.settings.domStorageEnabled = config.domStorageEnabled
 
@@ -117,11 +134,6 @@ internal class WebViewActivity : Activity() {
 
     internal fun evaluateJs(script: String, onResult: ((String?) -> Unit)?) {
         webView?.evaluateJavascript(script) { onResult?.invoke(it) }
-    }
-
-    override fun onBackPressed() {
-        val wv = webView
-        if (wv != null && wv.canGoBack()) wv.goBack() else super.onBackPressed()
     }
 
     override fun onDestroy() {

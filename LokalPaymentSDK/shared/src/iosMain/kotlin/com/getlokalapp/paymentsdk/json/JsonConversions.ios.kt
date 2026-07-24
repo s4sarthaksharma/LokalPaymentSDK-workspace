@@ -24,10 +24,12 @@ import platform.Foundation.dataUsingEncoding
  * native Objective-C caller would build, so booleans arrive as CFBoolean.
  */
 @OptIn(ExperimentalForeignApi::class)
+// String <-> NSString and NSDictionary -> Map bridge at runtime in Kotlin/Native,
+// but the compiler sees them as unrelated types (CAST_NEVER_SUCCEEDS / UNCHECKED_CAST).
+@Suppress("CAST_NEVER_SUCCEEDS", "UNCHECKED_CAST")
 fun JsonObject.toPlainMap(): Map<Any?, Any?> {
     val data = (toString() as NSString).dataUsingEncoding(NSUTF8StringEncoding)
         ?: return emptyMap()
-    @Suppress("UNCHECKED_CAST")
     return NSJSONSerialization.JSONObjectWithData(data, 0uL, null) as? Map<Any?, Any?>
         ?: emptyMap()
 }

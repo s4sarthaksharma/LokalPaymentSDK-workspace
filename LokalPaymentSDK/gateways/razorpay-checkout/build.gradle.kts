@@ -93,7 +93,7 @@ kotlin {
         freeCompilerArgs.add("-Xexpect-actual-classes")
     }
 
-    androidLibrary {
+    android {
         namespace = "com.getlokalapp.paymentsdk.checkout"
         compileSdk = libs.versions.android.compileSdk.get().toInt()
         minSdk = libs.versions.android.minSdk.get().toInt()

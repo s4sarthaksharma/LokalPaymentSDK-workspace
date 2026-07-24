@@ -97,7 +97,7 @@ private class WebViewController(
 
     override fun viewDidLoad() {
         super.viewDidLoad()
-        val root = view ?: return
+        val root = view
 
         val contentController = WKUserContentController()
         contentController.addUserScript(

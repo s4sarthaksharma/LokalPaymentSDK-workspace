@@ -6,9 +6,8 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
-import android.view.View
+import androidx.core.view.WindowCompat
 import com.getlokalapp.paymentsdk.LokalPaymentSdk
 
 /**
@@ -107,14 +106,16 @@ internal class UpiIntentActivity : Activity() {
      * because Android 15+ ignores `statusBarColor` and only honors edge-to-edge.
      */
     private fun makeInvisible() {
-        window.statusBarColor = Color.TRANSPARENT
-        window.navigationBarColor = Color.TRANSPARENT
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            window.setDecorFitsSystemWindows(false)
-        } else {
-            @Suppress("DEPRECATION")
-            window.decorView.systemUiVisibility =
-                View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+        // Draw edge-to-edge so content sits behind the system bars. WindowCompat
+        // handles the version split (WindowInsetsController on R+, legacy flags below).
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        // statusBarColor/navigationBarColor have no non-deprecated replacement: they're
+        // ignored on Android 15+ (which is transparent edge-to-edge anyway), but still
+        // needed to force transparent bars below API 35.
+        @Suppress("DEPRECATION")
+        run {
+            window.statusBarColor = Color.TRANSPARENT
+            window.navigationBarColor = Color.TRANSPARENT
         }
     }
 
