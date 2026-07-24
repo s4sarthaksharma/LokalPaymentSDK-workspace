@@ -34,16 +34,21 @@ app) can and should use Compose freely — the constraint is scoped to
 **Practical consequence:** lifecycle-bound SDK features (e.g.
 `PaymentGatewayHandler` registration with `LokalPaymentSdk`) expose plain,
 framework-agnostic hooks instead of Compose composables:
-- Registration happens in the gateway SDK class's own constructor (e.g.
-  `RazorpayCheckoutSdk(presenter)` registers itself with `LokalPaymentSdk` in
-  `init {}`) — construction *is* "when the required params are supplied,"
-  with no separate registration step needed.
-- Cleanup is an explicit `dispose()` call (default implementation on
-  `PaymentGatewayHandler`, overridable per handler) — the host calls it
-  whenever it already knows the underlying platform context (Activity,
-  `PaymentPresenter`) is going away. On Android this is naturally wrapped in
-  a Compose `DisposableEffect` *by the host app*, but that wrapping is the
-  host's business, not the SDK's.
+- Each gateway's SDK entry point is a parameterless singleton `object` (e.g.
+  `RazorpayCheckoutSdk`) that registers itself with `LokalPaymentSdk.register(this)`
+  in its own `init {}` — no host-supplied handle, no separate registration step.
+  A platform-specific startup trigger (an AndroidX App Startup `Initializer` on
+  Android, an `@EagerInitialization` hook on iOS) just *references* the object
+  so that `init {}` runs with zero host code.
+- There is **no `dispose()`/cleanup step** — handlers are app-lifetime objects,
+  nothing to tear down. Instead of the host handing the SDK a platform UI
+  handle to hold onto (which is what would need disposing), each gateway reads
+  the *current* Activity/UIViewController itself, fresh, at call time — from
+  `:shared`'s `hostcontext` utilities (`ActivityTracker.current` on Android,
+  `topmostViewController()` on iOS) — so there's no long-lived reference to a
+  destroyed Activity to leak in the first place. On Android this is naturally
+  wrapped in a Compose `DisposableEffect` *by the host app* if the host wants
+  its own cleanup, but that's the host's business, not the SDK's.
 
 Before adding any dependency to a module under `LokalPaymentSDK/`, check
 whether it pulls in Compose Multiplatform transitively — it shouldn't.

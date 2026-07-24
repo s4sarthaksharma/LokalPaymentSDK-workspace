@@ -297,9 +297,11 @@ Executed once the SPM path was confirmed on-device. What was removed / changed:
 Verified: full SDK `publishToMavenLocal` + demo `assembleComposeAppReleaseXCFramework` +
 `xcodebuild` (Debug) all green with zero CocoaPods anywhere.
 
-Follow-up (optional, not done): rename the remaining `Spm`/`spm` qualifiers on modules
-(`spm-host-*`), classes (`LokalPaymentSpmPlugin`, `LokalGatewaySpmContributor`, …) and the
-`lokalPaymentSdkSpm { }` extension, now that SPM is the only flavor.
+Follow-up: the `Spm`/`spm` qualifier rename is **done** — the module/class names above
+are already gone (`gradle-plugins/` has no `spm-host-*` directories; the real names are
+`host-plugin`/`host-spi`/`host-android-plugin`/`host-android-spi`, `LokalPaymentPlugin`,
+`LokalGatewayHostContributor`, and the `lokalPaymentSdk { }` extension, no `Spm` suffix
+anywhere).
 
 Original checklist, for reference:
 - Delete all `.podspec` files, the Podfile-management code, `lokal_ios_pods.rb`

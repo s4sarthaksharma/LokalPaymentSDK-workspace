@@ -206,14 +206,17 @@ native-iap via its first-party Swift target). Two exceptions:
 
 ### Juspay (HyperSDK)
 
-- Add an Xcode **scheme pre-build action** running HyperSDK's `Fuse.rb` then
-  `ValidateHyperSDK.rb` (see HyperSDK's SPM docs for the exact snippet). SPM has no
-  CocoaPods-style `post_install`, so the SDK can't inject this for you.
 - Set the `juspayClientId` Gradle property (in `gradle.properties` or `-PjuspayClientId=…`).
   The SDK generates `iosApp/MerchantConfig.json` from it — make sure that file is a member
   of your app target so HyperSDK's asset pipeline can read it.
-- You do **not** need to add Juspay URL/query schemes by hand — `ValidateHyperSDK.rb` writes
-  them into your `Info.plist`.
+- Add **one generic** Xcode scheme pre-build action running the generated
+  `build/lokal/spmPackage/lokal-prebuild.sh` dispatcher — not a Juspay-specific snippet.
+  The plugin itself writes the HyperSDK `Fuse.rb`/`ValidateHyperSDK.rb` invocation into
+  `prebuild.d/juspay.sh` (one script per gateway that needs a prebuild step) and the
+  dispatcher runs whatever's in `prebuild.d/` — so a second gateway needing its own
+  prebuild step in the future would just add another `prebuild.d/<name>.sh`, with no
+  change to your scheme. You do **not** need to add Juspay URL/query schemes by hand —
+  `ValidateHyperSDK.rb`, run via that dispatcher, writes them into your `Info.plist`.
 
 ### UPI intent
 

@@ -15,7 +15,10 @@
 >
 > **Audience:** an engineer/agent implementing the Juspay gateway in LokalPaymentSDK
 > from scratch, with **no prior context** on this repo.
-> **Status:** approved design, not yet implemented.
+> **Status:** implemented on both Android and iOS (see the HISTORICAL banner
+> above for what changed since this plan was written) — this "approved design,
+> not yet implemented" line describes the plan's original starting point, not
+> the current state of `:gateways:juspay`.
 > **Authoritative companion docs:** read [`adding-a-new-gateway.md`](./adding-a-new-gateway.md)
 > (the gateway playbook — the numbered rules below reference its §5 rulebook) and
 > [`rulebook.md`](./rulebook.md) (the "no Compose in the SDK" hard constraint).
