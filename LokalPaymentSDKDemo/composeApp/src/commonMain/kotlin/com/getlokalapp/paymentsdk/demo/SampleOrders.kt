@@ -42,7 +42,6 @@ internal val SAMPLE_CREATE_ORDER_RESPONSE = """
           "theme": { "color": "#D32F2F" },
           "KEY_ID": "rzp_test_RRHhT2F4OwJ6hF"
         },
-        "order_row_id": 183452
       },
       "metadata": {
         "source": "demo_checkout_screen",
@@ -68,8 +67,7 @@ internal val SAMPLE_UPI_INTENT_CREATE_ORDER_RESPONSE = """
       "method": "upi",
       "email": "someone@example.com",
       "_[flow]": "intent"
-    },
-    "order_row_id": 3299386
+    },  
   },
   "metadata": {
     "source": "demo_checkout_screen",

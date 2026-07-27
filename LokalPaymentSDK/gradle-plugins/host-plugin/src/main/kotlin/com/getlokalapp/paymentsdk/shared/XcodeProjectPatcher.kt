@@ -1,0 +1,264 @@
+package com.getlokalapp.paymentsdk.shared
+
+import com.getlokalapp.paymentsdk.host.LokalPaymentSdkExtension
+import org.gradle.api.GradleException
+import org.gradle.api.Project
+import java.io.File
+import java.security.MessageDigest
+
+/**
+ * Wires the generated local Swift package into the host's hand-managed `.xcodeproj` when the
+ * host opted in via `lokalPaymentSdk { iosXcodeProject = … }`; returns whether the project is
+ * SDK-managed (i.e. the property was set), regardless of whether this run actually changed
+ * anything. Unset → returns false and the `.xcodeproj` is left untouched, the "Add Local…"
+ * step surfaced as an `INTEGRATION.md` note instead (see [writeIntegrationNotes]). The
+ * `project.pbxproj` sibling of [patchInfoPlistIfConfigured]: an opt-in, idempotent edit of a
+ * git-tracked file the host owns. Accepts either the `.xcodeproj` bundle or its inner
+ * `project.pbxproj`. Fails loudly if the path isn't a readable pbxproj, mirroring the
+ * plist path's fail-loud contract.
+ *
+ * Hand-managed `.xcodeproj` only (the demo). XcodeGen/Tuist hosts regenerate their `pbxproj`
+ * from a spec and must declare the package there instead — they simply leave this unset,
+ * exactly as they leave [LokalPaymentSdkExtension.iosInfoPlist] pointed at a committed plist
+ * rather than a generated one.
+ */
+internal fun patchXcodeProjectIfConfigured(
+    project: Project,
+    config: LokalPaymentSdkExtension,
+    umbrellaProductName: String,
+): Boolean {
+    val path = config.iosXcodeProject ?: return false
+    val target = project.file(path)
+    val pbxproj = when {
+        target.isDirectory && target.name.endsWith(".xcodeproj") -> File(target, "project.pbxproj")
+        else -> target // a project.pbxproj pointed at directly
+    }
+    if (!pbxproj.isFile) {
+        throw GradleException(
+            "lokalPaymentSdk { iosXcodeProject = \"$path\" } does not resolve to a " +
+                ".xcodeproj (or its project.pbxproj) — looked at $pbxproj. Point it at the " +
+                "hand-managed .xcodeproj your app uses, or remove the property to wire the " +
+                "local package by hand.",
+        )
+    }
+    val packageDir = project.layout.buildDirectory.dir("lokal/spmPackage").get().asFile
+    val changed = wireLocalPackage(pbxproj, packageDir, umbrellaProductName)
+    if (changed) {
+        project.logger.lifecycle(
+            "LokalPaymentSDK: wired local package '$umbrellaProductName' into $pbxproj",
+        )
+    }
+    return true
+}
+
+/**
+ * Idempotently adds the local Swift package at [packageDir] to [pbxproj] as a package product
+ * dependency named [umbrellaProductName] on the project's single application target. Returns
+ * whether it wrote (false → already wired, file left byte-for-byte untouched — the
+ * "if it is there don't do anything" contract).
+ *
+ * Faithful to what Xcode itself writes for an "Add Local…" (see the demo's project.pbxproj):
+ * an `XCLocalSwiftPackageReference` (relativePath → [packageDir], resolved relative to the
+ * directory containing the `.xcodeproj`), an `XCSwiftPackageProductDependency` for the
+ * umbrella product, and a `PBXBuildFile` that links it — plus the three array entries that
+ * reference them (`packageReferences` on the project, `packageProductDependencies` and the
+ * Frameworks build phase `files` on the app target). Missing object sections / arrays are
+ * created; existing ones are appended to. Object IDs are derived deterministically (SHA-1 of
+ * the package path + product name + role) so re-runs stay stable and never collide.
+ *
+ * Editing pbxproj text is exactly the fragility D2 warned about, so this mirrors
+ * [mergeQueriesSchemes]: targeted, formatting-preserving insertions (never a full reserialize)
+ * scoped to the specific project/target objects by their IDs, so a plain sync is a zero-line
+ * diff and a first wiring adds only the lines Xcode would. Fails loudly if the format predates
+ * Xcode 15 (`objectVersion < 56`, which has no `XCLocalSwiftPackageReference`) or if the single
+ * application target can't be unambiguously identified — no silent half-wiring.
+ */
+private fun wireLocalPackage(pbxproj: File, packageDir: File, umbrellaProductName: String): Boolean {
+    var text = pbxproj.readText()
+
+    // relativePath is resolved by Xcode against the directory that CONTAINS the .xcodeproj
+    // bundle (pbxproj → .xcodeproj → that dir), matching the demo's ../composeApp/... value.
+    val projectSrcRoot = pbxproj.parentFile.parentFile
+        ?: error("$pbxproj is not inside an .xcodeproj bundle")
+    val relativePath = projectSrcRoot.toPath().toAbsolutePath().normalize()
+        .relativize(packageDir.toPath().toAbsolutePath().normalize())
+        .toString()
+    val relPathValue = pbxValue(relativePath)
+
+    // Idempotency: a reference already pointing at our package → nothing to do.
+    if (text.contains("relativePath = $relPathValue;")) return false
+
+    val objectVersion = Regex("""objectVersion = (\d+);""").find(text)?.groupValues?.get(1)?.toIntOrNull()
+    if (objectVersion == null || objectVersion < 56) {
+        throw GradleException(
+            "$pbxproj has objectVersion ${objectVersion ?: "?"}; local Swift package " +
+                "references (XCLocalSwiftPackageReference) need the Xcode 15 project format " +
+                "(objectVersion >= 56). Upgrade the project format in Xcode, or wire the " +
+                "local package by hand and leave lokalPaymentSdk { iosXcodeProject } unset.",
+        )
+    }
+
+    // The one application target and its Frameworks build phase. Scoping every array edit to
+    // these specific object IDs is what keeps the patch surgical on multi-target projects.
+    val (appTargetBlock, appTargetId) = singleApplicationTarget(pbxproj, text)
+    val frameworksPhaseId = Regex("""([0-9A-Fa-f]{24}) /\* Frameworks \*/""")
+        .find(appTargetBlock)?.groupValues?.get(1)
+        ?: throw GradleException(
+            "app target in $pbxproj has no Frameworks build phase to link the package " +
+                "product into. Add one in Xcode, or wire the local package by hand.",
+        )
+
+    // Deterministic 24-hex object IDs (role-salted), guaranteed absent from the file.
+    val localRefId = pbxId("$relativePath|localref", text)
+    val productDepId = pbxId("$relativePath|$umbrellaProductName|productdep", text)
+    val buildFileId = pbxId("$relativePath|$umbrellaProductName|buildfile", text)
+
+    val localRefComment = "XCLocalSwiftPackageReference \"${packageDir.name}\""
+
+    // 1. PBXBuildFile object (one-liner, exactly Xcode's shape) + its Frameworks files entry.
+    // Newer Xcode projects (file-system-synchronized groups) can lack a PBXBuildFile section
+    // entirely, so create it if absent — same as the two package sections added below.
+    val buildFileObject = "\t\t$buildFileId /* $umbrellaProductName in Frameworks */ = " +
+        "{isa = PBXBuildFile; productRef = $productDepId /* $umbrellaProductName */; };\n"
+    text = addObjectToSection(text, "PBXBuildFile", buildFileObject)
+    text = insertIntoArrayById(
+        text, frameworksPhaseId, "files",
+        "\t\t\t\t$buildFileId /* $umbrellaProductName in Frameworks */,\n", pbxproj,
+    )
+
+    // 2. XCLocalSwiftPackageReference object + the project's packageReferences entry. Added
+    //    before the XCSwiftPackageProductDependency section below so, when both sections are
+    //    freshly created, they land in Xcode's conventional alphabetical section order — no
+    //    spurious reorder diff the first time the project is opened and saved in Xcode.
+    val localRefObject =
+        "\t\t$localRefId /* $localRefComment */ = {\n" +
+        "\t\t\tisa = XCLocalSwiftPackageReference;\n" +
+        "\t\t\trelativePath = $relPathValue;\n" +
+        "\t\t};\n"
+    text = addObjectToSection(text, "XCLocalSwiftPackageReference", localRefObject)
+    val projectId = Regex("""([0-9A-Fa-f]{24}) /\* Project object \*/""")
+        .find(text)?.groupValues?.get(1)
+        ?: throw GradleException("$pbxproj has no PBXProject object to add packageReferences to.")
+    text = insertIntoArrayById(
+        text, projectId, "packageReferences",
+        "\t\t\t\t$localRefId /* $localRefComment */,\n", pbxproj,
+    )
+
+    // 3. XCSwiftPackageProductDependency object + the target's packageProductDependencies entry.
+    val productDepObject =
+        "\t\t$productDepId /* $umbrellaProductName */ = {\n" +
+        "\t\t\tisa = XCSwiftPackageProductDependency;\n" +
+        "\t\t\tpackage = $localRefId /* $localRefComment */;\n" +
+        "\t\t\tproductName = ${pbxValue(umbrellaProductName)};\n" +
+        "\t\t};\n"
+    text = addObjectToSection(text, "XCSwiftPackageProductDependency", productDepObject)
+    text = insertIntoArrayById(
+        text, appTargetId, "packageProductDependencies",
+        "\t\t\t\t$productDepId /* $umbrellaProductName */,\n", pbxproj,
+    )
+
+    pbxproj.writeText(text)
+    return true
+}
+
+/**
+ * The `.xcodeproj`'s single `com.apple.product-type.application` target, as (block text, id).
+ * Fails loudly on zero or multiple, since silently picking one would wire the wrong target.
+ */
+private fun singleApplicationTarget(pbxproj: File, text: String): Pair<String, String> {
+    val section = Regex(
+        """/\* Begin PBXNativeTarget section \*/(.*?)/\* End PBXNativeTarget section \*/""",
+        RegexOption.DOT_MATCHES_ALL,
+    ).find(text)?.groupValues?.get(1)
+        ?: throw GradleException("$pbxproj has no PBXNativeTarget section — not an app project?")
+
+    val blocks = Regex(
+        """\t\t([0-9A-Fa-f]{24}) /\* .*? \*/ = \{.*?\n\t\t\};""",
+        RegexOption.DOT_MATCHES_ALL,
+    ).findAll(section)
+        .filter { it.value.contains("com.apple.product-type.application") }
+        .map { it.value to it.groupValues[1] }
+        .toList()
+
+    return when (blocks.size) {
+        1 -> blocks.single()
+        0 -> throw GradleException(
+            "$pbxproj has no application target to wire the package into.",
+        )
+        else -> throw GradleException(
+            "$pbxproj has ${blocks.size} application targets; can't tell which to wire. " +
+                "Wire the local package by hand and leave lokalPaymentSdk { iosXcodeProject } unset.",
+        )
+    }
+}
+
+/**
+ * Inserts [entry] into the `<key> = ( … )` array of the object identified by [objectId],
+ * creating the array (placed before `productName`/`productRefGroup`, mirroring where Xcode
+ * emits it) when the object doesn't declare it yet. Scoped to the one object whose block
+ * starts with [objectId], so sibling targets are never touched. Array items are one indent
+ * (a tab) deeper than the object's keys.
+ */
+private fun insertIntoArrayById(
+    text: String,
+    objectId: String,
+    key: String,
+    entry: String,
+    pbxproj: File,
+): String {
+    val block = Regex(
+        """\t\t$objectId /\* .*? \*/ = \{.*?\n\t\t\};""",
+        RegexOption.DOT_MATCHES_ALL,
+    ).find(text)?.value
+        ?: throw GradleException("$pbxproj: object $objectId not found while adding $key.")
+
+    val opening = "$key = (\n"
+    val newBlock = if (block.contains(opening)) {
+        block.replaceFirst(opening, opening + entry)
+    } else {
+        // Create the array. Anchor before the first key Xcode keeps after it, so the new
+        // array lands in a natural spot; fall back to the object's closing brace.
+        val arrayDecl = "\t\t\t$key = (\n$entry\t\t\t);\n"
+        val anchor = when {
+            block.contains("\t\t\tproductName = ") -> "\t\t\tproductName = "
+            block.contains("\t\t\tproductRefGroup = ") -> "\t\t\tproductRefGroup = "
+            else -> null
+        }
+        if (anchor != null) block.replaceFirst(anchor, arrayDecl + anchor)
+        else block.replaceFirst("\n\t\t};", "\n$arrayDecl\t\t};")
+    }
+    return text.replace(block, newBlock)
+}
+
+/**
+ * Appends [objectText] to the named object section, creating the section just before the
+ * objects-dict close (`\t};\n\trootObject`) when absent. The create branch matches how Xcode
+ * lays these trailing package sections out (see the demo's XCLocalSwiftPackageReference /
+ * XCSwiftPackageProductDependency sections).
+ */
+private fun addObjectToSection(text: String, sectionName: String, objectText: String): String {
+    val begin = "/* Begin $sectionName section */"
+    val end = "/* End $sectionName section */"
+    return if (text.contains(begin)) {
+        text.replace(end, objectText + end)
+    } else {
+        val section = "\n$begin\n$objectText$end\n"
+        text.replace("\t};\n\trootObject = ", section + "\t};\n\trootObject = ")
+    }
+}
+
+/** Quotes a pbxproj scalar value when it isn't a bare identifier/path token. */
+private fun pbxValue(value: String): String =
+    if (value.matches(Regex("[A-Za-z0-9._/-]+"))) value
+    else "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+
+/** A deterministic 24-hex object ID from [seed], role-salted until absent from [existing]. */
+private fun pbxId(seed: String, existing: String): String {
+    fun hex(s: String) = MessageDigest.getInstance("SHA-1")
+        .digest(s.toByteArray(Charsets.UTF_8))
+        .take(12).joinToString("") { "%02X".format(it.toInt() and 0xFF) }
+    var salt = 0
+    var id = hex(seed)
+    while (existing.contains(id)) id = hex("$seed#${salt++}")
+    return id
+}
