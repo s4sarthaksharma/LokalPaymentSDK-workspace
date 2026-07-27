@@ -16,10 +16,6 @@ import kotlinx.serialization.json.JsonObject
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
-/** Thrown by [JuspaySdk.prewarm] when [JuspaySdk.configure] hasn't been called yet. */
-class JuspayNotConfiguredException(message: String = "JuspaySdk.configure() was never called.") :
-    Exception(message)
-
 /**
  * Singleton handler for [PaymentGateway.JUSPAY] — registers itself with
  * [LokalPaymentSdk] in its `init` block at process start, same as the
@@ -96,22 +92,6 @@ object JuspaySdk : PaymentGatewayHandler {
         }
         c.initiate(initPayload)
         return c
-    }
-
-    /**
-     * Re-initiates HyperSDK with whatever [JsonObject] was last passed to [configure] — e.g. to
-     * force a fresh handshake on resume without the host having to keep its own copy of the
-     * payload around. Named distinctly from [JuspayClient.initiate] (the lower-level per-client
-     * op this delegates to): callers here aren't supplying new data, just warming HyperSDK back
-     * up. [Throws] is only meaningful on iOS: it makes the compiled Swift function `throws`, so
-     * Swift callers must `try` it. Kotlin has no checked exceptions, so on Android/common
-     * callers this is purely documentation — an uncaught call still crashes.
-     */
-    @Throws(JuspayNotConfiguredException::class)
-    fun prewarm() {
-        val c = client.load() ?: throw JuspayNotConfiguredException()
-        val payload = c.cachedInitPayload ?: throw JuspayNotConfiguredException()
-        c.initiate(payload)
     }
 
     override fun pay(gatewayConfig: JsonObject): Flow<PaymentResult> {

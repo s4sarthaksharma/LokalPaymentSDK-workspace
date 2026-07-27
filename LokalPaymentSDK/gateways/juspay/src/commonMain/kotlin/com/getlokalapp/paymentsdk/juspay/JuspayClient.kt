@@ -23,9 +23,6 @@ internal interface JuspayResultListener {
 internal interface JuspayClient {
     val isInitialised: Boolean
 
-    /** The last payload passed to [initiate], if any — lets [JuspaySdk.initiate] replay it. */
-    val cachedInitPayload: JsonObject?
-
     /** Idempotent; safe to call again on resume. */
     fun initiate(initPayload: JsonObject)
 

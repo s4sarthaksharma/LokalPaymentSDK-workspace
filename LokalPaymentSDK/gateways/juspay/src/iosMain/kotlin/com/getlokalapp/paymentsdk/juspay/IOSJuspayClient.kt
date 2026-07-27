@@ -54,8 +54,7 @@ internal class IOSJuspayClient(private val tenantId: String) : JuspayClient {
     private val services = HyperServices(tenantId = tenantId, clientId = resolveClientId())
 
     private var initiating = false
-    override var cachedInitPayload: JsonObject? = null
-        private set
+    private var cachedInitPayload: JsonObject? = null
     private var pendingProcess: JsonObject? = null
     private var listener: JuspayResultListener? = null
     private var loader: UIActivityIndicatorView? = null

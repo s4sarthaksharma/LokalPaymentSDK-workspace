@@ -27,6 +27,8 @@ object ActivityTracker : Application.ActivityLifecycleCallbacks {
 
     private val onDestroyedListeners = CopyOnWriteArrayList<(Activity) -> Unit>()
 
+    private val onActivityResumedListeners = CopyOnWriteArrayList<(Activity) -> Unit>()
+
     val current: Activity? get() = currentRef?.get()
 
     /**
@@ -48,6 +50,24 @@ object ActivityTracker : Application.ActivityLifecycleCallbacks {
 
     fun removeOnDestroyedListener(listener: (Activity) -> Unit) {
         onDestroyedListeners -= listener
+    }
+
+    /**
+     * Notifies [listener] on [onActivityResumed] specifically — not [onActivityCreated]/
+     * [onActivityStarted], which also fire for the same Activity and would otherwise triple-fire
+     * this per recreation — so a gateway client holding an Activity-scoped resource that can go
+     * stale independent of its own API calls (e.g. Juspay's HyperServiceHolder, whose static
+     * engine's `isInitialised` resets when its bound Activity is destroyed) can self-heal when
+     * the host's Activity resumes instead of requiring the host to notice and re-trigger it
+     * manually. Callers are expected to no-op cheaply when there's nothing to do — this fires on
+     * every resume, not just ones following a destroy.
+     */
+    fun addOnActivityResumedListener(listener: (Activity) -> Unit) {
+        onActivityResumedListeners += listener
+    }
+
+    fun removeOnActivityResumedListener(listener: (Activity) -> Unit) {
+        onActivityResumedListeners -= listener
     }
 
     fun install(application: Application) {
@@ -79,6 +99,7 @@ object ActivityTracker : Application.ActivityLifecycleCallbacks {
 
     override fun onActivityResumed(activity: Activity) {
         track(activity)
+        onActivityResumedListeners.forEach { it(activity) }
     }
 
     override fun onActivityPaused(activity: Activity) = Unit

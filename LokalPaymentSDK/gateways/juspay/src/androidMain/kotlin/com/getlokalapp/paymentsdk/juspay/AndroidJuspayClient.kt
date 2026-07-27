@@ -27,8 +27,16 @@ internal actual fun createJuspayClient(tenantId: String): JuspayClient = Android
  * mirrors, has that leak) and so the static engine's `isInitialised` resets:
  * a bare `resetActivity()` leaves it `true`, so the fresh holder for the next
  * Activity would skip its real initiate() and never bind (breaks pay() after
- * a rotation that recreates the host Activity). The host's Activity must be a
- * [FragmentActivity]
+ * a rotation that recreates the host Activity). That re-initiate is
+ * self-triggered — an [ActivityTracker.addOnActivityResumedListener]
+ * registration in [init] replays [cachedInitPayload] whenever an Activity of
+ * class [lastBoundActivityClass] resumes, so the host never needs its own
+ * `onResume()` hook for this. Scoped to onResume of that one class only — not
+ * onCreate/onStart, and not any other Activity — so unrelated screens (a
+ * camera picker, another SDK's own Activity, ...) never trigger it, and a
+ * single recreation only fires it once (iOS has no equivalent: its
+ * `HyperServices` instance is never torn down, so nothing there ever goes
+ * stale the same way). The host's Activity must be a [FragmentActivity]
  * (HyperServiceHolder's own requirement); if the currently tracked Activity
  * isn't one — or none is tracked yet — [process] fails gracefully via
  * [JuspayResultListener] rather than crashing. No onBackPressed forwarding:
@@ -38,13 +46,18 @@ internal class AndroidJuspayClient : JuspayClient {
 
     @Volatile private var holder: HyperServiceHolder? = null
     @Volatile private var boundActivity: WeakReference<FragmentActivity>? = null
-    @Volatile override var cachedInitPayload: JsonObject? = null
-        private set
+    @Volatile private var lastBoundActivityClass: Class<*>? = null
+    @Volatile private var cachedInitPayload: JsonObject? = null
     @Volatile private var pendingProcess: JsonObject? = null
     @Volatile private var isInitiating = false
     private var listener: JuspayResultListener? = null
 
     init {
+        ActivityTracker.addOnActivityResumedListener { activity ->
+            if (boundActivity?.get() === activity) {
+                cachedInitPayload?.let { doInitiate(it) }
+            }
+        }
         ActivityTracker.addOnDestroyedListener { destroyed ->
             synchronized(this) {
                 if (boundActivity?.get() === destroyed) {
@@ -106,9 +119,13 @@ internal class AndroidJuspayClient : JuspayClient {
      * Null when no [FragmentActivity] is available (callers report a
      * graceful error instead). All holder/boundActivity access stays under
      * the same lock the destroy listener uses — no unlocked fast path.
+     * Records [activity]'s class into [lastBoundActivityClass] unconditionally (even on a plain
+     * cache hit) — whichever Activity is current when a Juspay op actually runs is, by this
+     * class's own design, "the Juspay Activity" for self-heal purposes.
      */
     private fun getHolder(): HyperServiceHolder? {
         val activity = ActivityTracker.current as? FragmentActivity ?: return null
+        lastBoundActivityClass = activity::class.java
         return synchronized(this) {
             holder?.takeIf { boundActivity?.get() === activity }
                 ?: HyperServiceHolder(activity).also {
