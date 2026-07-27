@@ -35,6 +35,18 @@ package com.getlokalapp.paymentsdk.host
  * All five default to empty/null so a gateway declares only what it needs; the umbrella
  * plugin skips whichever are absent. A contribution with none of them is meaningless
  * (contributors return `null` to opt out instead).
+ *
+ * NOT (yet) a slot: **bundled runtime config**. Juspay generates its own
+ * `iosApp/LokalJuspayConfig.json` (a `{ "clientId": … }` file `IOSJuspayClient` reads at
+ * runtime) via an imperative write inside its own `contribute()`, because it's the only
+ * gateway that needs host config readable at runtime on iOS. If a second gateway ever needs
+ * the same, promote it to a declarative slot here (e.g. `bundledConfig`) and have the umbrella
+ * aggregate every gateway's entries into one namespaced `LokalPaymentConfig.json` — exactly how
+ * [infoPlist] already merges into a single plist. Deferred until then on purpose: with one
+ * consumer it buys nothing (HyperSDK's mandated `MerchantConfig.json` stays a separate
+ * target-member file regardless, so a Juspay app needs two files either way), and a shared
+ * envelope would split its schema across this build-time SPI and the `:juspay` runtime klib
+ * (which can't depend on this module) for no gain.
  */
 data class HostContribution(
     val vendorPackage: VendorPackage? = null,

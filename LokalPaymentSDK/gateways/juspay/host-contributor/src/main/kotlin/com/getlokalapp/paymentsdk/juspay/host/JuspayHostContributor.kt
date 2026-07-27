@@ -27,10 +27,17 @@ import org.gradle.api.artifacts.Dependency
  *     (SPM resolves `.product(name:, package:)` by URL-derived identity — see
  *     [VendorPackage]).
  *
- *  2. **Emit `MerchantConfig.json`** ([writeMerchantConfig]) — HyperSDK's asset pipeline
- *     reads it to know which merchant's assets to download. Replaces the CocoaPods-era
- *     `MerchantConfig.txt`; same `juspayClientId` gradle property the Android host plugin
- *     forwards, so a host declares its Juspay clientId exactly once.
+ *  2. **Emit `MerchantConfig.json` + `LokalJuspayConfig.json`** ([writeMerchantConfig],
+ *     [writeLokalJuspayConfig]) — both from the same `juspayClientId` gradle property the
+ *     Android host plugin forwards, so a host declares its Juspay clientId exactly once.
+ *     `MerchantConfig.json` (replacing the CocoaPods-era `MerchantConfig.txt`) feeds HyperSDK's
+ *     asset pipeline, which needs to know which merchant's assets to download.
+ *     `LokalJuspayConfig.json` is a small SDK-owned file whose schema this SDK fully controls;
+ *     `IOSJuspayClient` (in `:juspay`) reads it at runtime to resolve HyperServices' required
+ *     `clientId` itself — kept separate from `MerchantConfig.json` so that runtime read never
+ *     couples to HyperSDK's `clientConfigs` shape (Juspay's contract, not ours). No host code
+ *     ever passes a clientId anywhere, matching how Android already resolves it entirely
+ *     internally via `hypersdk.plugin`.
  *
  *  3. **Contribute the `Fuse.rb` pre-build step** ([HostContribution.prebuildStep]) —
  *     HyperSDK's merchant-asset download (its "Validate Mandatory Files" build phase fails
@@ -60,7 +67,18 @@ class JuspayHostContributor : LokalGatewayHostContributor {
         config: LokalPaymentSdkExtension,
         dependency: Dependency,
     ): HostContribution? {
-        writeMerchantConfig(target)
+        // Resolve once and fail loudly here (a host that imports :juspay intends to use it),
+        // mirroring the CocoaPods contributor and `hypersdk.plugin`'s own hard failure — then
+        // feed both generated files from the single value.
+        val clientId = target.providers.gradleProperty(CLIENT_ID_PROPERTY).orNull
+        checkNotNull(clientId) {
+            "Host imports :juspay but has not set the '$CLIENT_ID_PROPERTY' gradle property " +
+                "(gradle.properties, or -P/ORG_GRADLE_PROJECT_…) — required to generate " +
+                "iosApp/MerchantConfig.json for HyperSDK's merchant asset download and " +
+                "iosApp/LokalJuspayConfig.json for the SDK's runtime clientId resolution."
+        }
+        writeMerchantConfig(target, clientId)
+        writeLokalJuspayConfig(target, clientId)
 
         return HostContribution(
             vendorPackage = VendorPackage(
@@ -79,10 +97,12 @@ class JuspayHostContributor : LokalGatewayHostContributor {
                             "`ValidateHyperSDK.rb` also writes Juspay's URL/query schemes into " +
                             "your `Info.plist`, so you do NOT add an `LSApplicationQueriesSchemes` " +
                             "entry for Juspay by hand.",
-                        "A `MerchantConfig.json` is generated for you at `iosApp/MerchantConfig.json` " +
-                            "(beside your `.xcodeproj`) from the `juspayClientId` Gradle property; " +
-                            "make sure it is a member of your app target so HyperSDK's asset " +
-                            "pipeline can read it.",
+                        "Two files are generated for you beside your `.xcodeproj` from the " +
+                            "`juspayClientId` Gradle property: `iosApp/MerchantConfig.json` " +
+                            "(HyperSDK's asset pipeline reads it) and `iosApp/LokalJuspayConfig.json` " +
+                            "(`:juspay` reads it at runtime to resolve HyperServices' clientId). " +
+                            "Make sure BOTH are members of your app target. You never pass a " +
+                            "clientId anywhere in your own code.",
                     ),
                 ),
             ),
@@ -90,26 +110,39 @@ class JuspayHostContributor : LokalGatewayHostContributor {
     }
 
     /**
-     * Writes `iosApp/MerchantConfig.json` from [CLIENT_ID_PROPERTY] in HyperSDK's SPM shape
+     * Writes `iosApp/MerchantConfig.json` in HyperSDK's SPM shape
      * (`{ "clientConfigs": { "<client-id>": {} } }`), in the app directory beside the
-     * `.xcodeproj` — where HyperSDK's `Fuse.rb`/`ValidateHyperSDK.rb` pre-build action reads
-     * it. Runs eagerly inside the umbrella plugin's `afterEvaluate`, so it's current on every
-     * Gradle sync. Fails loudly if :juspay is imported but the clientId isn't set, mirroring
-     * the CocoaPods contributor and `hypersdk.plugin`'s own hard failure.
+     * `.xcodeproj` — where HyperSDK's `Fuse.rb`/`ValidateHyperSDK.rb` pre-build action reads it.
+     * Replaces the CocoaPods-era `MerchantConfig.txt`. Runtime clientId resolution no longer
+     * reads this file — see [writeLokalJuspayConfig]. Runs eagerly inside the umbrella plugin's
+     * `afterEvaluate`, so it's current on every Gradle sync.
      */
-    private fun writeMerchantConfig(target: Project) {
-        val clientId = target.providers.gradleProperty(CLIENT_ID_PROPERTY).orNull
-        checkNotNull(clientId) {
-            "Host imports :juspay but has not set the '$CLIENT_ID_PROPERTY' gradle property " +
-                "(gradle.properties, or -P/ORG_GRADLE_PROJECT_…) — required to generate " +
-                "iosApp/MerchantConfig.json for HyperSDK's merchant asset download."
-        }
+    private fun writeMerchantConfig(target: Project, clientId: String) {
         target.file("../iosApp/MerchantConfig.json").writeText(
             """
             {
               "clientConfigs": {
                 "$clientId": {}
               }
+            }
+            """.trimIndent() + "\n",
+        )
+    }
+
+    /**
+     * Writes `iosApp/LokalJuspayConfig.json` (`{ "clientId": "<client-id>" }`) beside the
+     * `.xcodeproj` — a small SDK-owned file whose schema this SDK fully controls, read by
+     * `IOSJuspayClient` (in `:juspay`) at runtime to resolve HyperServices' required clientId.
+     * Deliberately separate from HyperSDK's own [writeMerchantConfig] output: that file's
+     * `clientConfigs` shape is Juspay's contract, so reading it at runtime would couple us to a
+     * schema we don't own. Like `MerchantConfig.json`, it must be an app-target member (surfaced
+     * in the consumer notes) — Gradle can't add it to the consumer's Xcode target itself.
+     */
+    private fun writeLokalJuspayConfig(target: Project, clientId: String) {
+        target.file("../iosApp/LokalJuspayConfig.json").writeText(
+            """
+            {
+              "clientId": "$clientId"
             }
             """.trimIndent() + "\n",
         )

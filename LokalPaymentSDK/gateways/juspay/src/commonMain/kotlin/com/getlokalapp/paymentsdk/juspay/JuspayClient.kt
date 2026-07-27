@@ -23,6 +23,9 @@ internal interface JuspayResultListener {
 internal interface JuspayClient {
     val isInitialised: Boolean
 
+    /** The last payload passed to [initiate], if any — lets [JuspaySdk.initiate] replay it. */
+    val cachedInitPayload: JsonObject?
+
     /** Idempotent; safe to call again on resume. */
     fun initiate(initPayload: JsonObject)
 
@@ -37,5 +40,11 @@ internal interface JuspayClient {
     fun clearResultListener(listener: JuspayResultListener)
 }
 
-/** [clientId]/[tenantId] are iOS-only; Android ignores them (see [com.getlokalapp.paymentsdk.juspay.JuspaySdk]'s kdoc). */
-internal expect fun createJuspayClient(clientId: String, tenantId: String): JuspayClient
+/**
+ * [tenantId] is iOS-only; Android ignores it (see [com.getlokalapp.paymentsdk.juspay.JuspaySdk]'s
+ * kdoc). Neither actual takes a clientId: Android reads it implicitly from the host's
+ * Gradle-plugin-injected config, and iOS's actual resolves it itself at runtime from the
+ * bundled `MerchantConfig.json` (same file the host-contributor generates for HyperSDK's own
+ * asset pipeline) — no host code ever passes one.
+ */
+internal expect fun createJuspayClient(tenantId: String): JuspayClient

@@ -16,6 +16,10 @@ import kotlinx.serialization.json.JsonObject
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
+/** Thrown by [JuspaySdk.initiate] when [JuspaySdk.configure] hasn't been called yet. */
+class JuspayNotConfiguredException(message: String = "JuspaySdk.configure() was never called.") :
+    Exception(message)
+
 /**
  * Singleton handler for [PaymentGateway.JUSPAY] — registers itself with
  * [LokalPaymentSdk] in its `init` block at process start, same as the
@@ -23,7 +27,7 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
  * `@EagerInitialization`, see `JuspayInitializer`/`JuspayEagerInit.kt`).
  * Registration only means "this gateway module is present" — HyperSDK still
  * needs a host-supplied init payload before it can actually pay, so the
- * host's one [initialize] call remains required (call it once at app
+ * host's one [configure] call remains required (call it once at app
  * startup, same call on both platforms); [pay] fails gracefully with
  * `juspay_not_initialized` if it's invoked first. No platform handle needed
  * from the host: Android auto-tracks the current Activity (see `:shared`'s
@@ -47,7 +51,7 @@ object JuspaySdk : PaymentGatewayHandler {
     private val client = AtomicReference<JuspayClient?>(null)
 
     private const val NOT_INITIALIZED_CODE = "juspay_not_initialized"
-    private const val NOT_INITIALIZED_MESSAGE = "JuspaySdk.initialize() was never called."
+    private const val NOT_INITIALIZED_MESSAGE = "JuspaySdk.configure() was never called."
 
     init {
         LokalPaymentSdk.register(this)
@@ -63,35 +67,54 @@ object JuspaySdk : PaymentGatewayHandler {
     /**
      * Initiates HyperSDK with [initPayload]. Safe to call again — e.g. on
      * resume, or when the payload changes — to refresh HyperSDK's cached
-     * init payload; the underlying client is created once, so
-     * [clientId]/[tenantId] are honored from the first call only.
+     * init payload; the underlying client is created once, so [tenantId] is
+     * honored from the first call only.
      *
-     * [clientId]/[tenantId] are iOS-only — Android reads its clientId
-     * implicitly from the host's Gradle-plugin-injected config. [clientId]
-     * has no default on purpose: it's per-merchant, and a wrong one sends
-     * payments to someone else's Juspay account. [tenantId] defaults to
+     * No clientId parameter — neither platform actual takes a host-supplied
+     * one. Android reads it implicitly from the host's Gradle-plugin-injected
+     * config; iOS resolves it itself at runtime from the bundled
+     * `MerchantConfig.json` (see `IOSJuspayClient`). [tenantId] defaults to
      * Juspay India's shared tenant, correct for every host we have. No
      * onBackPressed forwarding on either platform — confirmed dead code even
      * in matrimony's own shipped implementation.
      */
-    fun initialize(
+    fun configure(
         initPayload: JsonObject,
-        clientId: String,
         tenantId: String = "juspayindia",
     ) {
-        val c = getOrCreateClient(clientId, tenantId)
-        c.initiate(initPayload)
+        getOrCreateInitiatedClient(tenantId, initPayload)
     }
 
-    /** Create-once under races: the CAS loser drops its instance and adopts the winner's. */
-    private fun getOrCreateClient(clientId: String, tenantId: String): JuspayClient =
-        client.load() ?: createJuspayClient(clientId, tenantId).let { fresh ->
+    /**
+     * Create-once under races: the CAS loser drops its instance and adopts the winner's. No path
+     * to obtain a client without initiating (or re-initiating) it with [initPayload] — [configure]
+     * has no separate follow-up step to forget.
+     */
+    private fun getOrCreateInitiatedClient(tenantId: String, initPayload: JsonObject): JuspayClient {
+        val c = client.load() ?: createJuspayClient(tenantId).let { fresh ->
             if (client.compareAndSet(null, fresh)) fresh else client.load()!!
         }
+        c.initiate(initPayload)
+        return c
+    }
+
+    /**
+     * Re-initiates HyperSDK with whatever [JsonObject] was last passed to [configure] — e.g. to
+     * force a fresh handshake on resume without the host having to keep its own copy of the
+     * payload around. [Throws] is only meaningful on iOS: it makes the compiled Swift function
+     * `throws`, so Swift callers must `try` it. Kotlin has no checked exceptions, so on
+     * Android/common callers this is purely documentation — an uncaught call still crashes.
+     */
+    @Throws(JuspayNotConfiguredException::class)
+    fun initiate() {
+        val c = client.load() ?: throw JuspayNotConfiguredException()
+        val payload = c.cachedInitPayload ?: throw JuspayNotConfiguredException()
+        c.initiate(payload)
+    }
 
     override fun pay(gatewayConfig: JsonObject): Flow<PaymentResult> {
         // Reachable both via LokalPaymentSdk.pay() (registration no longer
-        // implies initialize() has run) and by calling this object's pay()
+        // implies configure() has run) and by calling this object's pay()
         // directly — either way, fail gracefully rather than crash.
         val c = client.load() ?: return flowOf(
             PaymentResult.Failure(PaymentError(code = NOT_INITIALIZED_CODE, message = NOT_INITIALIZED_MESSAGE)),

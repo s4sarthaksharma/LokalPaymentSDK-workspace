@@ -10,7 +10,7 @@ import kotlinx.serialization.json.JsonObject
 import org.json.JSONObject
 import java.lang.ref.WeakReference
 
-internal actual fun createJuspayClient(clientId: String, tenantId: String): JuspayClient = AndroidJuspayClient()
+internal actual fun createJuspayClient(tenantId: String): JuspayClient = AndroidJuspayClient()
 
 /**
  * A [HyperServiceHolder] built lazily against whichever Activity
@@ -38,7 +38,8 @@ internal class AndroidJuspayClient : JuspayClient {
 
     @Volatile private var holder: HyperServiceHolder? = null
     @Volatile private var boundActivity: WeakReference<FragmentActivity>? = null
-    @Volatile private var cachedInitPayload: JsonObject? = null
+    @Volatile override var cachedInitPayload: JsonObject? = null
+        private set
     @Volatile private var pendingProcess: JsonObject? = null
     @Volatile private var isInitiating = false
     private var listener: JuspayResultListener? = null
