@@ -7,6 +7,7 @@ import com.getlokalapp.paymentsdk.model.GatewayMetadata
 import com.getlokalapp.paymentsdk.model.GatewayReadiness
 import com.getlokalapp.paymentsdk.model.PaymentError
 import com.getlokalapp.paymentsdk.model.PaymentGateway
+import com.getlokalapp.paymentsdk.model.PaymentGatewayEvent
 import com.getlokalapp.paymentsdk.model.PaymentResult
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -94,20 +95,26 @@ object JuspaySdk : PaymentGatewayHandler {
         return c
     }
 
-    override fun pay(gatewayConfig: JsonObject): Flow<PaymentResult> {
+    override fun pay(gatewayConfig: JsonObject): Flow<PaymentGatewayEvent> {
         // Reachable both via LokalPaymentSdk.pay() (registration no longer
         // implies configure() has run) and by calling this object's pay()
         // directly — either way, fail gracefully rather than crash.
         val c = client.load() ?: return flowOf(
-            PaymentResult.Failure(PaymentError(code = NOT_INITIALIZED_CODE, message = NOT_INITIALIZED_MESSAGE)),
+            PaymentGatewayEvent.Terminal(
+                PaymentResult.Failure(PaymentError(code = NOT_INITIALIZED_CODE, message = NOT_INITIALIZED_MESSAGE)),
+            ),
         )
         return callbackFlow {
             // gateway_config comes from the backend — a malformed blob becomes
             // a Failure emission like every other bad state, not a flow crash.
             val config = parseGatewayConfigOrFail { gatewayConfig.toJuspayConfig() } ?: return@callbackFlow
             val resultListener = object : JuspayResultListener {
+                override fun onUiPresented() {
+                    trySend(PaymentGatewayEvent.UiPresented)
+                }
+
                 override fun onResult(data: JuspayResultData) {
-                    trySend(juspayResultToPaymentResult(data))
+                    trySend(PaymentGatewayEvent.Terminal(juspayResultToPaymentResult(data)))
                     close()
                 }
             }

@@ -6,6 +6,7 @@ import com.getlokalapp.paymentsdk.model.CancelReason
 import com.getlokalapp.paymentsdk.model.GatewayMetadata
 import com.getlokalapp.paymentsdk.model.PaymentError
 import com.getlokalapp.paymentsdk.model.PaymentGateway
+import com.getlokalapp.paymentsdk.model.PaymentGatewayEvent
 import com.getlokalapp.paymentsdk.model.PaymentResult
 import com.getlokalapp.paymentsdk.parseGatewayConfigOrFail
 import com.getlokalapp.paymentsdk.webview.WebViewConfig
@@ -56,7 +57,7 @@ internal object WebCheckoutSdk : PaymentGatewayHandler {
      * with no event) `→ Cancelled`. The result is **advisory** — as with UPI
      * intent, the host must confirm final state with its own backend.
      */
-    override fun pay(gatewayConfig: JsonObject): Flow<PaymentResult> = callbackFlow {
+    override fun pay(gatewayConfig: JsonObject): Flow<PaymentGatewayEvent> = callbackFlow {
         val config = parseGatewayConfigOrFail { gatewayConfig.toWebCheckoutConfig() } ?: return@callbackFlow
 
         // First-wins: the page posts one event and closes; a bridge event then
@@ -65,7 +66,7 @@ internal object WebCheckoutSdk : PaymentGatewayHandler {
         fun emit(result: PaymentResult) {
             if (settled) return
             settled = true
-            trySend(result)
+            trySend(PaymentGatewayEvent.Terminal(result))
             close()
         }
 

@@ -111,3 +111,13 @@ data class LokalPaymentResult(
     val result: PaymentResult,
     val metadata: JsonObject? = null,
 )
+
+/**
+ * What [com.getlokalapp.paymentsdk.LokalPaymentSdk.pay] emits: [PaymentGatewayEvent] with the
+ * [PaymentGateway] it came from attached, the same routing-metadata relationship [LokalPaymentResult]
+ * has to [PaymentResult] - see [PaymentGatewayEvent] for what [UiPresented] and [Terminal] mean.
+ */
+sealed interface LokalPaymentGatewayEvent {
+    data class UiPresented(val gateway: PaymentGateway) : LokalPaymentGatewayEvent
+    data class Terminal(val result: LokalPaymentResult) : LokalPaymentGatewayEvent
+}

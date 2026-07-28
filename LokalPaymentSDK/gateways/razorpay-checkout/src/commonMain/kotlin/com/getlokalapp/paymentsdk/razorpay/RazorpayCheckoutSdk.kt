@@ -5,7 +5,7 @@ import com.getlokalapp.paymentsdk.PaymentGatewayHandler
 import com.getlokalapp.paymentsdk.parseGatewayConfigOrFail
 import com.getlokalapp.paymentsdk.model.GatewayMetadata
 import com.getlokalapp.paymentsdk.model.PaymentGateway
-import com.getlokalapp.paymentsdk.model.PaymentResult
+import com.getlokalapp.paymentsdk.model.PaymentGatewayEvent
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -35,17 +35,17 @@ internal object RazorpayCheckoutSdk : PaymentGatewayHandler {
         LokalPaymentSdk.register(this)
     }
 
-    override fun pay(gatewayConfig: JsonObject): Flow<PaymentResult> = callbackFlow {
+    override fun pay(gatewayConfig: JsonObject): Flow<PaymentGatewayEvent> = callbackFlow {
         val config = parseGatewayConfigOrFail { gatewayConfig.toRazorpayCheckoutConfig() } ?: return@callbackFlow
         val client = createRazorpayCheckoutClient()
         client.setPaymentResultListener(object : RazorpayPaymentResultListener {
             override fun onPaymentSuccess(paymentId: String, orderId: String?, signature: String) {
-                trySend(razorpaySuccess(paymentId, orderId, signature))
+                trySend(PaymentGatewayEvent.Terminal(razorpaySuccess(paymentId, orderId, signature)))
                 close()
             }
 
             override fun onPaymentError(code: Int, description: String?) {
-                trySend(razorpayErrorToResult(code, description))
+                trySend(PaymentGatewayEvent.Terminal(razorpayErrorToResult(code, description)))
                 close()
             }
         })

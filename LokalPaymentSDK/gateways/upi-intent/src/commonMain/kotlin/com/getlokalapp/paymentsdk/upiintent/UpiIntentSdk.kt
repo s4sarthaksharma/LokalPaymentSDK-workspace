@@ -8,6 +8,7 @@ import com.getlokalapp.paymentsdk.model.ClientStatus
 import com.getlokalapp.paymentsdk.model.GatewayMetadata
 import com.getlokalapp.paymentsdk.model.PaymentError
 import com.getlokalapp.paymentsdk.model.PaymentGateway
+import com.getlokalapp.paymentsdk.model.PaymentGatewayEvent
 import com.getlokalapp.paymentsdk.model.PaymentResult
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -50,23 +51,23 @@ internal object UpiIntentSdk : PaymentGatewayHandler {
      * backend), or [PaymentResult.Failure] if no UPI app could take it. Never
      * a [PaymentResult.Success] — an on-device UPI result can't be trusted.
      */
-    override fun pay(gatewayConfig: JsonObject): Flow<PaymentResult> = callbackFlow {
+    override fun pay(gatewayConfig: JsonObject): Flow<PaymentGatewayEvent> = callbackFlow {
         val config = parseGatewayConfigOrFail { gatewayConfig.toUpiIntentConfig() } ?: return@callbackFlow
         val txnRef = config.resolveTxnRef()
         val client = createUpiIntentClient()
         client.setResultListener(object : UpiIntentResultListener {
             override fun onPending(clientHint: ClientStatus) {
-                trySend(PaymentResult.Pending(txnRef = txnRef, clientHint = clientHint))
+                trySend(PaymentGatewayEvent.Terminal(PaymentResult.Pending(txnRef = txnRef, clientHint = clientHint)))
                 close()
             }
 
             override fun onFailure(code: String, message: String) {
-                trySend(PaymentResult.Failure(PaymentError(code = code, message = message)))
+                trySend(PaymentGatewayEvent.Terminal(PaymentResult.Failure(PaymentError(code = code, message = message))))
                 close()
             }
 
             override fun onCancelled() {
-                trySend(PaymentResult.Cancelled(CancelReason.USER_DISMISSED))
+                trySend(PaymentGatewayEvent.Terminal(PaymentResult.Cancelled(CancelReason.USER_DISMISSED)))
                 close()
             }
         })

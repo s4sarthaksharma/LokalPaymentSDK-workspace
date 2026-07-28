@@ -137,7 +137,10 @@ internal class IOSJuspayClient(private val tenantId: String) : JuspayClient {
                 pendingProcess = null
             }
 
-            JuspayEvents.HIDE_LOADER -> hideLoader()
+            JuspayEvents.HIDE_LOADER -> {
+                hideLoader()
+                listener?.onUiPresented()
+            }
 
             JuspayEvents.PROCESS_RESULT -> {
                 @Suppress("UNCHECKED_CAST")

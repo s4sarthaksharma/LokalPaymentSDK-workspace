@@ -101,8 +101,10 @@ internal class AndroidJuspayClient : JuspayClient {
                     )
                 }
 
+                JuspayEvents.HIDE_LOADER -> listener?.onUiPresented()
+
                 else -> {
-                    // unhandled event (e.g. hide_loader — no dedicated loader UI on Android)
+                    // unhandled event
                 }
             }
         }

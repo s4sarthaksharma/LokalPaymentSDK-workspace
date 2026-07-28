@@ -4,9 +4,11 @@ import com.getlokalapp.paymentsdk.model.AvailableGateway
 import com.getlokalapp.paymentsdk.model.GatewayMetadata
 import com.getlokalapp.paymentsdk.model.GatewayReadiness
 import com.getlokalapp.paymentsdk.model.GatewayStatusReport
+import com.getlokalapp.paymentsdk.model.LokalPaymentGatewayEvent
 import com.getlokalapp.paymentsdk.model.LokalPaymentResult
 import com.getlokalapp.paymentsdk.model.PaymentError
 import com.getlokalapp.paymentsdk.model.PaymentGateway
+import com.getlokalapp.paymentsdk.model.PaymentGatewayEvent
 import com.getlokalapp.paymentsdk.model.PaymentOrder
 import com.getlokalapp.paymentsdk.model.PaymentResult
 import com.getlokalapp.paymentsdk.model.UnavailableGateway
@@ -92,23 +94,32 @@ object LokalPaymentSdk {
     }
 
     /**
-     * Runs a payment for the given order and emits exactly one terminal
-     * [LokalPaymentResult] — the gateway-agnostic [PaymentResult] plus the
-     * resolved gateway — before completing.
+     * Runs a payment for the given order and emits [LokalPaymentGatewayEvent]s: an optional
+     * [LokalPaymentGatewayEvent.UiPresented] (see [PaymentGatewayEvent.UiPresented] for what it
+     * means and which gateways emit it), then exactly one terminal
+     * [LokalPaymentGatewayEvent.Terminal] wrapping the gateway-agnostic [PaymentResult] plus the
+     * resolved gateway, before completing.
      *
      * @param order the host's create-order response, already decoded into a [PaymentOrder]
      */
-    fun pay(order: PaymentOrder): Flow<LokalPaymentResult> {
+    fun pay(order: PaymentOrder): Flow<LokalPaymentGatewayEvent> {
         val handler = handlers[order.gateway]
             ?: return flowOf(
-                LokalPaymentResult(
-                    gateway = order.gateway,
-                    result = PaymentResult.Failure(unavailableError(order.gateway)),
-                    metadata = order.metadata,
+                LokalPaymentGatewayEvent.Terminal(
+                    LokalPaymentResult(
+                        gateway = order.gateway,
+                        result = PaymentResult.Failure(unavailableError(order.gateway)),
+                        metadata = order.metadata,
+                    ),
                 ),
             )
-        return handler.pay(order.gatewayConfig)
-            .map { LokalPaymentResult(order.gateway, it, order.metadata) }
+        return handler.pay(order.gatewayConfig).map { event ->
+            when (event) {
+                PaymentGatewayEvent.UiPresented -> LokalPaymentGatewayEvent.UiPresented(order.gateway)
+                is PaymentGatewayEvent.Terminal ->
+                    LokalPaymentGatewayEvent.Terminal(LokalPaymentResult(order.gateway, event.result, order.metadata))
+            }
+        }
     }
 
     private fun unavailableError(gateway: PaymentGateway): PaymentError {

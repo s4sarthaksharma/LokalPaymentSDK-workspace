@@ -1,5 +1,6 @@
 package com.getlokalapp.paymentsdk.demo
 
+import com.getlokalapp.paymentsdk.model.LokalPaymentGatewayEvent
 import com.getlokalapp.paymentsdk.model.LokalPaymentResult
 import com.getlokalapp.paymentsdk.model.PaymentGateway
 import com.getlokalapp.paymentsdk.model.PaymentOrder
@@ -50,9 +51,15 @@ internal fun renderUpiApps(apps: List<UpiApp>): String {
     }.trimEnd()
 }
 
-// Dumps the entire object the SDK hands back — the routing gateway from the
-// LokalPaymentResult envelope plus every field of the inner PaymentResult.
-internal fun render(payment: LokalPaymentResult): String {
+// Dumps whatever the SDK hands back on its pay() flow - either an interim
+// "gateway has taken over its own UI" heads-up, or the routing gateway from
+// the LokalPaymentResult envelope plus every field of the inner PaymentResult.
+internal fun render(event: LokalPaymentGatewayEvent): String = when (event) {
+    is LokalPaymentGatewayEvent.UiPresented -> "UI presented (gateway = ${event.gateway})"
+    is LokalPaymentGatewayEvent.Terminal -> render(event.result)
+}
+
+private fun render(payment: LokalPaymentResult): String {
     val header = "gateway = ${payment.gateway}"
     val body = when (val result = payment.result) {
         is PaymentResult.Success -> """

@@ -5,7 +5,7 @@ import com.getlokalapp.paymentsdk.PaymentGatewayHandler
 import com.getlokalapp.paymentsdk.parseGatewayConfigOrFail
 import com.getlokalapp.paymentsdk.model.GatewayMetadata
 import com.getlokalapp.paymentsdk.model.PaymentGateway
-import com.getlokalapp.paymentsdk.model.PaymentResult
+import com.getlokalapp.paymentsdk.model.PaymentGatewayEvent
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -44,7 +44,7 @@ internal object NativeIapSdk : PaymentGatewayHandler {
      * waits on [NativeIapClient.transactionUpdates] for the matching
      * terminal transaction rather than treating Pending itself as terminal.
      */
-    override fun pay(gatewayConfig: JsonObject): Flow<PaymentResult> = callbackFlow {
+    override fun pay(gatewayConfig: JsonObject): Flow<PaymentGatewayEvent> = callbackFlow {
         val config = parseGatewayConfigOrFail { gatewayConfig.toNativeIapConfig() } ?: return@callbackFlow
         val client = createNativeIapClient()
 
@@ -52,7 +52,7 @@ internal object NativeIapSdk : PaymentGatewayHandler {
 
         fun emitIfTerminal(result: NativeIapPurchaseResult): Boolean {
             val mapped = result.toPaymentResultOrNull() ?: return false
-            trySend(mapped)
+            trySend(PaymentGatewayEvent.Terminal(mapped))
             close()
             return true
         }

@@ -4,6 +4,14 @@ import kotlinx.serialization.json.JsonObject
 
 /** Absorbs Juspay's event callback so the host never implements a Juspay interface (rulebook #8). */
 internal interface JuspayResultListener {
+    /**
+     * Non-terminal, optional: at most one call per pay(), always before [onResult], meaning
+     * HyperSDK's own UI has taken over (maps to [com.getlokalapp.paymentsdk.model.PaymentGatewayEvent.UiPresented]).
+     * Default no-op since not every platform actual calls it - iOS shows its own internal loader
+     * and hides it on this same underlying event without needing to tell the host.
+     */
+    fun onUiPresented() {}
+
     /** Terminal: exactly one call per pay(), maps to exactly one PaymentResult. */
     fun onResult(data: JuspayResultData)
 }
