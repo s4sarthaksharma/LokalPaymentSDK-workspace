@@ -15,8 +15,11 @@ import com.getlokalapp.paymentsdk.model.UnavailableGateway
 import com.getlokalapp.paymentsdk.upi.UpiApp
 import com.getlokalapp.paymentsdk.upi.detectInstalledUpiApps
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
 
 /**
  * Entry point for the shared Lokal Payment SDK.
@@ -36,6 +39,17 @@ object LokalPaymentSdk {
 
     private val handlers = mutableMapOf<PaymentGateway, PaymentGatewayHandler>()
     private val unavailable = mutableMapOf<PaymentGateway, UnavailableGateway>()
+
+    /**
+     * Global single-flight guard: at most one [pay] flow may be collecting at
+     * a time, across every gateway. A second [pay] collection that starts
+     * while one is already in flight is rejected immediately with a terminal
+     * [PaymentResult.Failure] carrying the [ALREADY_IN_PROGRESS] code, rather
+     * than launching a second checkout. This is the SDK-level safety net
+     * beneath any host-side double-tap debouncing — it stops two proxy
+     * Activities / checkout sheets from ever opening at once.
+     */
+    private val inFlight = Mutex()
 
     /**
      * Called from a gateway singleton's own `init` block — not something a
@@ -113,14 +127,40 @@ object LokalPaymentSdk {
                     ),
                 ),
             )
-        return handler.pay(order.gatewayConfig).map { event ->
-            when (event) {
-                PaymentGatewayEvent.UiPresented -> LokalPaymentGatewayEvent.UiPresented(order.gateway)
-                is PaymentGatewayEvent.Terminal ->
-                    LokalPaymentGatewayEvent.Terminal(LokalPaymentResult(order.gateway, event.result, order.metadata))
+        return flow {
+            if (!inFlight.tryLock()) {
+                emit(
+                    LokalPaymentGatewayEvent.Terminal(
+                        LokalPaymentResult(
+                            gateway = order.gateway,
+                            result = PaymentResult.Failure(alreadyInProgressError()),
+                            metadata = order.metadata,
+                        ),
+                    ),
+                )
+                return@flow
+            }
+            try {
+                emitAll(
+                    handler.pay(order.gatewayConfig).map { event ->
+                        when (event) {
+                            PaymentGatewayEvent.UiPresented -> LokalPaymentGatewayEvent.UiPresented(order.gateway)
+                            is PaymentGatewayEvent.Terminal ->
+                                LokalPaymentGatewayEvent.Terminal(LokalPaymentResult(order.gateway, event.result, order.metadata))
+                        }
+                    },
+                )
+            } finally {
+                inFlight.unlock()
             }
         }
     }
+
+    private fun alreadyInProgressError(): PaymentError =
+        PaymentError(
+            code = ALREADY_IN_PROGRESS,
+            message = "A payment is already in progress; ignoring this concurrent pay() call.",
+        )
 
     private fun unavailableError(gateway: PaymentGateway): PaymentError {
         val reason = unavailable[gateway]
@@ -155,4 +195,12 @@ object LokalPaymentSdk {
     fun installedUpiApps(): List<UpiApp> = detectInstalledUpiApps()
 
     const val VERSION: String = PAYMENT_SDK_VERSION
+
+    /**
+     * Stable [PaymentError.code] on the terminal [PaymentResult.Failure] emitted
+     * when a [pay] call is rejected because another payment is already in flight
+     * (see [inFlight]). Hosts can match on this to silently ignore a double-tap
+     * rather than surfacing it as a real failure.
+     */
+    const val ALREADY_IN_PROGRESS: String = "already_in_progress"
 }
