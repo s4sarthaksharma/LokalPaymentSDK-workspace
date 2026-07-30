@@ -14,6 +14,8 @@ import com.getlokalapp.paymentsdk.model.PaymentResult
 import com.getlokalapp.paymentsdk.model.UnavailableGateway
 import com.getlokalapp.paymentsdk.upi.UpiApp
 import com.getlokalapp.paymentsdk.upi.detectInstalledUpiApps
+import com.getlokalapp.util.LokalLogger
+import com.getlokalapp.util.Log
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
@@ -193,6 +195,16 @@ object LokalPaymentSdk {
      * hasn't been initialized yet, so no [android.content.Context] is available).
      */
     fun installedUpiApps(): List<UpiApp> = detectInstalledUpiApps()
+
+    /**
+     * Supplies a [LokalLogger] to receive structured logs emitted by SDK gateways as they
+     * run. Pass `null` to stop receiving logs. Safe to call at any point in the app's
+     * lifetime — logging before this is called (e.g. during a gateway's own eager startup)
+     * is silently skipped rather than buffered.
+     */
+    fun setLogger(logger: LokalLogger) {
+        Log = logger
+    }
 
     const val VERSION: String = PAYMENT_SDK_VERSION
 
