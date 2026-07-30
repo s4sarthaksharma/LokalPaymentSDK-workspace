@@ -12,6 +12,7 @@ import com.getlokalapp.paymentsdk.model.PaymentGatewayEvent
 import com.getlokalapp.paymentsdk.model.PaymentOrder
 import com.getlokalapp.paymentsdk.model.PaymentResult
 import com.getlokalapp.paymentsdk.model.UnavailableGateway
+import com.getlokalapp.paymentsdk.model.describeForLog
 import com.getlokalapp.paymentsdk.upi.UpiApp
 import com.getlokalapp.paymentsdk.upi.detectInstalledUpiApps
 import com.getlokalapp.util.LokalLogger
@@ -38,6 +39,8 @@ import kotlinx.coroutines.sync.Mutex
  * there is no unregister.
  */
 object LokalPaymentSdk {
+
+    private const val TAG = "LokalPaymentSdk"
 
     private val handlers = mutableMapOf<PaymentGateway, PaymentGatewayHandler>()
     private val unavailable = mutableMapOf<PaymentGateway, UnavailableGateway>()
@@ -120,17 +123,29 @@ object LokalPaymentSdk {
      */
     fun pay(order: PaymentOrder): Flow<LokalPaymentGatewayEvent> {
         val handler = handlers[order.gateway]
-            ?: return flowOf(
+        Log.d { "[$TAG] pay() called for ${order.gateway}, handlerRegistered=${handler != null}" }
+        if (handler == null) {
+            val error = unavailableError(order.gateway)
+            Log.w { "[$TAG] pay() rejected for ${order.gateway}: no handler registered (${error.code})" }
+            Log.nonFatal(
+                IllegalStateException("pay() called for ${order.gateway} with no handler registered"),
+                extras = mapOf("gateway" to order.gateway.name, "reason_code" to (error.code ?: "unknown")),
+            ) { "[$TAG] no handler registered for ${order.gateway}" }
+            return flowOf(
                 LokalPaymentGatewayEvent.Terminal(
                     LokalPaymentResult(
                         gateway = order.gateway,
-                        result = PaymentResult.Failure(unavailableError(order.gateway)),
+                        result = PaymentResult.Failure(error),
                         metadata = order.metadata,
                     ),
                 ),
             )
+        }
         return flow {
             if (!inFlight.tryLock()) {
+                Log.w {
+                    "[$TAG] pay() rejected for ${order.gateway}: another payment is already in progress"
+                }
                 emit(
                     LokalPaymentGatewayEvent.Terminal(
                         LokalPaymentResult(
@@ -146,15 +161,29 @@ object LokalPaymentSdk {
                 emitAll(
                     handler.pay(order.gatewayConfig).map { event ->
                         when (event) {
-                            PaymentGatewayEvent.UiPresented -> LokalPaymentGatewayEvent.UiPresented(order.gateway)
-                            is PaymentGatewayEvent.Terminal ->
+                            PaymentGatewayEvent.UiPresented -> {
+                                Log.d { "[$TAG] ${order.gateway} presented its UI" }
+                                LokalPaymentGatewayEvent.UiPresented(order.gateway)
+                            }
+                            is PaymentGatewayEvent.Terminal -> {
+                                logTerminalResult(order.gateway, event.result)
                                 LokalPaymentGatewayEvent.Terminal(LokalPaymentResult(order.gateway, event.result, order.metadata))
+                            }
                         }
                     },
                 )
             } finally {
                 inFlight.unlock()
             }
+        }
+    }
+
+    private fun logTerminalResult(gateway: PaymentGateway, result: PaymentResult) {
+        val description = "[$TAG] $gateway terminal: ${result.describeForLog()}"
+        if (result is PaymentResult.Failure) {
+            Log.e { description }
+        } else {
+            Log.d { description }
         }
     }
 

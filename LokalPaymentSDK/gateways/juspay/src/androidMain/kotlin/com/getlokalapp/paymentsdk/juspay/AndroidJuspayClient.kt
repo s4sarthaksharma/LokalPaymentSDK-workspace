@@ -3,6 +3,7 @@ package com.getlokalapp.paymentsdk.juspay
 import androidx.fragment.app.FragmentActivity
 import com.getlokalapp.paymentsdk.hostcontext.ActivityTracker
 import com.getlokalapp.paymentsdk.json.toOrgJson
+import com.getlokalapp.util.Log
 import `in`.juspay.hyperinteg.HyperServiceHolder
 import `in`.juspay.hypersdk.data.JuspayResponseHandler
 import `in`.juspay.hypersdk.ui.HyperPaymentsCallbackAdapter
@@ -44,6 +45,10 @@ internal actual fun createJuspayClient(tenantId: String): JuspayClient = Android
  */
 internal class AndroidJuspayClient : JuspayClient {
 
+    private companion object {
+        const val TAG = "AndroidJuspayClient"
+    }
+
     @Volatile private var holder: HyperServiceHolder? = null
     @Volatile private var boundActivity: WeakReference<FragmentActivity>? = null
     @Volatile private var lastBoundActivityClass: Class<*>? = null
@@ -55,12 +60,16 @@ internal class AndroidJuspayClient : JuspayClient {
     init {
         ActivityTracker.addOnActivityResumedListener { activity ->
             if (boundActivity?.get() === activity) {
-                cachedInitPayload?.let { doInitiate(it) }
+                cachedInitPayload?.let {
+                    Log.d { "[$TAG] self-heal: replaying cached init payload on resume of ${activity::class.simpleName}" }
+                    doInitiate(it)
+                }
             }
         }
         ActivityTracker.addOnDestroyedListener { destroyed ->
             synchronized(this) {
                 if (boundActivity?.get() === destroyed) {
+                    Log.d { "[$TAG] bound activity ${destroyed::class.simpleName} destroyed, terminating engine and resetting state" }
                     holder?.terminate()
                     holder = null
                     boundActivity = null
@@ -75,14 +84,20 @@ internal class AndroidJuspayClient : JuspayClient {
 
     private val callback = object : HyperPaymentsCallbackAdapter() {
         override fun onEvent(json: JSONObject, responseHandler: JuspayResponseHandler?) {
-            when (json.optString("event")) {
+            when (val event = json.optString("event")) {
                 JuspayEvents.INITIATE_RESULT -> {
                     isInitiating = false
                     val pending = pendingProcess
                     val h = getHolder()
+                    Log.d { "[$TAG] INITIATE_RESULT, holderInitialised=${h?.isInitialised}, hasPending=${pending != null}" }
                     if (h?.isInitialised == true && pending != null) {
                         h.process(pending.toOrgJson())
                     } else if (pending != null) {
+                        Log.w { "[$TAG] initiate failed while a process payload was queued" }
+                        Log.nonFatal(
+                            IllegalStateException("AndroidJuspayClient initiate failed while a process payload was queued"),
+                            extras = mapOf("gateway" to "juspay", "operation" to "onEvent:INITIATE_RESULT", "error_code" to "initiate_failed"),
+                        ) { "[$TAG] initiate failed while a process payload was queued" }
                         listener?.onResult(errorData("initiate_failed"))
                     }
                     pendingProcess = null
@@ -90,21 +105,27 @@ internal class AndroidJuspayClient : JuspayClient {
 
                 JuspayEvents.PROCESS_RESULT -> {
                     val payload = json.optJSONObject("payload")
+                    val status = payload?.optString("status").orEmpty()
+                    val errorCode = json.optString("errorCode").ifEmpty { null }
+                    Log.d { "[$TAG] PROCESS_RESULT, status=$status, errorCode=$errorCode" }
                     listener?.onResult(
                         JuspayResultData(
-                            status = payload?.optString("status").orEmpty(),
+                            status = status,
                             orderId = json.optString("orderId").ifEmpty { payload?.optString("orderId") },
                             txnId = json.optString("epgTxnId").ifEmpty { payload?.optString("epgTxnId") },
-                            errorCode = json.optString("errorCode").ifEmpty { null },
+                            errorCode = errorCode,
                             errorMessage = json.optString("errorMessage").ifEmpty { null },
                         ),
                     )
                 }
 
-                JuspayEvents.HIDE_LOADER -> listener?.onUiPresented()
+                JuspayEvents.HIDE_LOADER -> {
+                    Log.d { "[$TAG] HIDE_LOADER" }
+                    listener?.onUiPresented()
+                }
 
                 else -> {
-                    // unhandled event
+                    Log.d { "[$TAG] unhandled event=$event" }
                 }
             }
         }
@@ -131,6 +152,7 @@ internal class AndroidJuspayClient : JuspayClient {
         return synchronized(this) {
             holder?.takeIf { boundActivity?.get() === activity }
                 ?: HyperServiceHolder(activity).also {
+                    Log.d { "[$TAG] binding fresh holder to ${activity::class.simpleName}" }
                     it.setCallback(callback)
                     holder = it
                     boundActivity = WeakReference(activity)
@@ -144,15 +166,28 @@ internal class AndroidJuspayClient : JuspayClient {
     }
 
     private fun doInitiate(initPayload: JsonObject) {
-        val h = getHolder() ?: return
+        val h = getHolder() ?: run {
+            Log.w { "[$TAG] doInitiate() skipped: no FragmentActivity available" }
+            Log.nonFatal(
+                IllegalStateException("AndroidJuspayClient.doInitiate() skipped: no FragmentActivity available"),
+                extras = mapOf("gateway" to "juspay", "operation" to "doInitiate"),
+            ) { "[$TAG] no FragmentActivity available" }
+            return
+        }
         if (h.isInitialised || isInitiating) return
         isInitiating = true
+        Log.d { "[$TAG] initiating HyperSDK" }
         h.initiate(initPayload.toOrgJson())
     }
 
     override fun process(processPayload: JsonObject) {
         val h = getHolder()
         if (h == null) {
+            Log.w { "[$TAG] process() failed: no FragmentActivity available" }
+            Log.nonFatal(
+                IllegalStateException("AndroidJuspayClient.process() failed: no FragmentActivity available"),
+                extras = mapOf("gateway" to "juspay", "operation" to "process", "error_code" to "juspay_activity_unavailable"),
+            ) { "[$TAG] no FragmentActivity available" }
             listener?.onResult(errorData("juspay_activity_unavailable"))
             return
         }
@@ -163,6 +198,7 @@ internal class AndroidJuspayClient : JuspayClient {
             // INITIATE_RESULT itself didn't fire for another ~5s) — so while
             // an initiate is in flight, always queue and let INITIATE_RESULT
             // flush it, regardless of what isInitialised claims meanwhile.
+            Log.d { "[$TAG] process() queued: initiate already in flight" }
             pendingProcess = processPayload
             return
         }
@@ -174,9 +210,15 @@ internal class AndroidJuspayClient : JuspayClient {
         val init = cachedInitPayload
         if (init == null) {
             pendingProcess = null
+            Log.w { "[$TAG] process() failed: no cached init payload" }
+            Log.nonFatal(
+                IllegalStateException("AndroidJuspayClient.process() failed: no cached init payload"),
+                extras = mapOf("gateway" to "juspay", "operation" to "process", "error_code" to "juspay_not_initiated"),
+            ) { "[$TAG] no cached init payload" }
             listener?.onResult(errorData("juspay_not_initiated"))
             return
         }
+        Log.d { "[$TAG] process() triggering cold-start initiate" }
         doInitiate(init)
     }
 

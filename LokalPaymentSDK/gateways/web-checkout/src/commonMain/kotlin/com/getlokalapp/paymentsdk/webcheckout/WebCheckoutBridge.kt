@@ -6,10 +6,13 @@ import com.getlokalapp.paymentsdk.model.ClientStatus
 import com.getlokalapp.paymentsdk.model.PaymentError
 import com.getlokalapp.paymentsdk.model.PaymentResult
 import com.getlokalapp.paymentsdk.webview.JsBridgeHandler
+import com.getlokalapp.util.Log
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
+
+private const val TAG = "WebCheckout"
 
 // The hosted gateway web app's event vocabulary (payment-web). The page reports
 // via window.ReactNativeWebView.postMessage(JSON.stringify({ name, payload }));
@@ -94,6 +97,7 @@ private fun eventHandler(
     override val name: String = event
 
     override fun onMessage(payload: String, reply: (String) -> Unit) {
+        Log.d { "[$TAG] page reported event=$event" }
         val obj = runCatching { lenientJson.parseToJsonElement(payload).jsonObject }.getOrNull()
             ?: JsonObject(emptyMap())
         onResult(map(obj))

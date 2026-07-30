@@ -9,6 +9,7 @@ import com.getlokalapp.paymentsdk.model.PaymentError
 import com.getlokalapp.paymentsdk.model.PaymentGateway
 import com.getlokalapp.paymentsdk.model.PaymentGatewayEvent
 import com.getlokalapp.paymentsdk.model.PaymentResult
+import com.getlokalapp.util.Log
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -37,6 +38,8 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
  */
 @OptIn(ExperimentalAtomicApi::class)
 object JuspaySdk : PaymentGatewayHandler {
+
+    private const val TAG = "Juspay"
 
     override val gateway: PaymentGateway = PaymentGateway.JUSPAY
 
@@ -79,6 +82,7 @@ object JuspaySdk : PaymentGatewayHandler {
         initPayload: JsonObject,
         tenantId: String = "juspayindia",
     ) {
+        Log.d { "[$TAG] configure() called, tenantId=$tenantId, firstTime=${client.load() == null}" }
         getOrCreateInitiatedClient(tenantId, initPayload)
     }
 
@@ -99,26 +103,38 @@ object JuspaySdk : PaymentGatewayHandler {
         // Reachable both via LokalPaymentSdk.pay() (registration no longer
         // implies configure() has run) and by calling this object's pay()
         // directly — either way, fail gracefully rather than crash.
-        val c = client.load() ?: return flowOf(
-            PaymentGatewayEvent.Terminal(
-                PaymentResult.Failure(PaymentError(code = NOT_INITIALIZED_CODE, message = NOT_INITIALIZED_MESSAGE)),
-            ),
-        )
+        val c = client.load() ?: run {
+            Log.w { "[$TAG] pay() called before configure()" }
+            Log.nonFatal(
+                IllegalStateException("JuspaySdk.pay() called before configure()"),
+                extras = mapOf("gateway" to "juspay", "operation" to "pay"),
+            ) { "[$TAG] pay() called before configure()" }
+            return flowOf(
+                PaymentGatewayEvent.Terminal(
+                    PaymentResult.Failure(PaymentError(code = NOT_INITIALIZED_CODE, message = NOT_INITIALIZED_MESSAGE)),
+                ),
+            )
+        }
         return callbackFlow {
             // gateway_config comes from the backend — a malformed blob becomes
             // a Failure emission like every other bad state, not a flow crash.
             val config = parseGatewayConfigOrFail { gatewayConfig.toJuspayConfig() } ?: return@callbackFlow
             val resultListener = object : JuspayResultListener {
                 override fun onUiPresented() {
+                    Log.d { "[$TAG] UI presented" }
                     trySend(PaymentGatewayEvent.UiPresented)
                 }
 
                 override fun onResult(data: JuspayResultData) {
+                    Log.d {
+                        "[$TAG] result received, status=${data.status}, errorCode=${data.errorCode}, errorMessage=${data.errorMessage}"
+                    }
                     trySend(PaymentGatewayEvent.Terminal(juspayResultToPaymentResult(data)))
                     close()
                 }
             }
             c.setResultListener(resultListener)
+            Log.d { "[$TAG] processing payment" }
             c.process(config.sdkPayload)
             // Identity-checked clear: if a newer pay() has already installed
             // its own listener, this stale flow's teardown must not remove it.

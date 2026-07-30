@@ -3,6 +3,7 @@ package com.getlokalapp.paymentsdk.juspay
 import vendor.HyperSDK.HyperServices
 import com.getlokalapp.paymentsdk.hostcontext.topmostViewController
 import com.getlokalapp.paymentsdk.json.toPlainMap
+import com.getlokalapp.util.Log
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.serialization.json.JsonObject
 import platform.Foundation.NSBundle
@@ -51,6 +52,10 @@ internal actual fun createJuspayClient(tenantId: String): JuspayClient = IOSJusp
 @OptIn(ExperimentalForeignApi::class)
 internal class IOSJuspayClient(private val tenantId: String) : JuspayClient {
 
+    private companion object {
+        const val TAG = "IOSJuspayClient"
+    }
+
     private val services = HyperServices(tenantId = tenantId, clientId = resolveClientId())
 
     private var initiating = false
@@ -72,13 +77,22 @@ internal class IOSJuspayClient(private val tenantId: String) : JuspayClient {
             return
         }
         pendingProcess = processPayload
-        if (initiating) return
+        if (initiating) {
+            Log.d { "[$TAG] process() queued: initiate already in flight" }
+            return
+        }
         val init = cachedInitPayload
         if (init == null) {
             pendingProcess = null
+            Log.w { "[$TAG] process() failed: no cached init payload" }
+            Log.nonFatal(
+                IllegalStateException("IOSJuspayClient.process() failed: no cached init payload"),
+                extras = mapOf("gateway" to "juspay", "operation" to "process", "error_code" to "juspay_not_initiated"),
+            ) { "[$TAG] no cached init payload" }
             listener?.onResult(errorData("juspay_not_initiated"))
             return
         }
+        Log.d { "[$TAG] process() triggering cold-start initiate" }
         startInitiate(init, showLoader = true)
     }
 
@@ -86,10 +100,16 @@ internal class IOSJuspayClient(private val tenantId: String) : JuspayClient {
         if (services.isInitialised() || initiating) return
         val viewController = topmostViewController()
         if (viewController == null) {
+            Log.w { "[$TAG] initiate failed: no topmost view controller available" }
+            Log.nonFatal(
+                IllegalStateException("IOSJuspayClient initiate failed: no topmost view controller available"),
+                extras = mapOf("gateway" to "juspay", "operation" to "startInitiate", "error_code" to "juspay_no_view_controller"),
+            ) { "[$TAG] no topmost view controller available" }
             listener?.onResult(errorData("juspay_no_view_controller"))
             return
         }
         initiating = true
+        Log.d { "[$TAG] initiating HyperSDK, showLoader=$showLoader" }
         if (showLoader) showLoader(viewController)
         services.initiate(viewController, initPayload.toPlainMap()) { data -> onEvent(data) }
     }
@@ -129,15 +149,23 @@ internal class IOSJuspayClient(private val tenantId: String) : JuspayClient {
         when (event) {
             JuspayEvents.INITIATE_RESULT -> {
                 initiating = false
-                if (services.isInitialised()) {
+                val initialised = services.isInitialised()
+                Log.d { "[$TAG] INITIATE_RESULT, initialised=$initialised, hasPending=${pendingProcess != null}" }
+                if (initialised) {
                     pendingProcess?.let { services.process(it.toPlainMap()) }
                 } else if (pendingProcess != null) {
+                    Log.w { "[$TAG] initiate failed while a process payload was queued" }
+                    Log.nonFatal(
+                        IllegalStateException("IOSJuspayClient initiate failed while a process payload was queued"),
+                        extras = mapOf("gateway" to "juspay", "operation" to "onEvent:INITIATE_RESULT", "error_code" to "initiate_failed"),
+                    ) { "[$TAG] initiate failed while a process payload was queued" }
                     listener?.onResult(errorData("initiate_failed"))
                 }
                 pendingProcess = null
             }
 
             JuspayEvents.HIDE_LOADER -> {
+                Log.d { "[$TAG] HIDE_LOADER" }
                 hideLoader()
                 listener?.onUiPresented()
             }
@@ -145,19 +173,22 @@ internal class IOSJuspayClient(private val tenantId: String) : JuspayClient {
             JuspayEvents.PROCESS_RESULT -> {
                 @Suppress("UNCHECKED_CAST")
                 val payload = data["payload"] as? Map<Any?, *>
+                val status = (payload?.get("status") as? String).orEmpty()
+                val errorCode = data["errorCode"] as? String
+                Log.d { "[$TAG] PROCESS_RESULT, status=$status, errorCode=$errorCode" }
                 listener?.onResult(
                     JuspayResultData(
-                        status = (payload?.get("status") as? String).orEmpty(),
+                        status = status,
                         orderId = data["orderId"] as? String ?: payload?.get("orderId") as? String,
                         txnId = data["epgTxnId"] as? String ?: payload?.get("epgTxnId") as? String,
-                        errorCode = data["errorCode"] as? String,
+                        errorCode = errorCode,
                         errorMessage = data["errorMessage"] as? String,
                     ),
                 )
             }
 
             else -> {
-                // unhandled event
+                Log.d { "[$TAG] unhandled event=$event" }
             }
         }
     }

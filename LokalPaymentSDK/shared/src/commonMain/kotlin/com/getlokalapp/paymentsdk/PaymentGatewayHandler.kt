@@ -6,6 +6,7 @@ import com.getlokalapp.paymentsdk.model.PaymentError
 import com.getlokalapp.paymentsdk.model.PaymentGateway
 import com.getlokalapp.paymentsdk.model.PaymentGatewayEvent
 import com.getlokalapp.paymentsdk.model.PaymentResult
+import com.getlokalapp.util.Log
 import kotlinx.coroutines.channels.ProducerScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.json.JsonObject
@@ -64,6 +65,11 @@ const val BAD_GATEWAY_CONFIG: String = "bad_gateway_config"
  */
 inline fun <T> ProducerScope<PaymentGatewayEvent>.parseGatewayConfigOrFail(parse: () -> T): T? =
     runCatching(parse).getOrElse { e ->
+        Log.e(err = e, tag = BAD_GATEWAY_CONFIG) { "Unparseable gateway_config: ${e.message}" }
+        Log.nonFatal(
+            e,
+            extras = mapOf("code" to BAD_GATEWAY_CONFIG, "exception_type" to (e::class.simpleName ?: "unknown")),
+        ) { "Unparseable gateway_config: ${e.message}" }
         trySend(
             PaymentGatewayEvent.Terminal(
                 PaymentResult.Failure(

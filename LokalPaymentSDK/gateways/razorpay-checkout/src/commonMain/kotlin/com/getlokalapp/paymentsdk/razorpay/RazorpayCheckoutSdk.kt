@@ -6,6 +6,7 @@ import com.getlokalapp.paymentsdk.parseGatewayConfigOrFail
 import com.getlokalapp.paymentsdk.model.GatewayMetadata
 import com.getlokalapp.paymentsdk.model.PaymentGateway
 import com.getlokalapp.paymentsdk.model.PaymentGatewayEvent
+import com.getlokalapp.util.Log
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -24,6 +25,8 @@ import kotlinx.serialization.json.JsonObject
  */
 internal object RazorpayCheckoutSdk : PaymentGatewayHandler {
 
+    private const val TAG = "RazorpayCheckout"
+
     override val gateway: PaymentGateway = PaymentGateway.RAZORPAY_CHECKOUT
 
     override val metadata: GatewayMetadata = GatewayMetadata(
@@ -40,15 +43,18 @@ internal object RazorpayCheckoutSdk : PaymentGatewayHandler {
         val client = createRazorpayCheckoutClient()
         client.setPaymentResultListener(object : RazorpayPaymentResultListener {
             override fun onPaymentSuccess(paymentId: String, orderId: String?, signature: String) {
+                Log.d { "[$TAG] payment success, paymentId=$paymentId, orderId=$orderId" }
                 trySend(PaymentGatewayEvent.Terminal(razorpaySuccess(paymentId, orderId, signature)))
                 close()
             }
 
             override fun onPaymentError(code: Int, description: String?) {
+                Log.w { "[$TAG] payment error, code=$code, description=$description" }
                 trySend(PaymentGatewayEvent.Terminal(razorpayErrorToResult(code, description)))
                 close()
             }
         })
+        Log.d { "[$TAG] opening checkout" }
         client.openCheckout(config)
 
         awaitClose { client.setPaymentResultListener(null) }

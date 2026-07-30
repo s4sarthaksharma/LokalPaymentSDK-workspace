@@ -396,6 +396,25 @@ init payload) skips the triggers instead: make the object public and give it
 an `initialize(...)` method that registers **and** performs setup — the
 host's one call is the startup trigger (see `JuspaySdk`).
 
+### Step 5b — logging
+
+Log through `Log` (`com.getlokalapp.util.Log`) rather than `println`/
+`Log.d`(android.util)/`NSLog` — it's a no-op until a host installs a real
+`LokalLogger` via `LokalPaymentSdk.setLogger()`, so unlogged hosts pay
+nothing for it. Add a `private const val TAG = "Foo"` to your SDK object and:
+- `Log.d { "[$TAG] ..." }` right before the call that kicks off vendor UI
+  (`client.open(...)`, etc.), and in each listener branch for success/cancel
+- `Log.w`/`Log.e(err, tag) { ... }` for error branches
+- Never log the full `gatewayConfig`/init-payload `JsonObject`, raw card/
+  customer data, or `PaymentResult.Success.signature` — only ids, codes, and
+  structural facts. `LokalPaymentSdk.pay()` already logs every gateway's
+  `UiPresented`/terminal events uniformly; your gateway's own logging should
+  add detail the orchestrator can't see (vendor SDK internals), not repeat it.
+
+**Never call `Log` from inside your SDK object's own `init` block.** See
+Rulebook §5 rule 11 — that block runs from every gateway's eager startup
+trigger, including pre-`main` on iOS.
+
 ### Step 6 — platform actuals
 - **Android:** a translucent **proxy Activity** (mirroring `RazorpayCheckoutActivity`)
   that implements the gateway's result listener so the *host* never has to. A
@@ -487,6 +506,12 @@ settings-phase twin of the iOS `LokalGatewayHostContributor`:
 10. **Reserve the enum code to match the backend.** `PaymentGateway.code` is
     the backend's identifier, not an arbitrary local id — the host maps
     backend-code → enum via `PaymentGateway.fromCode`.
+11. **No `Log` calls inside a gateway object's `init` block** — same rule as
+    "no logging, no UIKit" for the iOS `@EagerInitialization` hook (§4 step 5,
+    Step 5 above): that block runs synchronously from every gateway's eager
+    startup trigger, pre-`main` on iOS, so it must stay a bare `register()`
+    call. Logging belongs inside listener lambdas and methods that run later,
+    at actual runtime events (see Step 5b).
 
 ---
 

@@ -12,6 +12,17 @@ interface LokalLogger {
     fun i(forceLog: Boolean = false, message: () -> String)
     fun w(forceLog: Boolean = false, message: () -> String)
     fun e(err: Throwable? = null, tag: String? = null, forceLog: Boolean = false, message: () -> String)
+
+    /**
+     * Reports a real anomaly (not a routine payment outcome) to whatever crash-reporting
+     * backend the host wires up (e.g. Crashlytics) — separate from [e], which just logs.
+     * [throwable] is required: a non-fatal *is* the exception payload, so a call site with
+     * no natural exception should synthesize one (e.g. `IllegalStateException("...")`)
+     * rather than pass null. [extras] are named contextual values the host attaches
+     * alongside the throwable (e.g. Crashlytics custom keys) — empty by default so the
+     * common zero-context call site stays a one-liner.
+     */
+    fun nonFatal(throwable: Throwable, extras: Map<String, String> = emptyMap(), message: () -> String)
 }
 
 /**
@@ -36,4 +47,5 @@ internal object NoOpLokalLogger : LokalLogger {
     override fun i(forceLog: Boolean, message: () -> String) {}
     override fun w(forceLog: Boolean, message: () -> String) {}
     override fun e(err: Throwable?, tag: String?, forceLog: Boolean, message: () -> String) {}
+    override fun nonFatal(throwable: Throwable, extras: Map<String, String>, message: () -> String) {}
 }

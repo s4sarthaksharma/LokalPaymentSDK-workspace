@@ -10,6 +10,7 @@ import com.getlokalapp.paymentsdk.model.PaymentError
 import com.getlokalapp.paymentsdk.model.PaymentGateway
 import com.getlokalapp.paymentsdk.model.PaymentGatewayEvent
 import com.getlokalapp.paymentsdk.model.PaymentResult
+import com.getlokalapp.util.Log
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -32,6 +33,8 @@ private const val NO_VENDOR_SDK = "none"
  * at call time. Each [pay] builds its own short-lived platform client.
  */
 internal object UpiIntentSdk : PaymentGatewayHandler {
+
+    private const val TAG = "UpiIntent"
 
     override val gateway: PaymentGateway = PaymentGateway.UPI_INTENT
 
@@ -57,20 +60,24 @@ internal object UpiIntentSdk : PaymentGatewayHandler {
         val client = createUpiIntentClient()
         client.setResultListener(object : UpiIntentResultListener {
             override fun onPending(clientHint: ClientStatus) {
+                Log.d { "[$TAG] pending, txnRef=$txnRef, clientHint=$clientHint" }
                 trySend(PaymentGatewayEvent.Terminal(PaymentResult.Pending(txnRef = txnRef, clientHint = clientHint)))
                 close()
             }
 
             override fun onFailure(code: String, message: String) {
+                Log.w { "[$TAG] failure, code=$code, message=$message" }
                 trySend(PaymentGatewayEvent.Terminal(PaymentResult.Failure(PaymentError(code = code, message = message))))
                 close()
             }
 
             override fun onCancelled() {
+                Log.d { "[$TAG] cancelled by user" }
                 trySend(PaymentGatewayEvent.Terminal(PaymentResult.Cancelled(CancelReason.USER_DISMISSED)))
                 close()
             }
         })
+        Log.d { "[$TAG] launching UPI intent, txnRef=$txnRef" }
         client.launch(config)
 
         awaitClose { client.setResultListener(null) }

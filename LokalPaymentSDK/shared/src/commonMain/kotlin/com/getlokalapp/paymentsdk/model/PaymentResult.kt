@@ -113,6 +113,17 @@ data class LokalPaymentResult(
 )
 
 /**
+ * Log-safe summary of a [PaymentResult] — deliberately omits
+ * [PaymentResult.Success.signature], which a log sink shouldn't carry.
+ */
+fun PaymentResult.describeForLog(): String = when (this) {
+    is PaymentResult.Success -> "Success(paymentId=$paymentId, orderId=$orderId)"
+    is PaymentResult.Cancelled -> "Cancelled(reason=$reason)"
+    is PaymentResult.Failure -> "Failure(code=${error.code}, message=${error.message})"
+    is PaymentResult.Pending -> "Pending(txnRef=$txnRef, clientHint=$clientHint)"
+}
+
+/**
  * What [com.getlokalapp.paymentsdk.LokalPaymentSdk.pay] emits: [PaymentGatewayEvent] with the
  * [PaymentGateway] it came from attached, the same routing-metadata relationship [LokalPaymentResult]
  * has to [PaymentResult] - see [PaymentGatewayEvent] for what [UiPresented] and [Terminal] mean.

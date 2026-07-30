@@ -8,11 +8,13 @@ import com.getlokalapp.paymentsdk.model.PaymentError
 import com.getlokalapp.paymentsdk.model.PaymentGateway
 import com.getlokalapp.paymentsdk.model.PaymentGatewayEvent
 import com.getlokalapp.paymentsdk.model.PaymentResult
+import com.getlokalapp.paymentsdk.model.describeForLog
 import com.getlokalapp.paymentsdk.parseGatewayConfigOrFail
 import com.getlokalapp.paymentsdk.webview.WebViewConfig
 import com.getlokalapp.paymentsdk.webview.WebViewListener
 import com.getlokalapp.paymentsdk.webview.WebViewRequest
 import com.getlokalapp.paymentsdk.webview.createWebViewSession
+import com.getlokalapp.util.Log
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -37,6 +39,8 @@ private const val BRIDGE_NAME = "LokalBridge"
  * platforms (the WebView is cross-platform), so there is no `registerUnavailable`.
  */
 internal object WebCheckoutSdk : PaymentGatewayHandler {
+
+    private const val TAG = "WebCheckout"
 
     override val gateway: PaymentGateway = PaymentGateway.WEB_CHECKOUT
 
@@ -66,6 +70,7 @@ internal object WebCheckoutSdk : PaymentGatewayHandler {
         fun emit(result: PaymentResult) {
             if (settled) return
             settled = true
+            Log.d { "[$TAG] settling with ${result.describeForLog()}" }
             trySend(PaymentGatewayEvent.Terminal(result))
             close()
         }
@@ -79,15 +84,18 @@ internal object WebCheckoutSdk : PaymentGatewayHandler {
                 // Dismissed (Android hardware back) with no terminal event yet →
                 // user cancellation.
                 override fun onClosed() {
+                    Log.d { "[$TAG] view closed with no terminal event yet" }
                     emit(PaymentResult.Cancelled(CancelReason.USER_DISMISSED))
                 }
 
                 override fun onError(code: String, message: String) {
+                    Log.w { "[$TAG] webview error, code=$code, message=$message" }
                     emit(PaymentResult.Failure(PaymentError(code = code, message = message)))
                 }
             },
         )
 
+        Log.d { "[$TAG] loading gateway url" }
         val session = createWebViewSession(webConfig)
         session.load(WebViewRequest.Url(config.gatewayUrl))
 

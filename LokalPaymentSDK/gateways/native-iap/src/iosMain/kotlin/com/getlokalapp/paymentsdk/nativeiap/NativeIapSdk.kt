@@ -6,6 +6,8 @@ import com.getlokalapp.paymentsdk.parseGatewayConfigOrFail
 import com.getlokalapp.paymentsdk.model.GatewayMetadata
 import com.getlokalapp.paymentsdk.model.PaymentGateway
 import com.getlokalapp.paymentsdk.model.PaymentGatewayEvent
+import com.getlokalapp.paymentsdk.model.describeForLog
+import com.getlokalapp.util.Log
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -24,6 +26,8 @@ import kotlinx.serialization.json.JsonObject
  * concrete client differs per platform.
  */
 internal object NativeIapSdk : PaymentGatewayHandler {
+
+    private const val TAG = "NativeIap"
 
     override val gateway: PaymentGateway = PaymentGateway.NATIVE_IAP
 
@@ -52,13 +56,16 @@ internal object NativeIapSdk : PaymentGatewayHandler {
 
         fun emitIfTerminal(result: NativeIapPurchaseResult): Boolean {
             val mapped = result.toPaymentResultOrNull() ?: return false
+            Log.d { "[$TAG] settling with ${mapped.describeForLog()}" }
             trySend(PaymentGatewayEvent.Terminal(mapped))
             close()
             return true
         }
 
+        Log.d { "[$TAG] purchasing productId=${config.productId}" }
         val direct = client.purchase(config.productId, config.appAccountToken)
         if (!emitIfTerminal(direct)) {
+            Log.d { "[$TAG] purchase pending, waiting on transactionUpdates for productId=${config.productId}" }
             updatesJob = launch {
                 client.transactionUpdates.collect { update ->
                     // A Success from transactionUpdates might belong to a

@@ -1,8 +1,8 @@
 package com.getlokalapp.paymentsdk.model
 
+import com.getlokalapp.paymentsdk.json.lenientJson
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 
 /**
  * Per-gateway build info a host can use to spot version skew (e.g. a gateway
@@ -66,10 +66,8 @@ data class GatewayStatusReport(
      * shipping to diagnostics. [PaymentGateway] values encode as their
      * [PaymentGateway.code] (e.g. `"juspay"`).
      */
-    fun toJson(): String = statusReportJson.encodeToString(this)
+    fun toJson(): String = lenientJson.encodeToString(this)
 }
-
-private val statusReportJson = Json { prettyPrint = true }
 
 /**
  * A [com.getlokalapp.paymentsdk.PaymentGatewayHandler]'s own answer to "can

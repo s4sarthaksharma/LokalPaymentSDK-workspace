@@ -6,6 +6,7 @@ import com.getlokalapp.paymentsdk.parseGatewayConfigOrFail
 import com.getlokalapp.paymentsdk.model.GatewayMetadata
 import com.getlokalapp.paymentsdk.model.PaymentGateway
 import com.getlokalapp.paymentsdk.model.PaymentGatewayEvent
+import com.getlokalapp.util.Log
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -32,6 +33,8 @@ import kotlinx.serialization.json.JsonObject
  */
 internal object RazorpayCustomUiSdk : PaymentGatewayHandler {
 
+    private const val TAG = "RazorpayCustomUi"
+
     override val gateway: PaymentGateway = PaymentGateway.RAZORPAY_CUSTOM_UI
 
     override val metadata: GatewayMetadata = GatewayMetadata(
@@ -56,15 +59,18 @@ internal object RazorpayCustomUiSdk : PaymentGatewayHandler {
         val client = AndroidRazorpayCustomUiClient()
         client.setPaymentResultListener(object : RazorpayCustomUiResultListener {
             override fun onPaymentSuccess(paymentId: String, orderId: String?, signature: String) {
+                Log.d { "[$TAG] payment success, paymentId=$paymentId, orderId=$orderId" }
                 trySend(PaymentGatewayEvent.Terminal(razorpayCustomUiSuccess(paymentId, orderId, signature)))
                 close()
             }
 
             override fun onPaymentError(code: Int, description: String?) {
+                Log.w { "[$TAG] payment error, code=$code, description=$description" }
                 trySend(PaymentGatewayEvent.Terminal(razorpayCustomUiErrorToResult(code, description)))
                 close()
             }
         })
+        Log.d { "[$TAG] submitting payment" }
         client.submit(config)
 
         awaitClose { client.setPaymentResultListener(null) }
