@@ -44,13 +44,13 @@ internal object RazorpayCheckoutSdk : PaymentGatewayHandler {
         client.setPaymentResultListener(object : RazorpayPaymentResultListener {
             override fun onPaymentSuccess(paymentId: String, orderId: String?, signature: String) {
                 Log.d { "[$TAG] payment success, paymentId=$paymentId, orderId=$orderId" }
-                trySend(PaymentGatewayEvent.Terminal(razorpaySuccess(paymentId, orderId, signature)))
+                trySend(razorpaySuccess(paymentId, orderId, signature))
                 close()
             }
 
             override fun onPaymentError(code: Int, description: String?) {
                 Log.w { "[$TAG] payment error, code=$code, description=$description" }
-                trySend(PaymentGatewayEvent.Terminal(razorpayErrorToResult(code, description)))
+                trySend(razorpayErrorToResult(code, description))
                 close()
             }
         })

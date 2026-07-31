@@ -60,7 +60,7 @@ enum class PaymentGateway(val code: String) {
  *
  * [metadata] is host-owned passthrough: the SDK never reads it and no gateway
  * ever sees it — whatever the host attaches here (its own order ref, analytics
- * tags, screen context) is echoed back verbatim on [LokalPaymentResult.metadata]
+ * tags, screen context) is echoed back verbatim on [LokalPaymentEvent.metadata]
  * so the host can correlate the result to the call. `null` means none supplied.
  */
 data class PaymentOrder(

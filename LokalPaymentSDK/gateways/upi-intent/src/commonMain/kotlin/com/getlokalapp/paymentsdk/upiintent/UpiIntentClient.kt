@@ -1,7 +1,5 @@
 package com.getlokalapp.paymentsdk.upiintent
 
-import com.getlokalapp.paymentsdk.model.ClientStatus
-
 /**
  * Platform launcher for a UPI intent. The common [UpiIntentSdk] owns the flow
  * and the [com.getlokalapp.paymentsdk.model.PaymentResult] mapping; the client

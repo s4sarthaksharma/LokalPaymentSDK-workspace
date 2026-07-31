@@ -1,9 +1,9 @@
 package com.getlokalapp.paymentsdk.juspay
 
 import com.getlokalapp.paymentsdk.json.lenientJson
+import com.getlokalapp.paymentsdk.json.toJsonObject
 import com.getlokalapp.paymentsdk.model.CancelReason
-import com.getlokalapp.paymentsdk.model.PaymentError
-import com.getlokalapp.paymentsdk.model.PaymentResult
+import com.getlokalapp.paymentsdk.model.PaymentGatewayEvent.PaymentResult
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
@@ -47,6 +47,18 @@ internal data class JuspayResultData(
 }
 
 /**
+ * Juspay's success payload, encoded into [PaymentResult.Success.gatewayData].
+ * There is no signature — Juspay's SDK callback returns none — so, unlike the
+ * Razorpay gateways, this blob carries only the ids the host's backend needs to
+ * verify the charge server-side (`txn_id` = Juspay's epgTxnId).
+ */
+@Serializable
+internal data class JuspaySuccessResult(
+    @SerialName("txn_id") val txnId: String,
+    @SerialName("order_id") val orderId: String?,
+)
+
+/**
  * Classifies Juspay's own statuses into a PaymentResult (D6/D7) — the "one
  * layer up" judgment kept out of the platform clients, mirroring
  * RazorpayResultMapper.
@@ -55,9 +67,10 @@ internal fun juspayResultToPaymentResult(data: JuspayResultData): PaymentResult 
     when (data.parsedStatus) {
         JuspayStatus.CHARGED, JuspayStatus.AUTHORIZING, JuspayStatus.PENDING_VBV ->
             PaymentResult.Success(
-                paymentId = data.txnId.orEmpty(),
-                orderId = data.orderId,
-                signature = "",
+                JuspaySuccessResult(
+                    txnId = data.txnId.orEmpty(),
+                    orderId = data.orderId
+                ).toJsonObject(),
             )
 
         JuspayStatus.BACKPRESSED, JuspayStatus.USER_ABORTED ->
@@ -65,9 +78,7 @@ internal fun juspayResultToPaymentResult(data: JuspayResultData): PaymentResult 
 
         null ->
             PaymentResult.Failure(
-                PaymentError(
-                    code = data.errorCode ?: data.status,
-                    message = data.errorMessage ?: "Juspay payment failed (status=${data.status})",
-                ),
+                code = data.errorCode ?: data.status,
+                message = data.errorMessage ?: "Juspay payment failed (status=${data.status})",
             )
     }

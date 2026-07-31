@@ -4,13 +4,11 @@ import com.getlokalapp.paymentsdk.model.AvailableGateway
 import com.getlokalapp.paymentsdk.model.GatewayMetadata
 import com.getlokalapp.paymentsdk.model.GatewayReadiness
 import com.getlokalapp.paymentsdk.model.GatewayStatusReport
-import com.getlokalapp.paymentsdk.model.LokalPaymentGatewayEvent
-import com.getlokalapp.paymentsdk.model.LokalPaymentResult
-import com.getlokalapp.paymentsdk.model.PaymentError
+import com.getlokalapp.paymentsdk.model.LokalPaymentEvent
 import com.getlokalapp.paymentsdk.model.PaymentGateway
 import com.getlokalapp.paymentsdk.model.PaymentGatewayEvent
 import com.getlokalapp.paymentsdk.model.PaymentOrder
-import com.getlokalapp.paymentsdk.model.PaymentResult
+import com.getlokalapp.paymentsdk.model.PaymentGatewayEvent.PaymentResult
 import com.getlokalapp.paymentsdk.model.UnavailableGateway
 import com.getlokalapp.paymentsdk.model.describeForLog
 import com.getlokalapp.paymentsdk.upi.UpiApp
@@ -113,15 +111,15 @@ object LokalPaymentSdk {
     }
 
     /**
-     * Runs a payment for the given order and emits [LokalPaymentGatewayEvent]s: an optional
-     * [LokalPaymentGatewayEvent.UiPresented] (see [PaymentGatewayEvent.UiPresented] for what it
-     * means and which gateways emit it), then exactly one terminal
-     * [LokalPaymentGatewayEvent.Terminal] wrapping the gateway-agnostic [PaymentResult] plus the
-     * resolved gateway, before completing.
+     * Runs a payment for the given order and emits [LokalPaymentEvent]s: each wraps a gateway's
+     * own [PaymentGatewayEvent] with the resolved [gateway][LokalPaymentEvent.gateway] and the
+     * host's [metadata][LokalPaymentEvent.metadata]. The wrapped event is an optional
+     * [PaymentGatewayEvent.UiPresented] (see its kdoc for what it means and which gateways emit
+     * it), then exactly one terminal [PaymentResult], before completing.
      *
      * @param order the host's create-order response, already decoded into a [PaymentOrder]
      */
-    fun pay(order: PaymentOrder): Flow<LokalPaymentGatewayEvent> {
+    fun pay(order: PaymentOrder): Flow<LokalPaymentEvent> {
         val handler = handlers[order.gateway]
         Log.d { "[$TAG] pay() called for ${order.gateway}, handlerRegistered=${handler != null}" }
         if (handler == null) {
@@ -131,45 +129,24 @@ object LokalPaymentSdk {
                 IllegalStateException("pay() called for ${order.gateway} with no handler registered"),
                 extras = mapOf("gateway" to order.gateway.name, "reason_code" to (error.code ?: "unknown")),
             ) { "[$TAG] no handler registered for ${order.gateway}" }
-            return flowOf(
-                LokalPaymentGatewayEvent.Terminal(
-                    LokalPaymentResult(
-                        gateway = order.gateway,
-                        result = PaymentResult.Failure(error),
-                        metadata = order.metadata,
-                    ),
-                ),
-            )
+            return flowOf(LokalPaymentEvent(order.gateway, error, order.metadata))
         }
         return flow {
             if (!inFlight.tryLock()) {
                 Log.w {
                     "[$TAG] pay() rejected for ${order.gateway}: another payment is already in progress"
                 }
-                emit(
-                    LokalPaymentGatewayEvent.Terminal(
-                        LokalPaymentResult(
-                            gateway = order.gateway,
-                            result = PaymentResult.Failure(alreadyInProgressError()),
-                            metadata = order.metadata,
-                        ),
-                    ),
-                )
+                emit(LokalPaymentEvent(order.gateway, alreadyInProgressError(), order.metadata))
                 return@flow
             }
             try {
                 emitAll(
                     handler.pay(order.gatewayConfig).map { event ->
                         when (event) {
-                            PaymentGatewayEvent.UiPresented -> {
-                                Log.d { "[$TAG] ${order.gateway} presented its UI" }
-                                LokalPaymentGatewayEvent.UiPresented(order.gateway)
-                            }
-                            is PaymentGatewayEvent.Terminal -> {
-                                logTerminalResult(order.gateway, event.result)
-                                LokalPaymentGatewayEvent.Terminal(LokalPaymentResult(order.gateway, event.result, order.metadata))
-                            }
+                            PaymentGatewayEvent.UiPresented -> Log.d { "[$TAG] ${order.gateway} presented its UI" }
+                            is PaymentResult -> logTerminalResult(order.gateway, event)
                         }
+                        LokalPaymentEvent(order.gateway, event, order.metadata)
                     },
                 )
             } finally {
@@ -187,18 +164,18 @@ object LokalPaymentSdk {
         }
     }
 
-    private fun alreadyInProgressError(): PaymentError =
-        PaymentError(
+    private fun alreadyInProgressError(): PaymentResult.Failure =
+        PaymentResult.Failure(
             code = ALREADY_IN_PROGRESS,
             message = "A payment is already in progress; ignoring this concurrent pay() call.",
         )
 
-    private fun unavailableError(gateway: PaymentGateway): PaymentError {
+    private fun unavailableError(gateway: PaymentGateway): PaymentResult.Failure {
         val reason = unavailable[gateway]
         return if (reason != null) {
-            PaymentError(code = reason.reasonCode, message = reason.reasonMessage)
+            PaymentResult.Failure(code = reason.reasonCode, message = reason.reasonMessage)
         } else {
-            PaymentError(
+            PaymentResult.Failure(
                 code = "unsupported_gateway",
                 message = "No PaymentGatewayHandler registered for gateway " +
                     "$gateway. Did you forget to include that gateway's module, " +
@@ -238,7 +215,7 @@ object LokalPaymentSdk {
     const val VERSION: String = PAYMENT_SDK_VERSION
 
     /**
-     * Stable [PaymentError.code] on the terminal [PaymentResult.Failure] emitted
+     * Stable [PaymentResult.Failure.code] on the terminal [PaymentResult.Failure] emitted
      * when a [pay] call is rejected because another payment is already in flight
      * (see [inFlight]). Hosts can match on this to silently ignore a double-tap
      * rather than surfacing it as a real failure.

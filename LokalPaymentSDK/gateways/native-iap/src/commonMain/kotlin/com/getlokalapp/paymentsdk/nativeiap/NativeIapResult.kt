@@ -1,8 +1,10 @@
 package com.getlokalapp.paymentsdk.nativeiap
 
+import com.getlokalapp.paymentsdk.json.toJsonObject
 import com.getlokalapp.paymentsdk.model.CancelReason
-import com.getlokalapp.paymentsdk.model.PaymentError
-import com.getlokalapp.paymentsdk.model.PaymentResult
+import com.getlokalapp.paymentsdk.model.PaymentGatewayEvent.PaymentResult
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 
 /**
  * Vendor-neutral purchase outcome a platform client reports up to
@@ -26,26 +28,35 @@ internal sealed interface NativeIapPurchaseResult {
 }
 
 /**
+ * A store purchase's success payload, encoded into
+ * [PaymentResult.Success.gatewayData]. There's no cryptographic signature
+ * concept for a store purchase, so — unlike the Razorpay gateways — this blob
+ * carries only the ids the host's backend needs to verify the purchase
+ * server-side: the store `transaction_id` and the backend's own correlation
+ * token (`app_account_token`), StoreKit having no gateway-issued order id.
+ */
+@Serializable
+internal data class NativeIapSuccessResult(
+    @SerialName("transaction_id") val transactionId: String,
+    @SerialName("app_account_token") val appAccountToken: String?,
+)
+
+/**
  * Collapses [NativeIapPurchaseResult] into [PaymentResult]. Returns null for
  * [NativeIapPurchaseResult.Pending] — that's not a terminal outcome yet;
  * [NativeIapSdk.pay] keeps its flow open and waits for the transaction-updates
  * stream to report the eventual terminal result instead of emitting here.
- *
- * [PaymentResult.Success.signature] is always empty — there's no cryptographic
- * signature concept for a store purchase, matching how Juspay's own mapper
- * leaves it blank. [orderId] carries the backend's own correlation token
- * ([NativeIapPurchaseResult.Success.appAccountToken]) rather than a
- * gateway-issued order id, since StoreKit has no such concept either.
  */
 internal fun NativeIapPurchaseResult.toPaymentResultOrNull(): PaymentResult? = when (this) {
     is NativeIapPurchaseResult.Success -> PaymentResult.Success(
-        paymentId = transactionId,
-        orderId = appAccountToken,
-        signature = "",
+        NativeIapSuccessResult(
+            transactionId = transactionId,
+            appAccountToken = appAccountToken
+        ).toJsonObject(),
     )
 
     is NativeIapPurchaseResult.Unverified -> PaymentResult.Failure(
-        PaymentError(code = "native_iap_unverified", message = error ?: "Transaction could not be verified"),
+        code = "native_iap_unverified", message = error ?: "Transaction could not be verified",
     )
 
     NativeIapPurchaseResult.Cancelled -> PaymentResult.Cancelled(CancelReason.USER_DISMISSED)
@@ -53,6 +64,6 @@ internal fun NativeIapPurchaseResult.toPaymentResultOrNull(): PaymentResult? = w
     NativeIapPurchaseResult.Pending -> null
 
     is NativeIapPurchaseResult.Failure -> PaymentResult.Failure(
-        PaymentError(code = "native_iap_failure", message = error ?: ""),
+        code = "native_iap_failure", message = error ?: "",
     )
 }

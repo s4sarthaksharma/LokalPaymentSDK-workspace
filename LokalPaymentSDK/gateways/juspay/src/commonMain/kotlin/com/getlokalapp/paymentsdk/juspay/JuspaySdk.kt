@@ -5,10 +5,9 @@ import com.getlokalapp.paymentsdk.PaymentGatewayHandler
 import com.getlokalapp.paymentsdk.parseGatewayConfigOrFail
 import com.getlokalapp.paymentsdk.model.GatewayMetadata
 import com.getlokalapp.paymentsdk.model.GatewayReadiness
-import com.getlokalapp.paymentsdk.model.PaymentError
 import com.getlokalapp.paymentsdk.model.PaymentGateway
 import com.getlokalapp.paymentsdk.model.PaymentGatewayEvent
-import com.getlokalapp.paymentsdk.model.PaymentResult
+import com.getlokalapp.paymentsdk.model.PaymentGatewayEvent.PaymentResult
 import com.getlokalapp.util.Log
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -91,7 +90,10 @@ object JuspaySdk : PaymentGatewayHandler {
      * to obtain a client without initiating (or re-initiating) it with [initPayload] — [configure]
      * has no separate follow-up step to forget.
      */
-    private fun getOrCreateInitiatedClient(tenantId: String, initPayload: JsonObject): JuspayClient {
+    private fun getOrCreateInitiatedClient(
+        tenantId: String,
+        initPayload: JsonObject
+    ): JuspayClient {
         val c = client.load() ?: createJuspayClient(tenantId).let { fresh ->
             if (client.compareAndSet(null, fresh)) fresh else client.load()!!
         }
@@ -109,16 +111,13 @@ object JuspaySdk : PaymentGatewayHandler {
                 IllegalStateException("JuspaySdk.pay() called before configure()"),
                 extras = mapOf("gateway" to "juspay", "operation" to "pay"),
             ) { "[$TAG] pay() called before configure()" }
-            return flowOf(
-                PaymentGatewayEvent.Terminal(
-                    PaymentResult.Failure(PaymentError(code = NOT_INITIALIZED_CODE, message = NOT_INITIALIZED_MESSAGE)),
-                ),
-            )
+            return flowOf(PaymentResult.Failure(NOT_INITIALIZED_CODE, NOT_INITIALIZED_MESSAGE))
         }
         return callbackFlow {
             // gateway_config comes from the backend — a malformed blob becomes
             // a Failure emission like every other bad state, not a flow crash.
-            val config = parseGatewayConfigOrFail { gatewayConfig.toJuspayConfig() } ?: return@callbackFlow
+            val config =
+                parseGatewayConfigOrFail { gatewayConfig.toJuspayConfig() } ?: return@callbackFlow
             val resultListener = object : JuspayResultListener {
                 override fun onUiPresented() {
                     Log.d { "[$TAG] UI presented" }
@@ -129,7 +128,7 @@ object JuspaySdk : PaymentGatewayHandler {
                     Log.d {
                         "[$TAG] result received, status=${data.status}, errorCode=${data.errorCode}, errorMessage=${data.errorMessage}"
                     }
-                    trySend(PaymentGatewayEvent.Terminal(juspayResultToPaymentResult(data)))
+                    trySend(juspayResultToPaymentResult(data))
                     close()
                 }
             }

@@ -21,7 +21,7 @@ nothing about any specific gateway; gateways know the core.
 
 ```
 :shared                — core: LokalPaymentSdk registry, PaymentGatewayHandler,
-                          PaymentGateway enum, PaymentResult / LokalPaymentResult / PaymentError
+                          PaymentGateway enum, PaymentResult / LokalPaymentResult
 :gateways:razorpay-checkout     — the reference gateway: multiplatform (Android + iOS) — the §4 recipe follows it
 :gateways:razorpay-customui   — Android-only variant (iOS is a stub) — see §3
 :your-new-gateway      — you add this, modeled on razorpay-checkout
@@ -123,13 +123,16 @@ single core source file a new gateway may need to touch** — see §4 step 1.
 
 ```kotlin
 enum class CancelReason { USER_DISMISSED, UNKNOWN }
-enum class ClientStatus { SUCCESS, FAILURE, UNKNOWN }
-data class PaymentError(val code: String?, val message: String)
-sealed class PaymentResult {
-    data class Success(val paymentId: String, val orderId: String?, val signature: String) : PaymentResult()
-    data class Cancelled(val reason: CancelReason) : PaymentResult()
-    data class Failure(val error: PaymentError) : PaymentResult()
-    data class Pending(val txnRef: String, val clientHint: ClientStatus) : PaymentResult()
+
+// A gateway's pay() Flow emits PaymentGatewayEvent. Its only non-terminal member
+// is UiPresented; every PaymentResult *is* a PaymentGatewayEvent (the terminal
+// one), so you emit a result directly — trySend(result) — with no wrapper.
+sealed interface PaymentGatewayEvent { data object UiPresented : PaymentGatewayEvent }
+sealed interface PaymentResult : PaymentGatewayEvent {
+    data class Success(val gatewayData: JsonObject) : PaymentResult   // opaque per-gateway blob
+    data class Cancelled(val reason: CancelReason) : PaymentResult
+    data class Failure(val code: String?, val message: String) : PaymentResult
+    data class Pending(val gatewayData: JsonObject) : PaymentResult   // opaque per-gateway blob
 }
 data class LokalPaymentResult(
     val gateway: PaymentGateway,
@@ -141,13 +144,25 @@ data class LokalPaymentResult(
 Your module emits `PaymentResult`. Core wraps it into `LokalPaymentResult`. You
 never construct `LokalPaymentResult` yourself.
 
+`Success` and `Pending` each carry only an opaque, gateway-specific
+`gatewayData: JsonObject` — the fields your gateway returns (ids, a signature, a
+txn ref, …) that the frontend never acts on, only forwards to its own backend to
+verify (`Success`) or resolve (`Pending`). Each gateway module owns a
+`@Serializable` output type it encodes into that blob — the output-side mirror of
+your `FooConfig` — so the blob's keys are effectively your backend's verify
+contract. Keep out of the blob anything the frontend genuinely branches on; that
+belongs in the typed core.
+
+`Failure` and `Cancelled` stay typed on purpose: the frontend *does* act on them
+without a backend hop — render an error message/code (`Failure`), or route a
+user-cancel away from a failure UI (`Cancelled`).
+
 `Pending` exists for gateways whose outcome isn't known synchronously — UPI
 Intent is the only gateway that emits it today, once control hands off to an
-external UPI app. `clientHint` is UX-only (e.g. show an optimistic "checking
-your payment…" vs. a hard error) — it's never authoritative; the host must
-still confirm the real outcome via its own backend. Because `Pending` exists on
-the sealed class, every consumer's `when` must handle it even if your gateway
-never emits it.
+external UPI app; the host must resolve the real outcome via its own backend
+(keyed on the txn ref inside `gatewayData`). Because `Pending` exists on the
+sealed class, every consumer's `when` must handle it even if your gateway never
+emits it.
 
 ---
 
@@ -335,11 +350,19 @@ internal fun JsonObject.toFooConfig(): FooConfig =
 `FooResult.kt` (error codes + `PaymentResult` mappers):
 ```kotlin
 internal object FooErrorCodes { const val PAYMENT_CANCELLED = 0 /* the gateway's own cancel code */ }
-internal fun fooSuccess(paymentId: String, orderId: String?, signature: String): PaymentResult =
-    PaymentResult.Success(paymentId, orderId, signature)
+
+// Output-side mirror of FooConfig: the success fields your backend verifies,
+// encoded into Success.gatewayData under the keys your backend expects.
+@Serializable
+internal data class FooResult(
+    @SerialName("payment_id") val paymentId: String,
+    @SerialName("signature") val signature: String?,
+)
+internal fun fooSuccess(paymentId: String, signature: String?): PaymentResult =
+    PaymentResult.Success(FooResult(paymentId, signature).toJsonObject())  // toJsonObject: :shared helper
 internal fun fooErrorToResult(code: Int, description: String?): PaymentResult =
     if (code == FooErrorCodes.PAYMENT_CANCELLED) PaymentResult.Cancelled(CancelReason.USER_DISMISSED)
-    else PaymentResult.Failure(PaymentError(code = code.toString(), message = description ?: ""))
+    else PaymentResult.Failure(code = code.toString(), message = description ?: "")
 ```
 **Classify cancel-vs-failure here**, one layer up from the platform client, using
 the gateway's own cancel code (Checkout uses `0`; UPI Intent uses `5` — they
@@ -405,11 +428,14 @@ nothing for it. Add a `private const val TAG = "Foo"` to your SDK object and:
 - `Log.d { "[$TAG] ..." }` right before the call that kicks off vendor UI
   (`client.open(...)`, etc.), and in each listener branch for success/cancel
 - `Log.w`/`Log.e(err, tag) { ... }` for error branches
-- Never log the full `gatewayConfig`/init-payload `JsonObject`, raw card/
-  customer data, or `PaymentResult.Success.signature` — only ids, codes, and
-  structural facts. `LokalPaymentSdk.pay()` already logs every gateway's
-  `UiPresented`/terminal events uniformly; your gateway's own logging should
-  add detail the orchestrator can't see (vendor SDK internals), not repeat it.
+- Never log the full `gatewayConfig`/init-payload `JsonObject` or raw card/
+  customer data — only ids, codes, and structural facts. (The terminal
+  `Success`/`Pending` `gatewayData` blob *is* logged in full by `describeForLog()`,
+  signature included — a deliberate choice on the output path; it does not license
+  logging the *input* config or card data.) `LokalPaymentSdk.pay()` already logs
+  every gateway's `UiPresented`/terminal events uniformly; your gateway's own
+  logging should add detail the orchestrator can't see (vendor SDK internals),
+  not repeat it.
 
 **Never call `Log` from inside your SDK object's own `init` block.** See
 Rulebook §5 rule 11 — that block runs from every gateway's eager startup
@@ -482,9 +508,10 @@ settings-phase twin of the iOS `LokalGatewayHostContributor`:
    `api` — a host that doesn't use your gateway must not transitively pull its
    third-party SDK. Keep `api` for `project(":shared")` only.
 4. **The SDK never makes or parses the create-order or validate calls.** It
-   receives a `PaymentOrder` and returns raw gateway fields in `Success`
-   (`paymentId` / `orderId` / `signature`); the host validates server-side. Don't
-   add networking to a gateway module.
+   receives a `PaymentOrder` and returns an opaque per-gateway blob in
+   `Success.gatewayData` (your `@Serializable` output type, encoded to a
+   `JsonObject`); the host forwards it to its own validate endpoint server-side.
+   Don't add networking to a gateway module.
 5. **`gateway_config.data` is opaque — pass it straight to the native SDK, never
    inspect or reshape it.** Decode only the outer fields you need (the key,
    `data`). Use `ignoreUnknownKeys = true` so backend-added sibling fields don't
@@ -526,7 +553,7 @@ settings-phase twin of the iOS `LokalGatewayHostContributor`:
 Then, in `LokalPaymentSDKDemo`, just include the module (no setup code), confirm
 `PaymentGateway.FOO` appears in `LokalPaymentSdk.gatewayStatus().available`, and run a real
 sandbox payment end-to-end — confirming Success **and** Cancelled **and** Failure
-paths, and — for a multiplatform gateway — that iOS extracts `orderId`/`signature`
+paths, and — for a multiplatform gateway — that iOS populates `Success.gatewayData`
 correctly against a live transaction (this has historically been the
 least-verified iOS step).
 

@@ -1,10 +1,10 @@
 package com.getlokalapp.paymentsdk.demo
 
-import com.getlokalapp.paymentsdk.model.LokalPaymentGatewayEvent
-import com.getlokalapp.paymentsdk.model.LokalPaymentResult
+import com.getlokalapp.paymentsdk.model.LokalPaymentEvent
 import com.getlokalapp.paymentsdk.model.PaymentGateway
+import com.getlokalapp.paymentsdk.model.PaymentGatewayEvent
 import com.getlokalapp.paymentsdk.model.PaymentOrder
-import com.getlokalapp.paymentsdk.model.PaymentResult
+import com.getlokalapp.paymentsdk.model.PaymentGatewayEvent.PaymentResult
 import com.getlokalapp.paymentsdk.upi.UpiApp
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -29,7 +29,7 @@ internal fun parseOrder(orderResponseJson: String): PaymentOrder {
         gateway = gateway,
         gatewayConfig = root.getValue("gateway_config").jsonObject,
         // Host-owned passthrough: the SDK never reads this and no gateway sees
-        // it — it comes straight back on LokalPaymentResult.metadata (see
+        // it — it comes straight back on LokalPaymentEvent.metadata (see
         // render()), which is how a real host correlates a result to the call
         // that started it. Optional, so an order without it still parses.
         metadata = root["metadata"]?.jsonObject,
@@ -51,43 +51,40 @@ internal fun renderUpiApps(apps: List<UpiApp>): String {
     }.trimEnd()
 }
 
-// Dumps whatever the SDK hands back on its pay() flow - either an interim
-// "gateway has taken over its own UI" heads-up, or the routing gateway from
-// the LokalPaymentResult envelope plus every field of the inner PaymentResult.
-internal fun render(event: LokalPaymentGatewayEvent): String = when (event) {
-    is LokalPaymentGatewayEvent.UiPresented -> "UI presented (gateway = ${event.gateway})"
-    is LokalPaymentGatewayEvent.Terminal -> render(event.result)
-}
-
-private fun render(payment: LokalPaymentResult): String {
-    val header = "gateway = ${payment.gateway}"
-    val body = when (val result = payment.result) {
-        is PaymentResult.Success -> """
-            Success
-            paymentId = ${result.paymentId}
-            orderId   = ${result.orderId ?: "—"}
-            signature = ${result.signature}
-        """.trimIndent()
-
-        is PaymentResult.Cancelled -> """
-            Cancelled
-            reason = ${result.reason}
-        """.trimIndent()
-
-        is PaymentResult.Failure -> """
-            Failure
-            code    = ${result.error.code ?: "—"}
-            message = ${result.error.message}
-        """.trimIndent()
-
-        is PaymentResult.Pending -> """
-            Pending (verify with backend)
-            txnRef     = ${result.txnRef}
-            clientHint = ${result.clientHint}
-        """.trimIndent()
+// Dumps whatever the SDK hands back on its pay() flow: a LokalPaymentEvent
+// wrapping either an interim "gateway has taken over its own UI" heads-up or a
+// terminal PaymentResult, plus the routing gateway and the host's metadata echo.
+internal fun render(event: LokalPaymentEvent): String {
+    val header = "gateway = ${event.gateway}"
+    val body = when (val ev = event.event) {
+        PaymentGatewayEvent.UiPresented -> "UI presented"
+        is PaymentResult -> renderResult(ev)
     }
     // Echoed straight back from PaymentOrder.metadata — the host set it (see
     // parseOrder), the SDK carried it through untouched.
-    val meta = payment.metadata?.let { "\nmetadata = $it" } ?: ""
+    val meta = event.metadata?.let { "\nmetadata = $it" } ?: ""
     return "$header\n$body$meta"
+}
+
+private fun renderResult(result: PaymentResult): String = when (result) {
+    is PaymentResult.Success -> """
+        Success
+        gatewayData = ${result.gatewayData}
+    """.trimIndent()
+
+    is PaymentResult.Cancelled -> """
+        Cancelled
+        reason = ${result.reason}
+    """.trimIndent()
+
+    is PaymentResult.Failure -> """
+        Failure
+        code    = ${result.code ?: "—"}
+        message = ${result.message}
+    """.trimIndent()
+
+    is PaymentResult.Pending -> """
+        Pending (verify with backend)
+        gatewayData = ${result.gatewayData}
+    """.trimIndent()
 }

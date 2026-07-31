@@ -1,6 +1,20 @@
 package com.getlokalapp.paymentsdk.upiintent
 
-import com.getlokalapp.paymentsdk.model.ClientStatus
+/**
+ * The unverified status a UPI app reported back through the intent result,
+ * folded into [com.getlokalapp.paymentsdk.model.PaymentResult.Pending]'s blob
+ * under `client_hint` for UX only. Never authoritative: a [SUCCESS] hint can
+ * still resolve to a failed payment and, more dangerously, a [FAILURE]/[UNKNOWN]
+ * hint can still resolve to a debited, successful one — only the host's backend
+ * status check decides. [UNKNOWN] covers the common case where the app returns
+ * nothing parseable (empty/null response). Internal to this module now that it
+ * no longer rides on the public [com.getlokalapp.paymentsdk.model.PaymentResult].
+ */
+internal enum class ClientStatus {
+    SUCCESS,
+    FAILURE,
+    UNKNOWN,
+}
 
 /**
  * Extracts a single query param from either a full `upi://…?a=1&b=2` URL or a

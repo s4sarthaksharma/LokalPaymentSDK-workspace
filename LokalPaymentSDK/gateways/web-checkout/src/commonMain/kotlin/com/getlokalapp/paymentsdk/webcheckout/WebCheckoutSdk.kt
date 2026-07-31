@@ -4,10 +4,9 @@ import com.getlokalapp.paymentsdk.LokalPaymentSdk
 import com.getlokalapp.paymentsdk.PaymentGatewayHandler
 import com.getlokalapp.paymentsdk.model.CancelReason
 import com.getlokalapp.paymentsdk.model.GatewayMetadata
-import com.getlokalapp.paymentsdk.model.PaymentError
 import com.getlokalapp.paymentsdk.model.PaymentGateway
 import com.getlokalapp.paymentsdk.model.PaymentGatewayEvent
-import com.getlokalapp.paymentsdk.model.PaymentResult
+import com.getlokalapp.paymentsdk.model.PaymentGatewayEvent.PaymentResult
 import com.getlokalapp.paymentsdk.model.describeForLog
 import com.getlokalapp.paymentsdk.parseGatewayConfigOrFail
 import com.getlokalapp.paymentsdk.webview.WebViewConfig
@@ -71,7 +70,7 @@ internal object WebCheckoutSdk : PaymentGatewayHandler {
             if (settled) return
             settled = true
             Log.d { "[$TAG] settling with ${result.describeForLog()}" }
-            trySend(PaymentGatewayEvent.Terminal(result))
+            trySend(result)
             close()
         }
 
@@ -90,7 +89,7 @@ internal object WebCheckoutSdk : PaymentGatewayHandler {
 
                 override fun onError(code: String, message: String) {
                     Log.w { "[$TAG] webview error, code=$code, message=$message" }
-                    emit(PaymentResult.Failure(PaymentError(code = code, message = message)))
+                    emit(PaymentResult.Failure(code, message))
                 }
             },
         )

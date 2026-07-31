@@ -57,7 +57,7 @@ internal object NativeIapSdk : PaymentGatewayHandler {
         fun emitIfTerminal(result: NativeIapPurchaseResult): Boolean {
             val mapped = result.toPaymentResultOrNull() ?: return false
             Log.d { "[$TAG] settling with ${mapped.describeForLog()}" }
-            trySend(PaymentGatewayEvent.Terminal(mapped))
+            trySend(mapped)
             close()
             return true
         }

@@ -4,7 +4,6 @@ package com.getlokalapp.paymentsdk.upiintent
 
 import com.getlokalapp.paymentsdk.LokalPaymentSdk
 import com.getlokalapp.paymentsdk.hostcontext.topmostViewController
-import com.getlokalapp.paymentsdk.model.ClientStatus
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.useContents
 import platform.CoreGraphics.CGAffineTransformMakeScale

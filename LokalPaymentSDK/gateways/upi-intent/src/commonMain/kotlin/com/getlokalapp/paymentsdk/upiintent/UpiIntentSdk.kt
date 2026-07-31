@@ -3,17 +3,18 @@ package com.getlokalapp.paymentsdk.upiintent
 import com.getlokalapp.paymentsdk.LokalPaymentSdk
 import com.getlokalapp.paymentsdk.PaymentGatewayHandler
 import com.getlokalapp.paymentsdk.parseGatewayConfigOrFail
+import com.getlokalapp.paymentsdk.json.toJsonObject
 import com.getlokalapp.paymentsdk.model.CancelReason
-import com.getlokalapp.paymentsdk.model.ClientStatus
 import com.getlokalapp.paymentsdk.model.GatewayMetadata
-import com.getlokalapp.paymentsdk.model.PaymentError
 import com.getlokalapp.paymentsdk.model.PaymentGateway
 import com.getlokalapp.paymentsdk.model.PaymentGatewayEvent
-import com.getlokalapp.paymentsdk.model.PaymentResult
+import com.getlokalapp.paymentsdk.model.PaymentGatewayEvent.PaymentResult
 import com.getlokalapp.util.Log
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 
 /** GatewayMetadata.vendorSdkVersion sentinel — this gateway wraps no vendor SDK. */
@@ -61,19 +62,26 @@ internal object UpiIntentSdk : PaymentGatewayHandler {
         client.setResultListener(object : UpiIntentResultListener {
             override fun onPending(clientHint: ClientStatus) {
                 Log.d { "[$TAG] pending, txnRef=$txnRef, clientHint=$clientHint" }
-                trySend(PaymentGatewayEvent.Terminal(PaymentResult.Pending(txnRef = txnRef, clientHint = clientHint)))
+                trySend(
+                    PaymentResult.Pending(
+                        UpiIntentPendingResult(
+                            txnRef = txnRef,
+                            clientHint = clientHint.name
+                        ).toJsonObject()
+                    )
+                )
                 close()
             }
 
             override fun onFailure(code: String, message: String) {
                 Log.w { "[$TAG] failure, code=$code, message=$message" }
-                trySend(PaymentGatewayEvent.Terminal(PaymentResult.Failure(PaymentError(code = code, message = message))))
+                trySend(PaymentResult.Failure(code, message))
                 close()
             }
 
             override fun onCancelled() {
                 Log.d { "[$TAG] cancelled by user" }
-                trySend(PaymentGatewayEvent.Terminal(PaymentResult.Cancelled(CancelReason.USER_DISMISSED)))
+                trySend(PaymentResult.Cancelled(CancelReason.USER_DISMISSED))
                 close()
             }
         })
@@ -83,3 +91,14 @@ internal object UpiIntentSdk : PaymentGatewayHandler {
         awaitClose { client.setResultListener(null) }
     }
 }
+
+/**
+ * The Pending payload encoded into [PaymentResult.Pending.gatewayData]: the
+ * merchant transaction reference the host's backend polls on, plus the advisory
+ * [ClientStatus] the UPI app reported (never authoritative — UX flavor only).
+ */
+@Serializable
+private data class UpiIntentPendingResult(
+    @SerialName("txn_ref") val txnRef: String,
+    @SerialName("client_hint") val clientHint: String,
+)
