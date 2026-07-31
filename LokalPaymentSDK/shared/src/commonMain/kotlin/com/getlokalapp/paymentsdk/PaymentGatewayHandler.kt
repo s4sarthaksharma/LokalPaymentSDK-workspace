@@ -1,5 +1,6 @@
 package com.getlokalapp.paymentsdk
 
+import com.getlokalapp.paymentsdk.model.GatewayCapability
 import com.getlokalapp.paymentsdk.model.GatewayMetadata
 import com.getlokalapp.paymentsdk.model.GatewayReadiness
 import com.getlokalapp.paymentsdk.model.PaymentGateway
@@ -44,6 +45,13 @@ interface PaymentGatewayHandler {
      * host-supplied setup beyond registration.
      */
     fun readiness(): GatewayReadiness = GatewayReadiness.Ready
+
+    /**
+     * Static capabilities the SDK reads to drive gateway-agnostic behavior — currently the
+     * [PaymentGatewayEvent.GatewayUi] lifecycle (see [GatewayCapability.SELF_REPORTS_UI]). Empty by
+     * default: most gateways rely on the SDK's default handling.
+     */
+    val capabilities: Set<GatewayCapability> get() = emptySet()
 
     fun pay(gatewayConfig: JsonObject): Flow<PaymentGatewayEvent>
 }

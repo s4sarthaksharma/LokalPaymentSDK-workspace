@@ -3,6 +3,7 @@ package com.getlokalapp.paymentsdk.juspay
 import com.getlokalapp.paymentsdk.LokalPaymentSdk
 import com.getlokalapp.paymentsdk.PaymentGatewayHandler
 import com.getlokalapp.paymentsdk.parseGatewayConfigOrFail
+import com.getlokalapp.paymentsdk.model.GatewayCapability
 import com.getlokalapp.paymentsdk.model.GatewayMetadata
 import com.getlokalapp.paymentsdk.model.GatewayReadiness
 import com.getlokalapp.paymentsdk.model.PaymentGateway
@@ -46,6 +47,10 @@ object JuspaySdk : PaymentGatewayHandler {
         moduleVersion = MODULE_VERSION,
         vendorSdkVersion = VENDOR_SDK_VERSION,
     )
+
+    // HyperSDK renders its UI in-place (Android Fragment) and reports the presented moment via
+    // onUiPresented, so the SDK defers to that instead of bracketing the GatewayUi lifecycle.
+    override val capabilities: Set<GatewayCapability> = setOf(GatewayCapability.SELF_REPORTS_UI)
 
     private val client = AtomicReference<JuspayClient?>(null)
 
@@ -121,7 +126,7 @@ object JuspaySdk : PaymentGatewayHandler {
             val resultListener = object : JuspayResultListener {
                 override fun onUiPresented() {
                     Log.d { "[$TAG] UI presented" }
-                    trySend(PaymentGatewayEvent.UiPresented)
+                    trySend(PaymentGatewayEvent.GatewayUi.Presented)
                 }
 
                 override fun onResult(data: JuspayResultData) {

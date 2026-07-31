@@ -15,21 +15,37 @@ enum class CancelReason {
 
 /**
  * What a gateway module's [com.getlokalapp.paymentsdk.PaymentGatewayHandler.pay] Flow emits:
- * either the non-terminal [UiPresented] lifecycle signal, or a terminal [PaymentResult] — which
- * is itself a `PaymentGatewayEvent`, so a gateway emits the result directly with no wrapper.
+ * either a non-terminal [GatewayUi] lifecycle signal, or a terminal [PaymentResult] — which is
+ * itself a `PaymentGatewayEvent`, so a gateway emits the result directly with no wrapper.
  *
- * [UiPresented] is optional, non-terminal lifecycle information: a gateway emits it at most
- * once, always before the terminal [PaymentResult], to mean "I've taken over my own UI now (a
- * full-screen sheet, an in-place Fragment/WebView, ...) - it's safe to drop whatever 'please wait'
- * UI you were showing since the call to pay()." Most gateways never emit it at all (they launch
- * their own Activity/sheet, which already covers a host's loader with no signal needed); only a
- * gateway whose UI renders in-place - Juspay's HyperSDK Android Fragment being the one case today
- * - has a use for it.
+ * [GatewayUi] is optional, non-terminal lifecycle information about the gateway's own UI. A
+ * gateway emits [GatewayUi.Presented] at most once, always before the terminal [PaymentResult],
+ * to mean "I've taken over my own UI now (a full-screen sheet, an in-place Fragment/WebView, ...)
+ * - it's safe to drop whatever 'please wait' UI you were showing since the call to pay()." Most
+ * gateways never emit it at all (they launch their own Activity/sheet, which already covers a
+ * host's loader with no signal needed); only a gateway whose UI renders in-place - Juspay's
+ * HyperSDK Android Fragment being the one case today - has a use for it. The matching
+ * [GatewayUi.Dismissed] is synthesized by [com.getlokalapp.paymentsdk.LokalPaymentSdk.pay] itself,
+ * right before the terminal, whenever a [GatewayUi.Presented] was emitted - so a host always sees
+ * the two as a matched pair (or neither), never a lone Presented.
  *
  * The terminal [PaymentResult] is the one required emission - exactly once, ending the flow.
  */
 sealed interface PaymentGatewayEvent {
-    data object UiPresented : PaymentGatewayEvent
+
+    /**
+     * The gateway's own UI lifecycle - a non-terminal, paired signal for gateways that render
+     * in-place (Juspay's HyperSDK Fragment being the only case today). A gateway that presents its
+     * UI emits [Presented]; [com.getlokalapp.paymentsdk.LokalPaymentSdk.pay] then guarantees a
+     * matching [Dismissed] right before the terminal [PaymentResult], so a host that reacts to
+     * [Presented] (pausing a video, hiding a loader, ...) can cleanly undo it on [Dismissed]
+     * without having to treat "any terminal" as the dismissal. Gateways that launch their own
+     * Activity/sheet never present, so a host sees neither.
+     */
+    sealed interface GatewayUi : PaymentGatewayEvent {
+        data object Presented : GatewayUi
+        data object Dismissed : GatewayUi
+    }
 
     /**
      * Terminal state emitted on the Flow returned by each gateway module's
@@ -43,7 +59,7 @@ sealed interface PaymentGatewayEvent {
      * The host forwards that blob straight to its own backend's validation call.
      *
      * Each `PaymentResult` **is** a terminal [PaymentGatewayEvent] (the only other
-     * event a gateway can emit is the non-terminal [PaymentGatewayEvent.UiPresented]),
+     * events are the non-terminal [PaymentGatewayEvent.GatewayUi] signals),
      * so a gateway's `pay()` emits a result directly — e.g.
      * `trySend(PaymentResult.Failure(code, message))` — with no wrapper.
      *
@@ -85,7 +101,7 @@ sealed interface PaymentGatewayEvent {
  * [PaymentGatewayEvent] wrapped with the routing context only the generic entry
  * point knows.
  *
- * [event] is the gateway's event unchanged — [PaymentGatewayEvent.UiPresented],
+ * [event] is the gateway's event — a non-terminal [PaymentGatewayEvent.GatewayUi] signal,
  * or a terminal [PaymentResult]. [gateway] is which gateway the backend routed
  * to; it rides here rather than on [PaymentResult] because it's routing metadata,
  * not part of the outcome, and it's always known (the host handed [pay] a typed

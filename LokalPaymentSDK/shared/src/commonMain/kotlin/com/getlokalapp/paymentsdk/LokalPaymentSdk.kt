@@ -1,6 +1,7 @@
 package com.getlokalapp.paymentsdk
 
 import com.getlokalapp.paymentsdk.model.AvailableGateway
+import com.getlokalapp.paymentsdk.model.GatewayCapability
 import com.getlokalapp.paymentsdk.model.GatewayMetadata
 import com.getlokalapp.paymentsdk.model.GatewayReadiness
 import com.getlokalapp.paymentsdk.model.GatewayStatusReport
@@ -19,7 +20,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.transform
 import kotlinx.coroutines.sync.Mutex
 
 /**
@@ -114,7 +116,7 @@ object LokalPaymentSdk {
      * Runs a payment for the given order and emits [LokalPaymentEvent]s: each wraps a gateway's
      * own [PaymentGatewayEvent] with the resolved [gateway][LokalPaymentEvent.gateway] and the
      * host's [metadata][LokalPaymentEvent.metadata]. The wrapped event is an optional
-     * [PaymentGatewayEvent.UiPresented] (see its kdoc for what it means and which gateways emit
+     * [PaymentGatewayEvent.GatewayUi] pair (see its kdoc for what it means and which gateways emit
      * it), then exactly one terminal [PaymentResult], before completing.
      *
      * @param order the host's create-order response, already decoded into a [PaymentOrder]
@@ -140,14 +142,42 @@ object LokalPaymentSdk {
                 return@flow
             }
             try {
+                // Every gateway gets the GatewayUi pair. A gateway that renders in-place
+                // (SELF_REPORTS_UI, i.e. Juspay) emits its own precise Presented; for the rest the
+                // SDK prepends a default one at flow start (handoff). Either way it flows through the
+                // same handling below, which tracks it and synthesizes the matching Dismissed just
+                // before the terminal — so a host never sees a lone Presented.
+                var uiPresented = false
+                val gatewayEvents = handler.pay(order.gatewayConfig)
+                val selfReportsUi = GatewayCapability.SELF_REPORTS_UI in handler.capabilities
                 emitAll(
-                    handler.pay(order.gatewayConfig).map { event ->
-                        when (event) {
-                            PaymentGatewayEvent.UiPresented -> Log.d { "[$TAG] ${order.gateway} presented its UI" }
-                            is PaymentResult -> logTerminalResult(order.gateway, event)
-                        }
-                        LokalPaymentEvent(order.gateway, event, order.metadata)
-                    },
+                    gatewayEvents
+                        .onStart { if (!selfReportsUi) emit(PaymentGatewayEvent.GatewayUi.Presented) }
+                        .transform { event ->
+                            when (event) {
+                                is PaymentGatewayEvent.GatewayUi -> {
+                                    if (event is PaymentGatewayEvent.GatewayUi.Presented) {
+                                        uiPresented = true
+                                        Log.d { "[$TAG] ${order.gateway} presented its UI" }
+                                    }
+                                    emit(LokalPaymentEvent(order.gateway, event, order.metadata))
+                                }
+
+                                is PaymentResult -> {
+                                    if (uiPresented) {
+                                        emit(
+                                            LokalPaymentEvent(
+                                                order.gateway,
+                                                PaymentGatewayEvent.GatewayUi.Dismissed,
+                                                order.metadata
+                                            )
+                                        )
+                                    }
+                                    logTerminalResult(order.gateway, event)
+                                    emit(LokalPaymentEvent(order.gateway, event, order.metadata))
+                                }
+                            }
+                        },
                 )
             } finally {
                 inFlight.unlock()

@@ -82,3 +82,22 @@ sealed interface GatewayReadiness {
     data object Ready : GatewayReadiness
     data class NotReady(val reasonCode: String, val reasonMessage: String) : GatewayReadiness
 }
+
+/**
+ * A static, declared-once capability of a payment gateway. The SDK reads a handler's
+ * [com.getlokalapp.paymentsdk.PaymentGatewayHandler.capabilities] to drive gateway-agnostic
+ * behavior; a gateway that declares none falls back to the SDK's default handling. Modeled as a
+ * `Set` so it grows as new cross-gateway behaviors appear.
+ */
+enum class GatewayCapability {
+    /**
+     * The gateway renders its UI in-place inside the host's own view (Juspay's HyperSDK Fragment)
+     * and reports the [PaymentGatewayEvent.GatewayUi.Presented] moment itself, precisely. For a
+     * gateway *without* this capability the SDK brackets the [PaymentGatewayEvent.GatewayUi]
+     * lifecycle by default — emitting [PaymentGatewayEvent.GatewayUi.Presented] at flow start and
+     * [PaymentGatewayEvent.GatewayUi.Dismissed] before the terminal — so every gateway produces the
+     * pair. A self-reporting gateway emits its own precise Presented and the SDK only pairs the
+     * Dismissed.
+     */
+    SELF_REPORTS_UI,
+}
