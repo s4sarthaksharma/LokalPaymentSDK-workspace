@@ -1,16 +1,11 @@
 package com.getlokalapp.paymentsdk.razorpay
 
+import com.getlokalapp.paymentsdk.GatewayResultScope
 import com.getlokalapp.paymentsdk.LokalPaymentSdk
-import com.getlokalapp.paymentsdk.PaymentGatewayHandler
-import com.getlokalapp.paymentsdk.parseGatewayConfigOrFail
+import com.getlokalapp.paymentsdk.TypedPaymentGatewayHandler
 import com.getlokalapp.paymentsdk.model.GatewayMetadata
 import com.getlokalapp.paymentsdk.model.PaymentGateway
-import com.getlokalapp.paymentsdk.model.PaymentGatewayEvent
 import com.getlokalapp.util.Log
-import kotlinx.coroutines.channels.awaitClose
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.serialization.json.JsonObject
 
 /**
  * Singleton handler for [PaymentGateway.RAZORPAY_CHECKOUT] — registers
@@ -23,7 +18,7 @@ import kotlinx.serialization.json.JsonObject
  * (mirrors JuspaySdk). Each [pay] call builds its own short-lived platform
  * client.
  */
-internal object RazorpayCheckoutSdk : PaymentGatewayHandler {
+internal object RazorpayCheckoutSdk : TypedPaymentGatewayHandler<RazorpayCheckoutConfig> {
 
     private const val TAG = "RazorpayCheckout"
 
@@ -34,24 +29,23 @@ internal object RazorpayCheckoutSdk : PaymentGatewayHandler {
         vendorSdkVersion = VENDOR_SDK_VERSION,
     )
 
+    override val configSerializer = RazorpayCheckoutConfig.serializer()
+
     init {
         LokalPaymentSdk.register(this)
     }
 
-    override fun pay(gatewayConfig: JsonObject): Flow<PaymentGatewayEvent> = callbackFlow {
-        val config = parseGatewayConfigOrFail { gatewayConfig.toRazorpayCheckoutConfig() } ?: return@callbackFlow
+    override suspend fun GatewayResultScope.handle(config: RazorpayCheckoutConfig) {
         val client = createRazorpayCheckoutClient()
         client.setPaymentResultListener(object : RazorpayPaymentResultListener {
             override fun onPaymentSuccess(paymentId: String, orderId: String?, signature: String) {
                 Log.d { "[$TAG] payment success, paymentId=$paymentId, orderId=$orderId" }
-                trySend(razorpaySuccess(paymentId, orderId, signature))
-                close()
+                sendTerminal(razorpaySuccess(paymentId, orderId, signature))
             }
 
             override fun onPaymentError(code: Int, description: String?) {
                 Log.w { "[$TAG] payment error, code=$code, description=$description" }
-                trySend(razorpayErrorToResult(code, description))
-                close()
+                sendTerminal(razorpayErrorToResult(code, description))
             }
         })
         Log.d { "[$TAG] opening checkout" }

@@ -1,21 +1,16 @@
 package com.getlokalapp.paymentsdk.upiintent
 
+import com.getlokalapp.paymentsdk.GatewayResultScope
 import com.getlokalapp.paymentsdk.LokalPaymentSdk
-import com.getlokalapp.paymentsdk.PaymentGatewayHandler
-import com.getlokalapp.paymentsdk.parseGatewayConfigOrFail
+import com.getlokalapp.paymentsdk.TypedPaymentGatewayHandler
 import com.getlokalapp.paymentsdk.json.toJsonObject
 import com.getlokalapp.paymentsdk.model.CancelReason
 import com.getlokalapp.paymentsdk.model.GatewayMetadata
 import com.getlokalapp.paymentsdk.model.PaymentGateway
-import com.getlokalapp.paymentsdk.model.PaymentGatewayEvent
 import com.getlokalapp.paymentsdk.model.PaymentGatewayEvent.PaymentResult
 import com.getlokalapp.util.Log
-import kotlinx.coroutines.channels.awaitClose
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.JsonObject
 
 /** GatewayMetadata.vendorSdkVersion sentinel — this gateway wraps no vendor SDK. */
 private const val NO_VENDOR_SDK = "none"
@@ -33,7 +28,7 @@ private const val NO_VENDOR_SDK = "none"
  * from `:shared`'s ActivityTracker and iOS uses the shared UIApplication, both
  * at call time. Each [pay] builds its own short-lived platform client.
  */
-internal object UpiIntentSdk : PaymentGatewayHandler {
+internal object UpiIntentSdk : TypedPaymentGatewayHandler<UpiIntentConfig> {
 
     private const val TAG = "UpiIntent"
 
@@ -43,6 +38,8 @@ internal object UpiIntentSdk : PaymentGatewayHandler {
         moduleVersion = MODULE_VERSION,
         vendorSdkVersion = NO_VENDOR_SDK,
     )
+
+    override val configSerializer = UpiIntentConfig.serializer()
 
     init {
         LokalPaymentSdk.register(this)
@@ -55,14 +52,13 @@ internal object UpiIntentSdk : PaymentGatewayHandler {
      * backend), or [PaymentResult.Failure] if no UPI app could take it. Never
      * a [PaymentResult.Success] — an on-device UPI result can't be trusted.
      */
-    override fun pay(gatewayConfig: JsonObject): Flow<PaymentGatewayEvent> = callbackFlow {
-        val config = parseGatewayConfigOrFail { gatewayConfig.toUpiIntentConfig() } ?: return@callbackFlow
+    override suspend fun GatewayResultScope.handle(config: UpiIntentConfig) {
         val txnRef = config.resolveTxnRef()
         val client = createUpiIntentClient()
         client.setResultListener(object : UpiIntentResultListener {
             override fun onPending(clientHint: ClientStatus) {
                 Log.d { "[$TAG] pending, txnRef=$txnRef, clientHint=$clientHint" }
-                trySend(
+                sendTerminal(
                     PaymentResult.Pending(
                         UpiIntentPendingResult(
                             txnRef = txnRef,
@@ -70,19 +66,16 @@ internal object UpiIntentSdk : PaymentGatewayHandler {
                         ).toJsonObject()
                     )
                 )
-                close()
             }
 
             override fun onFailure(code: String, message: String) {
                 Log.w { "[$TAG] failure, code=$code, message=$message" }
-                trySend(PaymentResult.Failure(code, message))
-                close()
+                sendTerminal(PaymentResult.Failure(code, message))
             }
 
             override fun onCancelled() {
                 Log.d { "[$TAG] cancelled by user" }
-                trySend(PaymentResult.Cancelled(CancelReason.USER_DISMISSED))
-                close()
+                sendTerminal(PaymentResult.Cancelled(CancelReason.USER_DISMISSED))
             }
         })
         Log.d { "[$TAG] launching UPI intent, txnRef=$txnRef" }

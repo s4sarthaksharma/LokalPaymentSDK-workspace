@@ -1,9 +1,7 @@
 package com.getlokalapp.paymentsdk.nativeiap
 
-import com.getlokalapp.paymentsdk.json.lenientJson
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.JsonObject
 
 /**
  * Parsed from PaymentOrder.gatewayConfig when gateway is NATIVE_IAP.
@@ -21,11 +19,3 @@ internal data class NativeIapConfig(
     @SerialName("product_id") val productId: String,
     @SerialName("app_account_token") val appAccountToken: String? = null,
 )
-
-/**
- * Decodes the opaque `gateway_config` blob that LokalPaymentSdk already
- * routed to this module. No gateway check is needed here — LokalPaymentSdk
- * only ever hands a NATIVE_IAP config to NativeIapSdk.
- */
-internal fun JsonObject.toNativeIapConfig(): NativeIapConfig =
-    lenientJson.decodeFromJsonElement(NativeIapConfig.serializer(), this)

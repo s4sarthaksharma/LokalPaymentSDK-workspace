@@ -1,23 +1,18 @@
 package com.getlokalapp.paymentsdk.webcheckout
 
+import com.getlokalapp.paymentsdk.GatewayResultScope
 import com.getlokalapp.paymentsdk.LokalPaymentSdk
-import com.getlokalapp.paymentsdk.PaymentGatewayHandler
+import com.getlokalapp.paymentsdk.TypedPaymentGatewayHandler
 import com.getlokalapp.paymentsdk.model.CancelReason
 import com.getlokalapp.paymentsdk.model.GatewayMetadata
 import com.getlokalapp.paymentsdk.model.PaymentGateway
-import com.getlokalapp.paymentsdk.model.PaymentGatewayEvent
 import com.getlokalapp.paymentsdk.model.PaymentGatewayEvent.PaymentResult
 import com.getlokalapp.paymentsdk.model.describeForLog
-import com.getlokalapp.paymentsdk.parseGatewayConfigOrFail
 import com.getlokalapp.paymentsdk.webview.WebViewConfig
 import com.getlokalapp.paymentsdk.webview.WebViewListener
 import com.getlokalapp.paymentsdk.webview.WebViewRequest
 import com.getlokalapp.paymentsdk.webview.createWebViewSession
 import com.getlokalapp.util.Log
-import kotlinx.coroutines.channels.awaitClose
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.serialization.json.JsonObject
 
 /** GatewayMetadata.vendorSdkVersion sentinel — this gateway wraps no vendor SDK. */
 private const val NO_VENDOR_SDK = "none"
@@ -37,7 +32,7 @@ private const val BRIDGE_NAME = "LokalBridge"
  * `@EagerInitialization` hook in `WebCheckoutEagerInit.kt` on iOS. Works on both
  * platforms (the WebView is cross-platform), so there is no `registerUnavailable`.
  */
-internal object WebCheckoutSdk : PaymentGatewayHandler {
+internal object WebCheckoutSdk : TypedPaymentGatewayHandler<WebCheckoutConfig> {
 
     private const val TAG = "WebCheckout"
 
@@ -47,6 +42,8 @@ internal object WebCheckoutSdk : PaymentGatewayHandler {
         moduleVersion = MODULE_VERSION,
         vendorSdkVersion = NO_VENDOR_SDK,
     )
+
+    override val configSerializer = WebCheckoutConfig.serializer()
 
     init {
         LokalPaymentSdk.register(this)
@@ -60,23 +57,18 @@ internal object WebCheckoutSdk : PaymentGatewayHandler {
      * with no event) `→ Cancelled`. The result is **advisory** — as with UPI
      * intent, the host must confirm final state with its own backend.
      */
-    override fun pay(gatewayConfig: JsonObject): Flow<PaymentGatewayEvent> = callbackFlow {
-        val config = parseGatewayConfigOrFail { gatewayConfig.toWebCheckoutConfig() } ?: return@callbackFlow
-
+    override suspend fun GatewayResultScope.handle(config: WebCheckoutConfig) {
         // First-wins: the page posts one event and closes; a bridge event then
-        // dismisses the view, whose onClosed must not overwrite the real result.
-        var settled = false
-        fun emit(result: PaymentResult) {
-            if (settled) return
-            settled = true
+        // dismisses the view, whose onClosed must not overwrite the real result — sendTerminal's
+        // own guard is what actually enforces this now.
+        fun settle(result: PaymentResult) {
             Log.d { "[$TAG] settling with ${result.describeForLog()}" }
-            trySend(result)
-            close()
+            sendTerminal(result)
         }
 
         val webConfig = WebViewConfig(
             bridgeName = BRIDGE_NAME,
-            handlers = webCheckoutHandlers(onResult = { emit(it) }),
+            handlers = webCheckoutHandlers(onResult = { settle(it) }),
             userScripts = listOf(REACT_NATIVE_BRIDGE_SHIM),
             allowedOrigins = originOf(config.gatewayUrl)?.let { listOf(it) },
             listener = object : WebViewListener {
@@ -84,12 +76,12 @@ internal object WebCheckoutSdk : PaymentGatewayHandler {
                 // user cancellation.
                 override fun onClosed() {
                     Log.d { "[$TAG] view closed with no terminal event yet" }
-                    emit(PaymentResult.Cancelled(CancelReason.USER_DISMISSED))
+                    settle(PaymentResult.Cancelled(CancelReason.USER_DISMISSED))
                 }
 
                 override fun onError(code: String, message: String) {
                     Log.w { "[$TAG] webview error, code=$code, message=$message" }
-                    emit(PaymentResult.Failure(code, message))
+                    settle(PaymentResult.Failure(code, message))
                 }
             },
         )

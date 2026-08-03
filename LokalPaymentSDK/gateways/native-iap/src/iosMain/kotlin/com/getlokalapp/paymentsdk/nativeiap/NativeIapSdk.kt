@@ -1,19 +1,13 @@
 package com.getlokalapp.paymentsdk.nativeiap
 
+import com.getlokalapp.paymentsdk.GatewayResultScope
 import com.getlokalapp.paymentsdk.LokalPaymentSdk
-import com.getlokalapp.paymentsdk.PaymentGatewayHandler
-import com.getlokalapp.paymentsdk.parseGatewayConfigOrFail
+import com.getlokalapp.paymentsdk.TypedPaymentGatewayHandler
 import com.getlokalapp.paymentsdk.model.GatewayMetadata
 import com.getlokalapp.paymentsdk.model.PaymentGateway
-import com.getlokalapp.paymentsdk.model.PaymentGatewayEvent
 import com.getlokalapp.paymentsdk.model.describeForLog
 import com.getlokalapp.util.Log
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.channels.awaitClose
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.launch
-import kotlinx.serialization.json.JsonObject
 
 /**
  * Singleton handler for [PaymentGateway.NATIVE_IAP] — registers itself with
@@ -25,7 +19,7 @@ import kotlinx.serialization.json.JsonObject
  * drive [NativeIapClient], collapse the result — becomes shared and only the
  * concrete client differs per platform.
  */
-internal object NativeIapSdk : PaymentGatewayHandler {
+internal object NativeIapSdk : TypedPaymentGatewayHandler<NativeIapConfig> {
 
     private const val TAG = "NativeIap"
 
@@ -35,6 +29,8 @@ internal object NativeIapSdk : PaymentGatewayHandler {
         moduleVersion = MODULE_VERSION,
         vendorSdkVersion = VENDOR_SDK_VERSION,
     )
+
+    override val configSerializer = NativeIapConfig.serializer()
 
     init {
         LokalPaymentSdk.register(this)
@@ -48,8 +44,7 @@ internal object NativeIapSdk : PaymentGatewayHandler {
      * waits on [NativeIapClient.transactionUpdates] for the matching
      * terminal transaction rather than treating Pending itself as terminal.
      */
-    override fun pay(gatewayConfig: JsonObject): Flow<PaymentGatewayEvent> = callbackFlow {
-        val config = parseGatewayConfigOrFail { gatewayConfig.toNativeIapConfig() } ?: return@callbackFlow
+    override suspend fun GatewayResultScope.handle(config: NativeIapConfig) {
         val client = createNativeIapClient()
 
         var updatesJob: Job? = null
@@ -57,8 +52,7 @@ internal object NativeIapSdk : PaymentGatewayHandler {
         fun emitIfTerminal(result: NativeIapPurchaseResult): Boolean {
             val mapped = result.toPaymentResultOrNull() ?: return false
             Log.d { "[$TAG] settling with ${mapped.describeForLog()}" }
-            trySend(mapped)
-            close()
+            sendTerminal(mapped)
             return true
         }
 

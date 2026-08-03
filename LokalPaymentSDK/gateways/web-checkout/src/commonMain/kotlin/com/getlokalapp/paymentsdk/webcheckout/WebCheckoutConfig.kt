@@ -1,9 +1,7 @@
 package com.getlokalapp.paymentsdk.webcheckout
 
-import com.getlokalapp.paymentsdk.json.lenientJson
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.JsonObject
 
 /**
  * Parsed from PaymentOrder.gatewayConfig when gateway is
@@ -22,14 +20,6 @@ import kotlinx.serialization.json.JsonObject
 internal data class WebCheckoutConfig(
     @SerialName("gateway_url") val gatewayUrl: String,
 )
-
-/**
- * Decodes the opaque `gateway_config` blob LokalPaymentSdk already routed here.
- * `ignoreUnknownKeys` (via [lenientJson]) tolerates backend-added sibling fields,
- * per the gateway rulebook.
- */
-internal fun JsonObject.toWebCheckoutConfig(): WebCheckoutConfig =
-    lenientJson.decodeFromJsonElement(WebCheckoutConfig.serializer(), this)
 
 /**
  * The scheme+host(+port) prefix of [url], used as the bridge's allowed origin so

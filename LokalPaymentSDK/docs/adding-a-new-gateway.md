@@ -66,7 +66,7 @@ gateway returns a `Failure(code = "unsupported_gateway")` — it does not throw.
 
 All in `:shared`, package `com.getlokalapp.paymentsdk`.
 
-### `PaymentGatewayHandler` — the one interface your SDK class implements
+### `TypedPaymentGatewayHandler` — the one interface your SDK class implements
 `shared/.../PaymentGatewayHandler.kt`
 
 ```kotlin
@@ -74,23 +74,32 @@ interface PaymentGatewayHandler {
     val gateway: PaymentGateway
     val metadata: GatewayMetadata
     fun readiness(): GatewayReadiness = GatewayReadiness.Ready
-    fun pay(gatewayConfig: JsonObject): Flow<PaymentResult>
+    val capabilities: Set<GatewayCapability> get() = emptySet()
+    fun pay(gatewayConfig: JsonObject): Flow<PaymentGatewayEvent>
+}
+
+// what you actually implement — every gateway does:
+interface TypedPaymentGatewayHandler<T> : PaymentGatewayHandler {
+    val configSerializer: KSerializer<T>
+    override fun pay(gatewayConfig: JsonObject) = /* decode with configSerializer, then handle */
+    suspend fun GatewayResultScope.handle(config: T)
 }
 ```
 
 - `pay()` receives **only the opaque `gateway_config` JsonObject** — core has
   already routed by gateway, so you never re-check the gateway or re-parse the
-  envelope. You decode the blob into your own typed config (core can't see that
-  type — that's why it stays `JsonObject` at the boundary).
+  envelope. It stays a `JsonObject` at that boundary because core can't see your
+  typed config; `TypedPaymentGatewayHandler` is what bridges the two, so you
+  implement `handle(config: T)` and never `pay()` itself (Step 5).
 - `metadata` is your module's own build info (`moduleVersion`, `vendorSdkVersion`,
   optional `extras`) — baked at build time so it can't drift from what actually
   shipped; surfaced to the host via `LokalPaymentSdk.gatewayStatus()`.
 - `readiness()` defaults to always-`Ready`. Override it only if your gateway
   needs host-supplied setup before `pay()` can work (Juspay returns `NotReady`
-  until the host calls its `initialize(...)`).
+  until the host calls its `configure(...)`).
 - No lifecycle methods beyond that: the implementing handler is a singleton
   `object`, so there is nothing to dispose. Per-payment resources live inside
-  `pay()` (`callbackFlow` + `awaitClose` detach).
+  `handle()` (`awaitClose` detach — see Rule 7).
 
 ### `LokalPaymentSdk` — the registry + entry point (do not edit)
 `shared/.../LokalPaymentSdk.kt` — an `object`. You call `register` (idempotent,
@@ -282,11 +291,14 @@ shape (the Android-only variant, flipped):
   plus a continuous transaction-updates stream for deferred/restored
   transactions that's independent of any single purchase call. Collapsed at
   the result-mapper layer (`NativeIapResult.kt`): `unverified` → `Failure`;
-  `pending` → don't emit yet, keep the `pay()` `callbackFlow` open
+  `pending` → don't emit yet, keep `handle()`'s flow open
   (`NativeIapSdk.kt`) and also listen to the transaction-updates stream for
-  the matching terminal transaction before emitting and closing. `pay()`
-  still emits exactly one terminal `PaymentResult` (rule 7) — the waiting
-  happens inside it, not via a second API.
+  the matching terminal transaction before calling `sendTerminal`. `pay()`
+  still emits exactly one terminal `PaymentResult` (rule 7) — `sendTerminal`'s
+  own guard is what makes that hold even though this gateway's terminal path
+  is reachable from two call sites (the direct purchase result and the
+  transaction-updates stream) — the waiting happens inside `pay()`, not via a
+  second API.
 
 </details>
 
@@ -333,7 +345,7 @@ This is the *only* edit to `:shared` source a gateway is allowed to make.
   covered by a numbered step here since not every gateway needs one; follow
   the reference modules directly).
 
-### Step 3 — the config type + decoder (`commonMain`)
+### Step 3 — the config type (`commonMain`)
 `FooConfig.kt`:
 ```kotlin
 @Serializable
@@ -341,10 +353,10 @@ internal data class FooConfig(
     @SerialName("razorpay_key") val key: String,   // whatever gateway_config actually carries
     @SerialName("data") val data: JsonObject,        // opaque; handed straight to the native SDK
 )
-private val lenientJson = Json { ignoreUnknownKeys = true }   // tolerate sibling fields e.g. order_row_id
-internal fun JsonObject.toFooConfig(): FooConfig =
-    lenientJson.decodeFromJsonElement(FooConfig.serializer(), this)
 ```
+No decoder function — the handler declares `FooConfig.serializer()` (Step 5) and `:shared`
+decodes with it, through `lenientJson` so `ignoreUnknownKeys` tolerates backend-added
+sibling fields (e.g. `order_row_id`) for every gateway alike.
 
 ### Step 4 — result mapping (`commonMain`)
 `FooResult.kt` (error codes + `PaymentResult` mappers):
@@ -369,28 +381,47 @@ the gateway's own cancel code (Checkout uses `0`; UPI Intent uses `5` — they
 differ per gateway, so never hardcode a shared value). Never conflate a user
 cancel with a real failure — the host routes them to different UI.
 
-### Step 5 — the SDK entry object (`PaymentGatewayHandler`) + startup triggers
+### Step 5 — the SDK entry object (`TypedPaymentGatewayHandler`) + startup triggers
 Put the object in `commonMain` (single-platform gateways put it in
 `androidMain`/`iosMain` — see §3 variants). It's `internal`: hosts never
 reference it — the platform triggers below run its registering `init` block.
 ```kotlin
-internal object FooSdk : PaymentGatewayHandler {
+internal object FooSdk : TypedPaymentGatewayHandler<FooConfig> {
     override val gateway = PaymentGateway.FOO
-    init { LokalPaymentSdk.register(this) }              // ← the whole registration mechanism
-    override fun pay(gatewayConfig: JsonObject): Flow<PaymentResult> = callbackFlow {
-        val config = gatewayConfig.toFooConfig()
+    override val configSerializer = FooConfig.serializer()   // ← how :shared decodes gateway_config
+    init { LokalPaymentSdk.register(this) }                  // ← the whole registration mechanism
+    override suspend fun GatewayResultScope.handle(config: FooConfig) {
         val client = createFooClient()                    // multiplatform: expect/actual factory; single-platform: just new it
         client.setPaymentResultListener(object : FooResultListener {
-            override fun onPaymentSuccess(id, orderId, sig) { trySend(fooSuccess(id, orderId, sig)); close() }
-            override fun onPaymentError(code, desc)         { trySend(fooErrorToResult(code, desc)); close() }
+            override fun onPaymentSuccess(id, orderId, sig) { sendTerminal(fooSuccess(id, orderId, sig)) }
+            override fun onPaymentError(code, desc)         { sendTerminal(fooErrorToResult(code, desc)) }
         })
         client.open(config)
         awaitClose { client.setPaymentResultListener(null) }   // detach on cancellation/close
     }
 }
 ```
-Emit **exactly one** terminal result, then `close()`. `callbackFlow` +
-`awaitClose` is the standard shape.
+Never write `pay()` yourself. `TypedPaymentGatewayHandler` implements it for you as
+"decode `gateway_config` with `configSerializer`, then call `handle`", which is what
+routes every gateway through `gatewayCallbackFlow` and so enforces two contracts
+centrally (Rule 7): an unparseable blob becomes one terminal `Failure`
+(`bad_gateway_config`) instead of a flow crash, and `sendTerminal(result)` — in place
+of `trySend`+`close()` — permits exactly one terminal result, reporting a second via
+`Log.nonFatal` and dropping it rather than letting it through.
+
+Inside `handle` you have `sendTerminal`, `sendUi`, `awaitClose`, `close`, and `launch`
+(for a result that arrives on a side stream — see `:native-iap` waiting on StoreKit's
+`transactionUpdates`) — and nothing else. Two wrinkles worth knowing:
+- **A check that must run before the decode** goes at the top of `handle` anyway, so
+  it lands *after* it. `JuspaySdk`'s not-initialized guard does this: a malformed blob
+  on an unconfigured gateway reports `bad_gateway_config` rather than
+  `juspay_not_initialized`. Both are one terminal `Failure`, which is all a host
+  distinguishes on.
+- **A `public` handler needs a `public` config type.** `FooConfig` appears in
+  `handle`'s and `configSerializer`'s signatures, and Kotlin forbids a public
+  declaration from exposing an `internal` type. Handlers are `internal` unless the host
+  calls something on them directly — `JuspaySdk` is public for its `configure()`, which
+  is why `JuspayConfig` is public too.
 
 Kotlin objects initialize lazily (first reference), so each platform needs a
 startup trigger that references the object with zero host code — copy both
@@ -513,15 +544,21 @@ settings-phase twin of the iOS `LokalGatewayHostContributor`:
    `JsonObject`); the host forwards it to its own validate endpoint server-side.
    Don't add networking to a gateway module.
 5. **`gateway_config.data` is opaque — pass it straight to the native SDK, never
-   inspect or reshape it.** Decode only the outer fields you need (the key,
-   `data`). Use `ignoreUnknownKeys = true` so backend-added sibling fields don't
-   break decoding.
+   inspect or reshape it.** Declare only the outer fields you need (the key,
+   `data`); `:shared` decodes through `lenientJson`, whose `ignoreUnknownKeys`
+   already keeps backend-added sibling fields from breaking you.
 6. **Classify cancellation vs. failure at the result-mapper layer, per the
    gateway's own cancel code.** One `Cancelled` for user-dismissal, `Failure` for
    everything else. Never conflate them; never hardcode another gateway's code.
-7. **Emit exactly one terminal `PaymentResult` then complete the flow.** Guard
-   against double-open / double-emit (`callbackFlow` + `close()` + `awaitClose`
-   detach). A leaked in-flight state is a real production bug class (see
+7. **Emit exactly one terminal `PaymentResult` then complete the flow.** Implement
+   `TypedPaymentGatewayHandler` (`PaymentGatewayHandler.kt`, `:shared`) and settle
+   from `handle()` with `sendTerminal(result)` — never write your own `pay()`, and
+   never a raw `callbackFlow` + `trySend` + `close()`. `sendTerminal` enforces the
+   "exactly one" guarantee centrally: a
+   second call (a vendor SDK re-firing its result callback, a race between two
+   code paths, …) is reported through `Log.nonFatal` and dropped rather than
+   silently forwarded or silently swallowed — so a gateway never guards the call
+   itself. A leaked in-flight state is a real production bug class (see
    `architecture-reference.md` §1.4).
 8. **The host never implements a gateway's callback interface.** Absorb that with
    an SDK-owned proxy Activity (Android) / delegate (iOS), so the host's only

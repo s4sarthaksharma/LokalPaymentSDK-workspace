@@ -1,16 +1,11 @@
 package com.getlokalapp.paymentsdk.razorpay
 
+import com.getlokalapp.paymentsdk.GatewayResultScope
 import com.getlokalapp.paymentsdk.LokalPaymentSdk
-import com.getlokalapp.paymentsdk.PaymentGatewayHandler
-import com.getlokalapp.paymentsdk.parseGatewayConfigOrFail
+import com.getlokalapp.paymentsdk.TypedPaymentGatewayHandler
 import com.getlokalapp.paymentsdk.model.GatewayMetadata
 import com.getlokalapp.paymentsdk.model.PaymentGateway
-import com.getlokalapp.paymentsdk.model.PaymentGatewayEvent
 import com.getlokalapp.util.Log
-import kotlinx.coroutines.channels.awaitClose
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.serialization.json.JsonObject
 
 /**
  * Singleton handler for [PaymentGateway.RAZORPAY_CUSTOM_UI] — registers itself
@@ -31,7 +26,7 @@ import kotlinx.serialization.json.JsonObject
  * user pick one) is the host's responsibility — that's app-level UI, not
  * something this SDK owns.
  */
-internal object RazorpayCustomUiSdk : PaymentGatewayHandler {
+internal object RazorpayCustomUiSdk : TypedPaymentGatewayHandler<RazorpayCustomUiConfig> {
 
     private const val TAG = "RazorpayCustomUi"
 
@@ -42,32 +37,29 @@ internal object RazorpayCustomUiSdk : PaymentGatewayHandler {
         vendorSdkVersion = VENDOR_SDK_VERSION,
     )
 
+    override val configSerializer = RazorpayCustomUiConfig.serializer()
+
     init {
         LokalPaymentSdk.register(this)
     }
 
     /**
-     * Runs a payment for the routed `gateway_config` blob and emits exactly one
-     * terminal [PaymentResult] (Success / Cancelled / Failure) before completing.
-     * LokalPaymentSdk has already parsed the create-order envelope and routed by
-     * gateway, so there's no response to re-parse or gateway to re-check here.
-     *
-     * @param gatewayConfig the opaque `gateway_config` blob for RAZORPAY_CUSTOM_UI
+     * Runs a payment for the already-decoded [config] and emits exactly one terminal
+     * [PaymentResult] (Success / Cancelled / Failure) before completing. LokalPaymentSdk
+     * has already parsed the create-order envelope and routed by gateway, so there's no
+     * response to re-parse or gateway to re-check here.
      */
-    override fun pay(gatewayConfig: JsonObject): Flow<PaymentGatewayEvent> = callbackFlow {
-        val config = parseGatewayConfigOrFail { gatewayConfig.toRazorpayCustomUiConfig() } ?: return@callbackFlow
+    override suspend fun GatewayResultScope.handle(config: RazorpayCustomUiConfig) {
         val client = AndroidRazorpayCustomUiClient()
         client.setPaymentResultListener(object : RazorpayCustomUiResultListener {
             override fun onPaymentSuccess(paymentId: String, orderId: String?, signature: String) {
                 Log.d { "[$TAG] payment success, paymentId=$paymentId, orderId=$orderId" }
-                trySend(razorpayCustomUiSuccess(paymentId, orderId, signature))
-                close()
+                sendTerminal(razorpayCustomUiSuccess(paymentId, orderId, signature))
             }
 
             override fun onPaymentError(code: Int, description: String?) {
                 Log.w { "[$TAG] payment error, code=$code, description=$description" }
-                trySend(razorpayCustomUiErrorToResult(code, description))
-                close()
+                sendTerminal(razorpayCustomUiErrorToResult(code, description))
             }
         })
         Log.d { "[$TAG] submitting payment" }

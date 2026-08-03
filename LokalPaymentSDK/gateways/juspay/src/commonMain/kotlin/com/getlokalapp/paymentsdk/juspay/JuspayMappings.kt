@@ -1,6 +1,5 @@
 package com.getlokalapp.paymentsdk.juspay
 
-import com.getlokalapp.paymentsdk.json.lenientJson
 import com.getlokalapp.paymentsdk.json.toJsonObject
 import com.getlokalapp.paymentsdk.model.CancelReason
 import com.getlokalapp.paymentsdk.model.PaymentGatewayEvent.PaymentResult
@@ -19,20 +18,20 @@ import kotlinx.serialization.json.JsonObject
  * This wrapper shape (`sdk_payload` nesting, `generated_order_id`) is
  * confirmed against a real `gateway_config` captured from a matrimony
  * sandbox flow (R3).
+ *
+ * Public only because [JuspaySdk] is itself public (hosts call its
+ * [JuspaySdk.configure]) and a [com.getlokalapp.paymentsdk.TypedPaymentGatewayHandler]
+ * puts its config type in the handler's signature — Kotlin forbids a public
+ * declaration from exposing an `internal` type. Not part of the intended host
+ * API: hosts never construct or read this, the backend fills it and this
+ * module decodes it. Every other gateway's config stays `internal` because its
+ * handler is.
  */
 @Serializable
-internal data class JuspayConfig(
+data class JuspayConfig(
     @SerialName("sdk_payload") val sdkPayload: JsonObject,
     @SerialName("generated_order_id") val generatedOrderId: String? = null,
 )
-
-/**
- * Decodes the opaque `gateway_config` blob that LokalPaymentSdk already
- * routed to this module. No gateway check is needed here — LokalPaymentSdk
- * only ever hands a JUSPAY config to JuspaySdk.
- */
-internal fun JsonObject.toJuspayConfig(): JuspayConfig =
-    lenientJson.decodeFromJsonElement(JuspayConfig.serializer(), this)
 
 /** Raw, already-extracted fields from a Juspay process_result event. */
 internal data class JuspayResultData(

@@ -1,10 +1,8 @@
 package com.getlokalapp.paymentsdk.upiintent
 
-import com.getlokalapp.paymentsdk.json.lenientJson
 import com.getlokalapp.paymentsdk.upi.UpiApp
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.JsonObject
 
 /**
  * Parsed from PaymentOrder.gatewayConfig when gateway is
@@ -52,14 +50,6 @@ internal data class UpiChooserApp(
     val app: UpiApp,
     val logoUrl: String?,
 )
-
-/**
- * Decodes the opaque `gateway_config` blob LokalPaymentSdk already routed here.
- * `ignoreUnknownKeys` (via [lenientJson]) tolerates backend-added sibling
- * fields, per the gateway rulebook.
- */
-internal fun JsonObject.toUpiIntentConfig(): UpiIntentConfig =
-    lenientJson.decodeFromJsonElement(UpiIntentConfig.serializer(), this)
 
 /**
  * The transaction reference to carry out on [com.getlokalapp.paymentsdk.model.PaymentResult.Pending]:

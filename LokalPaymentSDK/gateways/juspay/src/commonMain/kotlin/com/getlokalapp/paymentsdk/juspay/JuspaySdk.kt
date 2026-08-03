@@ -1,8 +1,8 @@
 package com.getlokalapp.paymentsdk.juspay
 
+import com.getlokalapp.paymentsdk.GatewayResultScope
 import com.getlokalapp.paymentsdk.LokalPaymentSdk
-import com.getlokalapp.paymentsdk.PaymentGatewayHandler
-import com.getlokalapp.paymentsdk.parseGatewayConfigOrFail
+import com.getlokalapp.paymentsdk.TypedPaymentGatewayHandler
 import com.getlokalapp.paymentsdk.model.GatewayCapability
 import com.getlokalapp.paymentsdk.model.GatewayMetadata
 import com.getlokalapp.paymentsdk.model.GatewayReadiness
@@ -10,10 +10,6 @@ import com.getlokalapp.paymentsdk.model.PaymentGateway
 import com.getlokalapp.paymentsdk.model.PaymentGatewayEvent
 import com.getlokalapp.paymentsdk.model.PaymentGatewayEvent.PaymentResult
 import com.getlokalapp.util.Log
-import kotlinx.coroutines.channels.awaitClose
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.serialization.json.JsonObject
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
@@ -37,7 +33,7 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
  * and never terminated (mirrors matrimony-kmp's confirmed-working design).
  */
 @OptIn(ExperimentalAtomicApi::class)
-object JuspaySdk : PaymentGatewayHandler {
+object JuspaySdk : TypedPaymentGatewayHandler<JuspayConfig> {
 
     private const val TAG = "Juspay"
 
@@ -47,6 +43,8 @@ object JuspaySdk : PaymentGatewayHandler {
         moduleVersion = MODULE_VERSION,
         vendorSdkVersion = VENDOR_SDK_VERSION,
     )
+
+    override val configSerializer = JuspayConfig.serializer()
 
     // HyperSDK renders its UI in-place (Android Fragment) and reports the presented moment via
     // onUiPresented, so the SDK defers to that instead of bracketing the GatewayUi lifecycle.
@@ -106,43 +104,45 @@ object JuspaySdk : PaymentGatewayHandler {
         return c
     }
 
-    override fun pay(gatewayConfig: JsonObject): Flow<PaymentGatewayEvent> {
-        // Reachable both via LokalPaymentSdk.pay() (registration no longer
-        // implies configure() has run) and by calling this object's pay()
-        // directly — either way, fail gracefully rather than crash.
+    /**
+     * The not-initialized guard lives here rather than ahead of the decode: as a
+     * [TypedPaymentGatewayHandler] this gateway no longer writes `pay` itself, so
+     * `gateway_config` is decoded first and a malformed blob is reported as
+     * `bad_gateway_config` even when [configure] was never called. Both outcomes are
+     * a single terminal Failure, which is all a host distinguishes on.
+     *
+     * Reachable both via LokalPaymentSdk.pay() (registration no longer implies
+     * [configure] has run) and by calling this object's `pay()` directly — either
+     * way, fail gracefully rather than crash.
+     */
+    override suspend fun GatewayResultScope.handle(config: JuspayConfig) {
         val c = client.load() ?: run {
             Log.w { "[$TAG] pay() called before configure()" }
             Log.nonFatal(
                 IllegalStateException("JuspaySdk.pay() called before configure()"),
                 extras = mapOf("gateway" to "juspay", "operation" to "pay"),
             ) { "[$TAG] pay() called before configure()" }
-            return flowOf(PaymentResult.Failure(NOT_INITIALIZED_CODE, NOT_INITIALIZED_MESSAGE))
+            sendTerminal(PaymentResult.Failure(NOT_INITIALIZED_CODE, NOT_INITIALIZED_MESSAGE))
+            return
         }
-        return callbackFlow {
-            // gateway_config comes from the backend — a malformed blob becomes
-            // a Failure emission like every other bad state, not a flow crash.
-            val config =
-                parseGatewayConfigOrFail { gatewayConfig.toJuspayConfig() } ?: return@callbackFlow
-            val resultListener = object : JuspayResultListener {
-                override fun onUiPresented() {
-                    Log.d { "[$TAG] UI presented" }
-                    trySend(PaymentGatewayEvent.GatewayUi.Presented)
-                }
-
-                override fun onResult(data: JuspayResultData) {
-                    Log.d {
-                        "[$TAG] result received, status=${data.status}, errorCode=${data.errorCode}, errorMessage=${data.errorMessage}"
-                    }
-                    trySend(juspayResultToPaymentResult(data))
-                    close()
-                }
+        val resultListener = object : JuspayResultListener {
+            override fun onUiPresented() {
+                Log.d { "[$TAG] UI presented" }
+                sendUi(PaymentGatewayEvent.GatewayUi.Presented)
             }
-            c.setResultListener(resultListener)
-            Log.d { "[$TAG] processing payment" }
-            c.process(config.sdkPayload)
-            // Identity-checked clear: if a newer pay() has already installed
-            // its own listener, this stale flow's teardown must not remove it.
-            awaitClose { c.clearResultListener(resultListener) }
+
+            override fun onResult(data: JuspayResultData) {
+                Log.d {
+                    "[$TAG] result received, status=${data.status}, errorCode=${data.errorCode}, errorMessage=${data.errorMessage}"
+                }
+                sendTerminal(juspayResultToPaymentResult(data))
+            }
         }
+        c.setResultListener(resultListener)
+        Log.d { "[$TAG] processing payment" }
+        c.process(config.sdkPayload)
+        // Identity-checked clear: if a newer pay() has already installed
+        // its own listener, this stale flow's teardown must not remove it.
+        awaitClose { c.clearResultListener(resultListener) }
     }
 }
