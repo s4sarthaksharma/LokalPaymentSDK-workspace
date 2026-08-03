@@ -49,7 +49,7 @@ sealed interface PaymentGatewayEvent {
 
     /**
      * Terminal state emitted on the Flow returned by each gateway module's
-     * pay() (e.g. RazorpayCheckoutSdk.pay(), RazorpayCustomUiSdk.pay()).
+     * pay() (e.g. RazorpayCheckoutGatewayHandler.pay(), RazorpayCustomUiGatewayHandler.pay()).
      * Cancellation is a distinct branch from Failure by design — a user
      * dismissing the checkout sheet is not an error and should not route to
      * a failure UI.

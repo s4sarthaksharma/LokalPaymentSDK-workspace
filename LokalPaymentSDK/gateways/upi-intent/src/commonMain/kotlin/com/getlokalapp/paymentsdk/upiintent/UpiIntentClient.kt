@@ -1,7 +1,7 @@
 package com.getlokalapp.paymentsdk.upiintent
 
 /**
- * Platform launcher for a UPI intent. The common [UpiIntentSdk] owns the flow
+ * Platform launcher for a UPI intent. The common [UpiIntentGatewayHandler] owns the flow
  * and the [com.getlokalapp.paymentsdk.model.PaymentResult] mapping; the client
  * only knows how to hand the `upi://…` URL to a UPI app on its platform and
  * report back through [UpiIntentResultListener]. Mirrors

@@ -35,7 +35,7 @@ app) can and should use Compose freely — the constraint is scoped to
 `PaymentGatewayHandler` registration with `LokalPaymentSdk`) expose plain,
 framework-agnostic hooks instead of Compose composables:
 - Each gateway's SDK entry point is a parameterless singleton `object` (e.g.
-  `RazorpayCheckoutSdk`) that registers itself with `LokalPaymentSdk.register(this)`
+  `RazorpayCheckoutGatewayHandler`) that registers itself with `LokalPaymentSdk.register(this)`
   in its own `init {}` — no host-supplied handle, no separate registration step.
   A platform-specific startup trigger (an AndroidX App Startup `Initializer` on
   Android, an `@EagerInitialization` hook on iOS) just *references* the object

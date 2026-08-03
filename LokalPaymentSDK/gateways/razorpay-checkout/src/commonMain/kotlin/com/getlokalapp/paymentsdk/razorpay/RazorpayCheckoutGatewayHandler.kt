@@ -15,10 +15,10 @@ import com.getlokalapp.util.Log
  * `RazorpayCheckoutEagerInit.kt` does on iOS. No platform handle to grab:
  * Android auto-tracks the current Activity and iOS looks up the topmost
  * UIViewController fresh, both via `:shared`'s hostcontext utilities
- * (mirrors JuspaySdk). Each [pay] call builds its own short-lived platform
+ * (mirrors JuspayGatewayHandler). Each [pay] call builds its own short-lived platform
  * client.
  */
-internal object RazorpayCheckoutSdk : TypedPaymentGatewayHandler<RazorpayCheckoutConfig> {
+internal object RazorpayCheckoutGatewayHandler : TypedPaymentGatewayHandler<RazorpayCheckoutConfig> {
 
     private const val TAG = "RazorpayCheckout"
 

@@ -19,7 +19,7 @@ import kotlinx.coroutines.Job
  * drive [NativeIapClient], collapse the result — becomes shared and only the
  * concrete client differs per platform.
  */
-internal object NativeIapSdk : TypedPaymentGatewayHandler<NativeIapConfig> {
+internal object NativeIapGatewayHandler : TypedPaymentGatewayHandler<NativeIapConfig> {
 
     private const val TAG = "NativeIap"
 

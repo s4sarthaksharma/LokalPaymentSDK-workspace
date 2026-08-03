@@ -17,7 +17,7 @@ internal interface JuspayResultListener {
 }
 
 /**
- * One long-lived instance per [com.getlokalapp.paymentsdk.juspay.JuspaySdk]
+ * One long-lived instance per [com.getlokalapp.paymentsdk.juspay.JuspayGatewayHandler]
  * (contrast Razorpay's per-pay() client) — HyperSDK is stateful and initiated
  * once, then reused for every process(). No onBackPressed(): confirmed dead
  * code even in matrimony's own shipped implementation, and absent from the
@@ -46,7 +46,7 @@ internal interface JuspayClient {
 }
 
 /**
- * [tenantId] is iOS-only; Android ignores it (see [com.getlokalapp.paymentsdk.juspay.JuspaySdk]'s
+ * [tenantId] is iOS-only; Android ignores it (see [com.getlokalapp.paymentsdk.juspay.JuspaySdk.configure]'s
  * kdoc). Neither actual takes a clientId: Android reads it implicitly from the host's
  * Gradle-plugin-injected config, and iOS's actual resolves it itself at runtime from the
  * bundled `MerchantConfig.json` (same file the host-contributor generates for HyperSDK's own

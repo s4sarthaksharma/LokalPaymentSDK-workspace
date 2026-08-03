@@ -8,7 +8,7 @@ import kotlin.native.EagerInitialization
  * ⚠️ LOAD-BEARING "UNUSED" PROPERTY — DO NOT DELETE.
  *
  * iOS counterpart of WebCheckoutInitializer: `@EagerInitialization` makes this
- * property initialize before `main()`, which touches [WebCheckoutSdk] and runs
+ * property initialize before `main()`, which touches [WebCheckoutGatewayHandler] and runs
  * its registering `init` block — so the gateway is registered with zero host
  * code, same as Android. Mirrors `UpiIntentEagerInit.kt`.
  *
@@ -18,10 +18,10 @@ import kotlin.native.EagerInitialization
  *   error and iOS web-checkout payments start failing with `unsupported_gateway`
  *   — after any Kotlin upgrade, verify on iOS that WEB_CHECKOUT still appears in
  *   `LokalPaymentSdk.gatewayStatus().available`.
- * - This runs pre-main, before UIKit is up. Keep it (and [WebCheckoutSdk]'s
+ * - This runs pre-main, before UIKit is up. Keep it (and [WebCheckoutGatewayHandler]'s
  *   `init` block) a bare in-memory registration — no logging, no UIKit. The only
  *   UIKit work (presenting the WebView) is inside `pay()`, which runs post-main.
  */
 @Suppress("DEPRECATION", "unused")
 @EagerInitialization
-private val eagerRegistration = WebCheckoutSdk
+private val eagerRegistration = WebCheckoutGatewayHandler

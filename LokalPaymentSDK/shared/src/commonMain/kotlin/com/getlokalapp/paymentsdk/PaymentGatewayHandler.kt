@@ -22,14 +22,14 @@ import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
 /**
- * Implemented by each gateway module's own SDK singleton `object` (e.g.
- * RazorpayCheckoutSdk, RazorpayCustomUiSdk, JuspaySdk). Each singleton
- * registers itself with [LokalPaymentSdk] in its `init` block, and the
+ * Implemented by each gateway module's own handler singleton `object` (e.g.
+ * RazorpayCheckoutGatewayHandler, RazorpayCustomUiGatewayHandler, JuspayGatewayHandler). Each
+ * singleton registers itself with [LokalPaymentSdk] in its `init` block, and the
  * gateway module arranges for that to run at app startup with zero host
  * code — an AndroidX App Startup `Initializer` on Android, an
- * `@EagerInitialization` hook on iOS. The exception is a gateway that needs
- * host-supplied setup data (Juspay's init payload): there the host's one
- * `initialize(...)` call is the trigger. Registration is app-lifetime;
+ * `@EagerInitialization` hook on iOS. A gateway needing host-supplied setup
+ * data (Juspay's init payload) still registers this way; the host's separate
+ * `configure(...)` call is what makes it payable. Registration is app-lifetime;
  * handlers are objects, so there is nothing to dispose or unregister.
  *
  * No UI handle to construct with — each concrete handler reads its own
@@ -51,7 +51,7 @@ interface PaymentGatewayHandler {
      * Checked live on every [LokalPaymentSdk.gatewayStatus] call — unlike
      * registration, this can flip during the app's lifetime (e.g. Juspay
      * becomes [GatewayReadiness.Ready] only after the host calls its
-     * `initialize()`). Defaults to always ready: most gateways need no
+     * `configure()`). Defaults to always ready: most gateways need no
      * host-supplied setup beyond registration.
      */
     fun readiness(): GatewayReadiness = GatewayReadiness.Ready
@@ -78,12 +78,13 @@ private const val DUPLICATE_TERMINAL_RESULT: String = "duplicate_terminal_result
  * [PaymentGatewayHandler] directly and never write `pay(gatewayConfig: JsonObject)` themselves,
  * so routing through [gatewayCallbackFlow] — and with it the decode-or-fail and
  * exactly-one-terminal contracts — can't be skipped. A gateway needing a check *before* the
- * decode puts it at the top of [handle] instead (see `JuspaySdk`'s not-initialized guard).
+ * decode puts it at the top of [handle] instead (see `JuspayGatewayHandler`'s not-initialized
+ * guard).
  *
- * One constraint worth knowing before making a handler public: [T] appears in this interface's
- * member signatures, so a `public` handler needs a `public` [T] — Kotlin forbids a public
- * declaration from exposing an `internal` type. Handlers are `internal` by default, in which case
- * their config type stays `internal` too.
+ * [T] appears in this interface's member signatures, so a `public` handler would need a `public`
+ * [T] — Kotlin forbids a public declaration from exposing an `internal` type. Keep handlers
+ * `internal` and their config types stay `internal` too; a gateway with a host-facing API exposes
+ * it as a separate public façade instead (`JuspaySdk` fronting `JuspayGatewayHandler`).
  */
 interface TypedPaymentGatewayHandler<T> : PaymentGatewayHandler {
     val configSerializer: KSerializer<T>

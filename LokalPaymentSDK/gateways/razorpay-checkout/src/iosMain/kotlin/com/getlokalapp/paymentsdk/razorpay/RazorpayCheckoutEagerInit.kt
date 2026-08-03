@@ -9,7 +9,7 @@ import kotlin.native.EagerInitialization
  *
  * iOS counterpart of RazorpayCheckoutInitializer: `@EagerInitialization`
  * makes this property initialize before `main()`, which touches
- * [RazorpayCheckoutSdk] and runs its registering `init` block — so the
+ * [RazorpayCheckoutGatewayHandler] and runs its registering `init` block — so the
  * gateway is registered with zero host code, same as Android.
  *
  * Two constraints this imposes:
@@ -20,9 +20,9 @@ import kotlin.native.EagerInitialization
  *   RAZORPAY_CHECKOUT still appears in
  *   `LokalPaymentSdk.gatewayStatus().available`.
  * - This initializer runs pre-main, before UIKit is up. Keep it (and
- *   [RazorpayCheckoutSdk]'s `init` block) a bare in-memory registration —
+ *   [RazorpayCheckoutGatewayHandler]'s `init` block) a bare in-memory registration —
  *   no logging, no UIKit, no config reads.
  */
 @Suppress("DEPRECATION", "unused")
 @EagerInitialization
-private val eagerRegistration = RazorpayCheckoutSdk
+private val eagerRegistration = RazorpayCheckoutGatewayHandler

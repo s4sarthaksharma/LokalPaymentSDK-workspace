@@ -40,7 +40,7 @@ PaymentOrder(gateway: PaymentGateway, gatewayConfig: JsonObject)
    ↓
 LokalPaymentSdk.pay(order)                       ← always the same call
    ↓  looks up handlers[order.gateway]
-YourGatewaySdk.pay(gatewayConfig: JsonObject)    ← your handler, self-registered
+YourGatewayHandler.pay(gatewayConfig: JsonObject) ← your handler, self-registered
    ↓  decode config → drive native SDK → normalize callback
 Flow<PaymentResult>  (Success / Cancelled / Failure — exactly one, terminal)
    ↓  wrapped by core
@@ -54,8 +54,9 @@ handler is an app-lifetime singleton `object` whose
 module bootstraps it per platform: an AndroidX App Startup **`Initializer`**
 on Android (contributed to `:shared`'s single init provider via a manifest
 `<meta-data>`), an **`@EagerInitialization`** hook on iOS.
-The one exception is a gateway that needs host-supplied setup data (Juspay's
-init payload) — there the host's single `initialize(...)` call is the trigger.
+A gateway that needs host-supplied setup data (Juspay's init payload) registers
+the same way; the host's single `configure(...)` call is an extra step on top,
+not the trigger.
 There is no unregister/dispose: registration is app-lifetime. Routing is by
 the `PaymentGateway` enum key. `LokalPaymentSdk.pay()` for an unregistered
 gateway returns a `Failure(code = "unsupported_gateway")` — it does not throw.
@@ -236,7 +237,7 @@ Shipped: `:gateways:native-iap`, `PaymentGateway.NATIVE_IAP`. Deltas from the ca
 shape (the Android-only variant, flipped):
 
 - **SDK entry object lives in `iosMain`**, not `commonMain`
-  (`NativeIapSdk.kt`), and its only startup trigger is the
+  (`NativeIapGatewayHandler.kt`), and its only startup trigger is the
   `@EagerInitialization` hook (`NativeIapEagerInit.kt`) — no Android App
   Startup initializer for now, so the gateway doesn't register on Android yet.
   Unlike the permanent Android-only variant, this side is meant to get a real
@@ -292,7 +293,7 @@ shape (the Android-only variant, flipped):
   transactions that's independent of any single purchase call. Collapsed at
   the result-mapper layer (`NativeIapResult.kt`): `unverified` → `Failure`;
   `pending` → don't emit yet, keep `handle()`'s flow open
-  (`NativeIapSdk.kt`) and also listen to the transaction-updates stream for
+  (`NativeIapGatewayHandler.kt`) and also listen to the transaction-updates stream for
   the matching terminal transaction before calling `sendTerminal`. `pay()`
   still emits exactly one terminal `PaymentResult` (rule 7) — `sendTerminal`'s
   own guard is what makes that hold even though this gateway's terminal path
@@ -386,7 +387,7 @@ Put the object in `commonMain` (single-platform gateways put it in
 `androidMain`/`iosMain` — see §3 variants). It's `internal`: hosts never
 reference it — the platform triggers below run its registering `init` block.
 ```kotlin
-internal object FooSdk : TypedPaymentGatewayHandler<FooConfig> {
+internal object FooGatewayHandler : TypedPaymentGatewayHandler<FooConfig> {
     override val gateway = PaymentGateway.FOO
     override val configSerializer = FooConfig.serializer()   // ← how :shared decodes gateway_config
     init { LokalPaymentSdk.register(this) }                  // ← the whole registration mechanism
@@ -430,7 +431,7 @@ pieces from `razorpay-checkout`:
 1. **Android — `FooInitializer` in `androidMain` + a `<meta-data>` manifest
    entry** (mirror `RazorpayCheckoutInitializer`). Extend `:shared`'s
    `GatewayInitializer` (an AndroidX App Startup `Initializer`) and implement
-   only `create()`, touching `FooSdk` to run its `init`; the base already
+   only `create()`, touching `FooGatewayHandler` to run its `init`; the base already
    depends on `PaymentSdkInitializer` so the ActivityTracker install runs
    first. No `androidx.startup` dependency in your module — it comes
    transitively from `:shared` (`api`). Register it with a `<meta-data>`
@@ -445,10 +446,14 @@ pieces from `razorpay-checkout`:
    Kotlin upgrade, verify on iOS that the gateway still appears in
    `LokalPaymentSdk.gatewayStatus().available`.
 
-A gateway that needs host-supplied setup data before it can pay (Juspay's
-init payload) skips the triggers instead: make the object public and give it
-an `initialize(...)` method that registers **and** performs setup — the
-host's one call is the startup trigger (see `JuspaySdk`).
+A gateway that needs host-supplied setup data before it can pay (Juspay's init
+payload) still uses both triggers exactly as above — registration is never the
+host's job. What it adds is a **separate public façade object** carrying the one
+host-facing call, delegating to the still-`internal` handler: `JuspaySdk.configure()`
+→ `JuspayGatewayHandler`. Don't make the handler itself public to get there; that
+would drag your `internal` config type into the public API (see Step 5). Pair the
+façade with a `readiness()` override so `gatewayStatus()` reports the gateway
+`NotReady` until the host has called it.
 
 ### Step 5b — logging
 
@@ -502,7 +507,7 @@ The host does **zero** SDK-code changes and writes **zero** setup lines. It:
 2. keeps calling `LokalPaymentSdk.pay(order)` — registration happened at app
    startup via the module's own triggers, and routing is automatic. (Only a
    setup-data gateway like Juspay needs one host line:
-   `FooSdk.initialize(...)` at app startup.)
+   `FooSdk.configure(...)` at app startup.)
 
 ### Step 8b — (only if your gateway needs settings-phase setup) a settings contributor
 Most gateways need nothing here. But if your gateway's native SDK lives in a

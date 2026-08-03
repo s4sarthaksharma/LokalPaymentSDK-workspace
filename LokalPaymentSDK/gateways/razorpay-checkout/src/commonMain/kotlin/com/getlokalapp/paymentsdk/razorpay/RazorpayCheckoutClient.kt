@@ -17,7 +17,7 @@ internal interface RazorpayPaymentResultListener {
 }
 
 /**
- * Lets common orchestration (RazorpayCheckoutSdk.pay) obtain the platform's own
+ * Lets common orchestration (RazorpayCheckoutGatewayHandler.pay) obtain the platform's own
  * Razorpay client without the host having to reach into the razorpay package
  * or know which actual (Android/iOS) backs it.
  */

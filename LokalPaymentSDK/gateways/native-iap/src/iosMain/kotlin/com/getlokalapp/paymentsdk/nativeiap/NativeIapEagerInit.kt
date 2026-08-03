@@ -8,7 +8,7 @@ import kotlin.native.EagerInitialization
  * ⚠️ LOAD-BEARING "UNUSED" PROPERTY — DO NOT DELETE.
  *
  * `@EagerInitialization` makes this property initialize before `main()`,
- * which touches [NativeIapSdk] and runs its registering `init` block — so the
+ * which touches [NativeIapGatewayHandler] and runs its registering `init` block — so the
  * gateway is registered with zero host code (mirrors
  * RazorpayCheckoutEagerInit.kt).
  *
@@ -19,9 +19,9 @@ import kotlin.native.EagerInitialization
  *   `unsupported_gateway` — after any Kotlin upgrade, verify on iOS that
  *   NATIVE_IAP still appears in `LokalPaymentSdk.gatewayStatus().available`.
  * - This initializer runs pre-main, before UIKit is up. Keep it (and
- *   [NativeIapSdk]'s `init` block) a bare in-memory registration — no
+ *   [NativeIapGatewayHandler]'s `init` block) a bare in-memory registration — no
  *   logging, no UIKit, no config reads.
  */
 @Suppress("DEPRECATION", "unused")
 @EagerInitialization
-private val eagerRegistration = NativeIapSdk
+private val eagerRegistration = NativeIapGatewayHandler

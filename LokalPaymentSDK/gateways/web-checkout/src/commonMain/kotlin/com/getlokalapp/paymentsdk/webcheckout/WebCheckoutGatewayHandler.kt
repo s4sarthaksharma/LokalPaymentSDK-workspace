@@ -32,7 +32,7 @@ private const val BRIDGE_NAME = "LokalBridge"
  * `@EagerInitialization` hook in `WebCheckoutEagerInit.kt` on iOS. Works on both
  * platforms (the WebView is cross-platform), so there is no `registerUnavailable`.
  */
-internal object WebCheckoutSdk : TypedPaymentGatewayHandler<WebCheckoutConfig> {
+internal object WebCheckoutGatewayHandler : TypedPaymentGatewayHandler<WebCheckoutConfig> {
 
     private const val TAG = "WebCheckout"
 

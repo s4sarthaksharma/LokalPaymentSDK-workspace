@@ -8,7 +8,7 @@ import kotlinx.serialization.Serializable
 
 /**
  * Vendor-neutral purchase outcome a platform client reports up to
- * [NativeIapSdk] — StoreKit 2 today (Product.purchase / Transaction.updates),
+ * [NativeIapGatewayHandler] — StoreKit 2 today (Product.purchase / Transaction.updates),
  * Play Billing later. Richer than [PaymentResult]: a store purchase can be
  * unverified (StoreKit's local receipt check failed) or still pending (e.g.
  * Ask to Buy, SCA) — neither of which [PaymentResult] models.
@@ -44,7 +44,7 @@ internal data class NativeIapSuccessResult(
 /**
  * Collapses [NativeIapPurchaseResult] into [PaymentResult]. Returns null for
  * [NativeIapPurchaseResult.Pending] — that's not a terminal outcome yet;
- * [NativeIapSdk.pay] keeps its flow open and waits for the transaction-updates
+ * [NativeIapGatewayHandler.pay] keeps its flow open and waits for the transaction-updates
  * stream to report the eventual terminal result instead of emitting here.
  */
 internal fun NativeIapPurchaseResult.toPaymentResultOrNull(): PaymentResult? = when (this) {

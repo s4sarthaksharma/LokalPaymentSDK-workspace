@@ -28,7 +28,7 @@ private const val NO_VENDOR_SDK = "none"
  * from `:shared`'s ActivityTracker and iOS uses the shared UIApplication, both
  * at call time. Each [pay] builds its own short-lived platform client.
  */
-internal object UpiIntentSdk : TypedPaymentGatewayHandler<UpiIntentConfig> {
+internal object UpiIntentGatewayHandler : TypedPaymentGatewayHandler<UpiIntentConfig> {
 
     private const val TAG = "UpiIntent"
 

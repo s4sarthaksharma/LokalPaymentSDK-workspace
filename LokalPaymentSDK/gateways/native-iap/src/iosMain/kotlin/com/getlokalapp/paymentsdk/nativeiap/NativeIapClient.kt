@@ -3,7 +3,7 @@ package com.getlokalapp.paymentsdk.nativeiap
 import kotlinx.coroutines.flow.Flow
 
 /**
- * Platform seam between [NativeIapSdk] and the underlying store. iOS-only for
+ * Platform seam between [NativeIapGatewayHandler] and the underlying store. iOS-only for
  * now — [IOSNativeIapClient] is the only implementation until Play Billing
  * gives this an Android counterpart.
  */

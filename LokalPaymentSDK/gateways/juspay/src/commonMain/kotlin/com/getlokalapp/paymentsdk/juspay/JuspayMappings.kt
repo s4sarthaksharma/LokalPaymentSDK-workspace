@@ -18,17 +18,9 @@ import kotlinx.serialization.json.JsonObject
  * This wrapper shape (`sdk_payload` nesting, `generated_order_id`) is
  * confirmed against a real `gateway_config` captured from a matrimony
  * sandbox flow (R3).
- *
- * Public only because [JuspaySdk] is itself public (hosts call its
- * [JuspaySdk.configure]) and a [com.getlokalapp.paymentsdk.TypedPaymentGatewayHandler]
- * puts its config type in the handler's signature — Kotlin forbids a public
- * declaration from exposing an `internal` type. Not part of the intended host
- * API: hosts never construct or read this, the backend fills it and this
- * module decodes it. Every other gateway's config stays `internal` because its
- * handler is.
  */
 @Serializable
-data class JuspayConfig(
+internal data class JuspayConfig(
     @SerialName("sdk_payload") val sdkPayload: JsonObject,
     @SerialName("generated_order_id") val generatedOrderId: String? = null,
 )

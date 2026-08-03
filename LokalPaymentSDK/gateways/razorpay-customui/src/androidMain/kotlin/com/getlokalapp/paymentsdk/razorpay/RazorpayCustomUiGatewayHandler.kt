@@ -17,7 +17,7 @@ import com.getlokalapp.util.Log
  * handle to grab:
  * [AndroidRazorpayCustomUiClient] reads the current Activity from
  * `:shared`'s hostcontext ActivityTracker at call time (mirrors
- * RazorpayCheckoutSdk/JuspaySdk), only ever using it to launch this SDK's own
+ * RazorpayCheckoutGatewayHandler/JuspayGatewayHandler), only ever using it to launch this SDK's own
  * internal proxy Activity ([RazorpayCustomUiActivity]), which owns the
  * WebView Razorpay requires and handles its own onActivityResult — there's
  * nothing for the host to forward.
@@ -26,7 +26,7 @@ import com.getlokalapp.util.Log
  * user pick one) is the host's responsibility — that's app-level UI, not
  * something this SDK owns.
  */
-internal object RazorpayCustomUiSdk : TypedPaymentGatewayHandler<RazorpayCustomUiConfig> {
+internal object RazorpayCustomUiGatewayHandler : TypedPaymentGatewayHandler<RazorpayCustomUiConfig> {
 
     private const val TAG = "RazorpayCustomUi"
 
