@@ -57,7 +57,8 @@ internal fun renderUpiApps(apps: List<UpiApp>): String {
 internal fun render(event: LokalPaymentEvent): String {
     val header = "gateway = ${event.gateway}"
     val body = when (val ev = event.event) {
-        PaymentGatewayEvent.UiPresented -> "UI presented"
+        PaymentGatewayEvent.GatewayUi.Presented -> "UI presented"
+        PaymentGatewayEvent.GatewayUi.Dismissed -> "UI dismissed"
         is PaymentResult -> renderResult(ev)
     }
     // Echoed straight back from PaymentOrder.metadata — the host set it (see

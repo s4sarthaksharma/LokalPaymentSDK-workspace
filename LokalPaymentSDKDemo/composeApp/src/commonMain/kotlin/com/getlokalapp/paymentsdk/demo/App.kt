@@ -49,7 +49,7 @@ fun App() {
         Surface(modifier = Modifier.fillMaxSize()) {
 
             val gatewayStatus = remember {
-                JuspaySdk.initialize(SAMPLE_JUSPAY_INIT_PAYLOAD, clientId = "lokalmatrimony")
+                JuspaySdk.configure(SAMPLE_JUSPAY_INIT_PAYLOAD)
                 LokalPaymentSdk.gatewayStatus()
             }
             val registeredGateways = gatewayStatus.available.map { it.gateway }

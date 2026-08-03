@@ -41,7 +41,7 @@ internal val SAMPLE_CREATE_ORDER_RESPONSE = """
           "method": { "card": false, "upi": true, "netbanking": true, "wallet": true, "emi": false, "paylater": false },
           "theme": { "color": "#D32F2F" },
           "KEY_ID": "rzp_test_RRHhT2F4OwJ6hF"
-        },
+        }
       },
       "metadata": {
         "source": "demo_checkout_screen",
@@ -67,7 +67,7 @@ internal val SAMPLE_UPI_INTENT_CREATE_ORDER_RESPONSE = """
       "method": "upi",
       "email": "someone@example.com",
       "_[flow]": "intent"
-    },  
+    }
   },
   "metadata": {
     "source": "demo_checkout_screen",
