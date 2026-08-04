@@ -8,6 +8,7 @@ import com.getlokalapp.paymentsdk.host.PrebuildStep
 import com.getlokalapp.paymentsdk.host.VendorPackage
 import org.gradle.api.Project
 import org.gradle.api.artifacts.Dependency
+import java.io.File
 
 /**
  * Juspay's build-time contribution to an iOS host under SPM. The SPM-flavored sibling of
@@ -41,13 +42,14 @@ import org.gradle.api.artifacts.Dependency
  *
  *  3. **Contribute the `Fuse.rb` pre-build step** ([HostContribution.prebuildStep]) —
  *     HyperSDK's merchant-asset download (its "Validate Mandatory Files" build phase fails
- *     without it) needs Xcode's build environment to locate HyperSDK's resolved SPM checkout
- *     under DerivedData, so it can't run at Gradle-sync time. Under CocoaPods this rode in a
- *     managed `post_install`; here it rides in the umbrella plugin's generated pre-build
- *     dispatcher, which the app registers as a single scheme pre-build action (see
- *     [PrebuildStep]). The step also runs `ValidateHyperSDK.rb` when the resolved HyperSDK
- *     ships it — that's what writes Juspay's URL/query schemes into `Info.plist`, so this
- *     contributor patches no plist itself.
+ *     without it) needs Xcode's build environment to locate the unpacked HyperSDK binary
+ *     artifact under DerivedData, so it can't run at Gradle-sync time. Under CocoaPods this
+ *     rode in a managed `post_install`; here it rides in the umbrella plugin's generated
+ *     pre-build dispatcher, which the app registers as a single scheme pre-build action (see
+ *     [PrebuildStep]). Running `Fuse.rb` is also what writes Juspay's URL/query schemes into
+ *     `Info.plist` — it patches the plist itself, via the `xcodeproj` gem — so this
+ *     contributor patches no plist itself. The step then runs `ValidateHyperSDK.rb`, which
+ *     only validates; see [FUSE_PREBUILD_SCRIPT] for why that one is best-effort.
  *
  * What this deliberately does NOT do (and why it can't):
  *  - **Register the scheme pre-build action** — a Gradle plugin can't edit the consumer's
@@ -77,10 +79,16 @@ class JuspayHostContributor : LokalGatewayHostContributor {
                 "iosApp/MerchantConfig.json for HyperSDK's merchant asset download and " +
                 "iosApp/LokalJuspayConfig.json for the SDK's runtime clientId resolution."
         }
-        writeMerchantConfig(target, clientId)
-        writeLokalJuspayConfig(target, clientId)
+        val merchantConfig = writeMerchantConfig(target, clientId)
+        val lokalJuspayConfig = writeLokalJuspayConfig(target, clientId)
 
         return HostContribution(
+            // Both files are useless unless they end up INSIDE the built .app: HyperSDK's asset
+            // pipeline reads MerchantConfig.json, and IOSJuspayClient.resolveClientId reads
+            // LokalJuspayConfig.json via NSBundle.pathForResource — which returns nil (and throws)
+            // when the file isn't an app-target member. Declaring them here makes the umbrella
+            // plugin wire both into the host's Resources build phase.
+            bundledResources = listOf(merchantConfig.absolutePath, lokalJuspayConfig.absolutePath),
             vendorPackage = VendorPackage(
                 url = "https://github.com/juspay/hypersdk-ios",
                 exactVersion = VENDOR_SDK_VERSION,
@@ -93,16 +101,19 @@ class JuspayHostContributor : LokalGatewayHostContributor {
                     heading = "Juspay (HyperSDK)",
                     steps = listOf(
                         "Juspay's `Fuse.rb` asset download runs via the SDK's pre-build action " +
-                            "(§5) — you only need to register that one action. Its " +
-                            "`ValidateHyperSDK.rb` also writes Juspay's URL/query schemes into " +
-                            "your `Info.plist`, so you do NOT add an `LSApplicationQueriesSchemes` " +
-                            "entry for Juspay by hand.",
+                            "(§5) — you only need to register that one action. It also writes " +
+                            "Juspay's URL/query schemes into your `Info.plist`, so you do NOT add " +
+                            "an `LSApplicationQueriesSchemes` entry for Juspay by hand. That plist " +
+                            "patching needs the `xcodeproj` Ruby gem on your build machine " +
+                            "(`gem install xcodeproj`); without it HyperSDK warns and you must add " +
+                            "the schemes manually.",
                         "Two files are generated for you beside your `.xcodeproj` from the " +
                             "`juspayClientId` Gradle property: `iosApp/MerchantConfig.json` " +
                             "(HyperSDK's asset pipeline reads it) and `iosApp/LokalJuspayConfig.json` " +
                             "(`:juspay` reads it at runtime to resolve HyperServices' clientId). " +
-                            "Make sure BOTH are members of your app target. You never pass a " +
-                            "clientId anywhere in your own code.",
+                            "Both must ship inside your `.app` — see the bundled-resources section " +
+                            "for whether the SDK wired them for you. You never pass a clientId " +
+                            "anywhere in your own code.",
                     ),
                 ),
             ),
@@ -117,17 +128,18 @@ class JuspayHostContributor : LokalGatewayHostContributor {
      * reads this file — see [writeLokalJuspayConfig]. Runs eagerly inside the umbrella plugin's
      * `afterEvaluate`, so it's current on every Gradle sync.
      */
-    private fun writeMerchantConfig(target: Project, clientId: String) {
-        target.file("../iosApp/MerchantConfig.json").writeText(
-            """
-            {
-              "clientConfigs": {
-                "$clientId": {}
-              }
-            }
-            """.trimIndent() + "\n",
-        )
-    }
+    private fun writeMerchantConfig(target: Project, clientId: String): File =
+        target.file("../iosApp/MerchantConfig.json").apply {
+            writeText(
+                """
+                {
+                  "clientConfigs": {
+                    "$clientId": {}
+                  }
+                }
+                """.trimIndent() + "\n",
+            )
+        }
 
     /**
      * Writes `iosApp/LokalJuspayConfig.json` (`{ "clientId": "<client-id>" }`) beside the
@@ -135,50 +147,93 @@ class JuspayHostContributor : LokalGatewayHostContributor {
      * `IOSJuspayClient` (in `:juspay`) at runtime to resolve HyperServices' required clientId.
      * Deliberately separate from HyperSDK's own [writeMerchantConfig] output: that file's
      * `clientConfigs` shape is Juspay's contract, so reading it at runtime would couple us to a
-     * schema we don't own. Like `MerchantConfig.json`, it must be an app-target member (surfaced
-     * in the consumer notes) — Gradle can't add it to the consumer's Xcode target itself.
+     * schema we don't own. Like `MerchantConfig.json` it must be an app-target member — both are
+     * returned and declared via [HostContribution.bundledResources], so the umbrella plugin wires
+     * them into hosts that set `lokalPaymentSdk { iosXcodeProject = … }` and surfaces them as an
+     * `INTEGRATION.md` step for XcodeGen/Tuist hosts that declare resources in their own spec.
      */
-    private fun writeLokalJuspayConfig(target: Project, clientId: String) {
-        target.file("../iosApp/LokalJuspayConfig.json").writeText(
-            """
-            {
-              "clientId": "$clientId"
-            }
-            """.trimIndent() + "\n",
-        )
-    }
+    private fun writeLokalJuspayConfig(target: Project, clientId: String): File =
+        target.file("../iosApp/LokalJuspayConfig.json").apply {
+            writeText(
+                """
+                {
+                  "clientId": "$clientId"
+                }
+                """.trimIndent() + "\n",
+            )
+        }
 
     private companion object {
         /**
          * `/bin/sh` snippet run by the umbrella plugin's pre-build dispatcher before each Xcode
-         * build. HyperSDK resolves as an SPM package into Xcode's DerivedData, so its checkout
-         * path isn't known until build time — this locates it from `$BUILD_DIR`, then runs
-         * `Fuse.rb false` (asset download; `false` = don't force re-download, mirroring the
-         * CocoaPods-era `post_install` invocation) and `ValidateHyperSDK.rb` when the resolved
-         * version ships it. Fails loudly if the checkout can't be found — the most common cause
-         * is the pre-build action not being set to provide build settings from the app target.
+         * build, mirroring the pre-action in HyperSDK's own SPM integration guide.
+         *
+         * `Fuse.rb` ships INSIDE HyperSDK's binary artifact (`HyperSDK.zip`), which Xcode unpacks
+         * into `SourcePackages/artifacts/<package>/<target>/` while resolving the package graph.
+         * It is NOT in the `hypersdk-ios` source checkout — that repo is a pure dependency
+         * aggregator (a `Package.swift` declaring `.binaryTarget`s, and nothing else). Since
+         * `Fuse.rb` finds `HyperSDK.xcframework` relative to its own path and unpacks the merchant
+         * assets into it, it has to run where it sits; it can't be copied elsewhere.
+         *
+         * Three things this gets right that are easy to get wrong:
+         *  - **cwd** — `Fuse.rb` reads `./MerchantConfig.json` relative to the working directory,
+         *    and locates the `.xcodeproj` there to patch `Info.plist` with Juspay's URL/query
+         *    schemes. Run from anywhere else it silently downloads nothing, so this `cd`s to
+         *    `$PROJECT_DIR` first.
+         *  - **when it runs** — `Fuse.rb` fetches its real implementation (`FuseRemote.rb`) over
+         *    the network on every invocation, so running it unconditionally would put the network
+         *    on the critical path of every incremental compile. Gated on a marker (plus Xcode's
+         *    `clean`), exactly like HyperSDK's documented pre-action. The marker lives inside the
+         *    artifact, so a re-extracted artifact — fresh DerivedData, bumped version — re-fuses
+         *    by itself with no staleness bookkeeping on our side.
+         *  - **what actually validates** — `Fuse.rb` exits 0 even when the asset download fails
+         *    (it only prints), so it is not a reliable gate. `ValidateHyperSDK.rb` is, but
+         *    `Fuse.rb` downloads it best-effort and merely warns if that fails — so a missing
+         *    validator leaves the marker untouched to retry next build rather than hard-failing
+         *    the build on a transient fetch of a script we don't own.
          */
         val FUSE_PREBUILD_SCRIPT = """
             set -eu
-            # Locate HyperSDK's resolved SPM checkout (Xcode places SPM packages under DerivedData).
-            sdk_dir=""
-            for cand in \
-              "${'$'}{BUILD_DIR:-}/../../SourcePackages/checkouts/hypersdk-ios" \
-              "${'$'}{BUILD_DIR:-}/../../../SourcePackages/checkouts/hypersdk-ios"; do
-              if [ -f "${'$'}cand/Fuse.rb" ]; then sdk_dir="${'$'}cand"; break; fi
-            done
-            if [ -z "${'$'}sdk_dir" ] && [ -n "${'$'}{BUILD_ROOT:-}" ]; then
-              found=${'$'}(find "${'$'}{BUILD_ROOT%%/Build/*}" -path '*hypersdk-ios*/Fuse.rb' 2>/dev/null | head -n 1)
-              [ -n "${'$'}found" ] && sdk_dir=${'$'}(dirname -- "${'$'}found")
-            fi
-            if [ -z "${'$'}sdk_dir" ]; then
-              echo "error: Lokal Payment SDK could not find HyperSDK's Fuse.rb. Ensure this" >&2
-              echo "       pre-build action provides build settings from your app target." >&2
+            if [ -z "${'$'}{BUILD_DIR:-}" ] || [ -z "${'$'}{PROJECT_DIR:-}" ]; then
+              echo "error: Lokal Payment SDK: BUILD_DIR/PROJECT_DIR are not set. Set this scheme" >&2
+              echo "       pre-build action's 'Provide build settings from' to your app target." >&2
               exit 1
             fi
-            echo "Lokal Payment SDK: Juspay HyperSDK setup in ${'$'}sdk_dir"
-            ruby "${'$'}sdk_dir/Fuse.rb" false
-            if [ -f "${'$'}sdk_dir/ValidateHyperSDK.rb" ]; then ruby "${'$'}sdk_dir/ValidateHyperSDK.rb"; fi
+
+            # Xcode unpacks HyperSDK.zip (which carries Fuse.rb) under SourcePackages/artifacts.
+            sp_dir="${'$'}{BUILD_DIR%Build/*}SourcePackages"
+            pkg_dir="${'$'}sp_dir/artifacts/hypersdk-ios/HyperSDK"
+            if [ ! -f "${'$'}pkg_dir/Fuse.rb" ] && [ -d "${'$'}sp_dir/artifacts" ]; then
+              # Artifact layout is Xcode's, not a published contract — fall back to a search.
+              found=${'$'}(find "${'$'}sp_dir/artifacts" -name Fuse.rb -path '*hypersdk*' 2>/dev/null | head -n 1)
+              [ -n "${'$'}found" ] && pkg_dir=${'$'}(dirname -- "${'$'}found")
+            fi
+            if [ ! -f "${'$'}pkg_dir/Fuse.rb" ]; then
+              echo "error: Lokal Payment SDK could not find HyperSDK's Fuse.rb under" >&2
+              echo "       ${'$'}sp_dir/artifacts. Xcode downloads HyperSDK's binary artifact while" >&2
+              echo "       resolving the package graph, so this almost always means resolution did" >&2
+              echo "       not complete. Check the 'Resolving package dependencies' step in the" >&2
+              echo "       build log, and that the host XCFramework the generated Package.swift" >&2
+              echo "       points at has been assembled (see INTEGRATION.md)." >&2
+              exit 1
+            fi
+
+            # Fuse reads ./MerchantConfig.json and finds the .xcodeproj relative to the cwd.
+            cd "${'$'}PROJECT_DIR"
+
+            marker="${'$'}pkg_dir/.lokal_fuse_completed"
+            if [ ! -f "${'$'}marker" ] || [ "${'$'}{ACTION:-}" = "clean" ]; then
+              echo "Lokal Payment SDK: downloading Juspay HyperSDK merchant assets"
+              ruby "${'$'}pkg_dir/Fuse.rb"
+            fi
+
+            if [ -f "${'$'}pkg_dir/ValidateHyperSDK.rb" ]; then
+              ruby "${'$'}pkg_dir/ValidateHyperSDK.rb"
+              touch "${'$'}marker"
+            else
+              echo "warning: Lokal Payment SDK: HyperSDK did not provide ValidateHyperSDK.rb;" >&2
+              echo "         retrying the Juspay asset download on the next build." >&2
+            fi
         """.trimIndent()
 
         // Same gradle property JuspayHostAndroidContributor and JuspayHostContributor read — one

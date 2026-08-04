@@ -35,12 +35,14 @@ internal actual fun createJuspayClient(tenantId: String): JuspayClient = IOSJusp
  * looking at the screen and waiting.
  *
  * No host-supplied clientId either: [resolveClientId] reads it straight out of
- * the bundled `MerchantConfig.json` (`JuspayHostContributor` generates it from
- * the host's `juspayClientId` Gradle property, and it's already required to be
- * a target member for HyperSDK's own asset-download pipeline to work at all) —
- * mirrors Android, which resolves its clientId entirely internally too (via
- * `hypersdk.plugin`'s baked-in config), so neither platform ever takes one as
- * a Kotlin-code parameter.
+ * the bundled `LokalJuspayConfig.json` — NOT `MerchantConfig.json`, whose
+ * `clientConfigs` shape is Juspay's contract rather than ours (see
+ * [resolveClientId]). `JuspayHostContributor` generates both from the host's
+ * `juspayClientId` Gradle property and declares them as bundled resources, so
+ * the umbrella plugin makes them app-target members — mirrors Android, which
+ * resolves its clientId entirely internally too (via `hypersdk.plugin`'s
+ * baked-in config), so neither platform ever takes one as a Kotlin-code
+ * parameter.
  *
  * ⚠️ Event/status field names below (event, payload.status, orderId,
  * epgTxnId, errorCode, errorMessage) are assumed identical to Android's —

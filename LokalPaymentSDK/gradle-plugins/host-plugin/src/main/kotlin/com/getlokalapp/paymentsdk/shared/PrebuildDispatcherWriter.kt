@@ -1,23 +1,32 @@
 package com.getlokalapp.paymentsdk.shared
 
 import com.getlokalapp.paymentsdk.host.HostContribution
+import com.getlokalapp.paymentsdk.host.PrebuildStep
 import org.gradle.api.Project
 import java.io.File
 
 /**
- * Materializes every gateway's [HostContribution.prebuildStep] into `prebuild.d/<name>.sh`
- * beside a generated `lokal-prebuild.sh` dispatcher, and returns the dispatcher (or null if
- * no gateway contributed a step). The app registers the dispatcher as one Xcode scheme
- * pre-build action; it runs each snippet in sorted order under `set -eu`, failing the build
- * loudly if any step fails. The SPM reincarnation of the CocoaPods managed `post_install`
- * dispatch. The `prebuild.d` dir is rebuilt from scratch each sync so a gateway that was
- * removed doesn't leave a stale snippet behind.
+ * Materializes [coreSteps] plus every gateway's [HostContribution.prebuildStep] into
+ * `prebuild.d/<name>.sh` beside a generated `lokal-prebuild.sh` dispatcher, and returns the
+ * dispatcher (or null if there is nothing to run). The app registers the dispatcher as one
+ * Xcode scheme pre-build action; it runs each snippet in sorted order under `set -eu`, failing
+ * the build loudly if any step fails. The SPM reincarnation of the CocoaPods managed
+ * `post_install` dispatch. The `prebuild.d` dir is rebuilt from scratch each sync so a gateway
+ * that was removed doesn't leave a stale snippet behind.
+ *
+ * [coreSteps] are the SDK's own, gateway-independent steps (currently the per-configuration
+ * Kotlin XCFramework restage — see [kotlinXCFrameworkPrebuildStep]). They ride the same
+ * dispatcher a host has already registered, so adding one costs the host no new wiring.
  */
-internal fun writePrebuildDispatcher(project: Project, contributions: List<HostContribution>): File? {
+internal fun writePrebuildDispatcher(
+    project: Project,
+    coreSteps: List<PrebuildStep>,
+    contributions: List<HostContribution>,
+): File? {
     val packageDir = project.layout.buildDirectory.dir("lokal/spmPackage").get().asFile
     val stepsDir = File(packageDir, "prebuild.d")
     val dispatcher = File(packageDir, "lokal-prebuild.sh")
-    val steps = contributions.mapNotNull { it.prebuildStep }
+    val steps = coreSteps + contributions.mapNotNull { it.prebuildStep }
 
     stepsDir.deleteRecursively()
     if (steps.isEmpty()) {

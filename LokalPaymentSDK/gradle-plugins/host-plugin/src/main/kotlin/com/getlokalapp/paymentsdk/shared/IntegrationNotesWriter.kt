@@ -26,9 +26,11 @@ internal fun writeIntegrationNotes(
     plistPatched: Boolean,
     xcodeProjectWired: Boolean,
     prebuildScript: File?,
+    bundledResources: List<String> = emptyList(),
+    schemeWired: Boolean = false,
 ) {
     val packageDir = project.layout.buildDirectory.dir("lokal/spmPackage").get().asFile
-    val assembleTask = "${project.path}:assemble${xcFrameworkName}ReleaseXCFramework"
+    val bootstrapTask = "${project.path}:${STAGE_TASK_BASE}Debug"
     val packageAbsPath = packageDir.toPath().toAbsolutePath().normalize().toString()
     val notes = contributions.flatMap { it.consumerNotes }
 
@@ -50,14 +52,24 @@ internal fun writeIntegrationNotes(
         "The product and the import differ on purpose: link the **$umbrellaTargetName**",
         "product, but write `import $xcFrameworkName` to call the SDK's API.",
         "",
-        "## 1. Rebuild after any Kotlin change",
+        "## 1. Bootstrap the Kotlin binary (one-time, after cloning)",
         "",
         "```",
-        "./gradlew $assembleTask",
+        "./gradlew $bootstrapTask",
         "```",
         "",
-        "SPM binary targets are prebuilt, so there is no per-Xcode-build Gradle step —",
-        "re-run this whenever you change Kotlin, then build in Xcode as usual.",
+        "Kotlin changes are picked up automatically from then on: the pre-build action in §5",
+        "reassembles and restages the XCFramework on every Xcode build, choosing the **debug**",
+        "Kotlin binary for Debug configurations and the **release** one for everything else. You",
+        "do not re-run Gradle by hand after editing Kotlin.",
+        "",
+        "This one command is still needed first because SwiftPM validates the binary target's",
+        "path while *resolving* the package graph — which happens before any pre-action can run,",
+        "so the very first resolve needs an already-assembled artifact. It builds the debug",
+        "variant deliberately: it links far faster than release.",
+        "",
+        "Set `LOKAL_SKIP_KOTLIN_ASSEMBLE=1` to suppress the per-build Gradle invocation (for CI",
+        "that assembles the XCFramework itself before invoking `xcodebuild`).",
     )
 
     // Section 2 mirrors the Info.plist note's two-branch shape: when the host set
@@ -150,24 +162,39 @@ internal fun writeIntegrationNotes(
     }
     if (prebuildScript != null) {
         md += ""
-        md += "## 5. Xcode pre-build action (one-time)"
+        md += "## 5. Xcode pre-build action"
         md += ""
-        md += "One or more gateways run a script before each Xcode build (e.g. Juspay's"
-        md += "HyperSDK asset download). Register it **once** as a scheme pre-build action —"
-        md += "new gateways plug into the same action, so you never edit this again:"
-        md += ""
-        md += "1. Xcode → Product → Scheme → Edit Scheme → Build → Pre-actions → **+** →"
-        md += "   New Run Script Action."
-        md += "2. Set **Provide build settings from** to your app target (so `\$BUILD_DIR` and"
-        md += "   friends are in scope for the script)."
-        md += "3. Script body:"
-        md += ""
-        md += "```sh"
-        md += "\"${prebuildScript.toPath().toAbsolutePath().normalize()}\""
-        md += "```"
-        md += ""
-        md += "In a committed XcodeGen/Tuist spec, reference the script by a path relative to"
-        md += "the spec rather than the absolute one above."
+        if (schemeWired) {
+            md += "Already done for you — nothing to do here."
+            md += ""
+            md += "The SDK registers the dispatcher below as a build pre-action on every Gradle"
+            md += "sync, in the scheme you pointed `lokalPaymentSdk { iosXcodeScheme }` at, and"
+            md += "leaves it alone once it is there. New gateways plug into the same action."
+            md += ""
+            md += "```sh"
+            md += "\"${prebuildScript.toPath().toAbsolutePath().normalize()}\""
+            md += "```"
+        } else {
+            md += "This action restages the Kotlin binary on every build, and runs whatever"
+            md += "build-time steps your gateways need (e.g. Juspay's HyperSDK asset download)."
+            md += "**Skip it and Xcode builds against a stale Kotlin framework.** Register it"
+            md += "**once** — new gateways plug into the same action, so you never edit it again:"
+            md += ""
+            md += "1. Xcode → Product → Scheme → Edit Scheme → Build → Pre-actions → **+** →"
+            md += "   New Run Script Action."
+            md += "2. Set **Provide build settings from** to your app target (so `\$CONFIGURATION`"
+            md += "   and friends are in scope for the script)."
+            md += "3. Script body:"
+            md += ""
+            md += "```sh"
+            md += "\"${prebuildScript.toPath().toAbsolutePath().normalize()}\""
+            md += "```"
+            md += ""
+            md += "In a committed XcodeGen/Tuist spec, reference the script by a path relative to"
+            md += "the spec rather than the absolute one above. For a hand-managed `.xcodeproj`,"
+            md += "set `lokalPaymentSdk { iosXcodeScheme = \"<path-to>.xcscheme\" }` and the SDK"
+            md += "will register it for you on every sync."
+        }
     }
     if (notes.isNotEmpty()) {
         md += ""
@@ -180,6 +207,28 @@ internal fun writeIntegrationNotes(
             md += ""
             note.steps.forEach { step -> md += "- $step" }
         }
+    }
+    // Bundled resources: files an active gateway generated that must ship INSIDE the .app.
+    // Rendered last because whether anything is required of the reader depends on the same
+    // iosXcodeProject opt-in as section 2 — when set, this is purely informational.
+    if (bundledResources.isNotEmpty()) {
+        md += ""
+        md += "## 7. Bundled resources"
+        md += ""
+        if (xcodeProjectWired) {
+            md += "These files are generated by the SDK and added to your app target's Resources"
+            md += "build phase for you on every Gradle sync, in the `.xcodeproj` you pointed"
+            md += "`lokalPaymentSdk { iosXcodeProject = … }` at. A file you already added by hand"
+            md += "is detected and left untouched, so there is nothing to do:"
+        } else {
+            md += "These files are generated by the SDK and MUST be members of your app target so"
+            md += "they are copied into the built `.app`. They are read by bundle lookup at"
+            md += "runtime, so a missing member fails at runtime, not at build time. Declare them"
+            md += "as resources in your XcodeGen/Tuist spec (or set"
+            md += "`lokalPaymentSdk { iosXcodeProject = … }` to have the SDK wire them for you):"
+        }
+        md += ""
+        bundledResources.forEach { md += "- `$it`" }
     }
 
     val integrationFile = File(packageDir, "INTEGRATION.md")

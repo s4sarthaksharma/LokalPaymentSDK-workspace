@@ -26,6 +26,7 @@ internal fun patchXcodeProjectIfConfigured(
     project: Project,
     config: LokalPaymentSdkExtension,
     umbrellaProductName: String,
+    bundledResources: List<String> = emptyList(),
 ): Boolean {
     val path = config.iosXcodeProject ?: return false
     val target = project.file(path)
@@ -48,6 +49,89 @@ internal fun patchXcodeProjectIfConfigured(
             "LokalPaymentSDK: wired local package '$umbrellaProductName' into $pbxproj",
         )
     }
+    // Gateway-generated files that have to live inside the built .app. Done here rather than
+    // left to the app author because a missing target member fails at RUNTIME (a nil
+    // NSBundle.pathForResource) instead of at build time — see HostContribution.bundledResources.
+    bundledResources.forEach { resourcePath ->
+        val resource = File(resourcePath)
+        if (!resource.isFile) {
+            throw GradleException(
+                "LokalPaymentSDK: a gateway declared '$resourcePath' as a bundled resource but " +
+                    "no such file exists. This is an SDK bug — the contributor must generate the " +
+                    "file before declaring it.",
+            )
+        }
+        if (wireResourceFile(pbxproj, resource)) {
+            project.logger.lifecycle(
+                "LokalPaymentSDK: wired resource '${resource.name}' into $pbxproj",
+            )
+        }
+    }
+    return true
+}
+
+/**
+ * Idempotently makes [resource] a member of the app target's Resources build phase, so it is
+ * copied into the built `.app` and becomes visible to `NSBundle.mainBundle.pathForResource`.
+ * Returns whether it wrote (false → already referenced, file left byte-for-byte untouched —
+ * the same "if it is there don't do anything" contract as [wireLocalPackage]).
+ *
+ * Faithful to what Xcode writes when you drag a file in and check the app target: a
+ * `PBXFileReference` (`sourceTree = "<group>"`, path relative to the directory containing the
+ * `.xcodeproj`), a `PBXBuildFile` referencing it, an entry in the Resources build phase's
+ * `files`, and an entry in the project's `mainGroup` children so it shows up in the navigator.
+ *
+ * Idempotency keys off the *path*, not our deterministic IDs, so a file the app author already
+ * added by hand (Juspay's `MerchantConfig.json` in existing hosts) is recognised and left
+ * exactly as-is rather than being duplicated with a second reference.
+ */
+private fun wireResourceFile(pbxproj: File, resource: File): Boolean {
+    var text = pbxproj.readText()
+
+    // Same anchor as wireLocalPackage's relativePath: the dir CONTAINING the .xcodeproj, which
+    // is what a pathless mainGroup with sourceTree "<group>" resolves against.
+    val projectSrcRoot = pbxproj.parentFile.parentFile
+        ?: error("$pbxproj is not inside an .xcodeproj bundle")
+    val relPath = projectSrcRoot.toPath().toAbsolutePath().normalize()
+        .relativize(resource.toPath().toAbsolutePath().normalize())
+        .toString()
+    val name = resource.name
+
+    // Already referenced (by us on a previous sync, or by hand in Xcode) → nothing to do.
+    if (Regex("""path = "?${Regex.escape(relPath)}"?;""").containsMatchIn(text)) return false
+
+    val (appTargetBlock, _) = singleApplicationTarget(pbxproj, text)
+    val resourcesPhaseId = Regex("""([0-9A-Fa-f]{24}) /\* Resources \*/""")
+        .find(appTargetBlock)?.groupValues?.get(1)
+        ?: throw GradleException(
+            "app target in $pbxproj has no Resources build phase to add '$name' to. Add one in " +
+                "Xcode, or add the file to your app target by hand and leave " +
+                "lokalPaymentSdk { iosXcodeProject } unset.",
+        )
+
+    val fileRefId = pbxId("$relPath|fileref", text)
+    val buildFileId = pbxId("$relPath|resourcebuildfile", text)
+
+    // 1. PBXFileReference + its mainGroup children entry (navigator visibility).
+    val fileType = if (resource.extension.equals("json", ignoreCase = true)) "text.json" else "text"
+    val fileRefObject = "\t\t$fileRefId /* $name */ = {isa = PBXFileReference; " +
+        "lastKnownFileType = $fileType; path = ${pbxValue(relPath)}; sourceTree = \"<group>\"; };\n"
+    text = addObjectToSection(text, "PBXFileReference", fileRefObject)
+    val mainGroupId = Regex("""mainGroup = ([0-9A-Fa-f]{24})""").find(text)?.groupValues?.get(1)
+        ?: throw GradleException("$pbxproj has no mainGroup to add '$name' to.")
+    text = insertIntoArrayById(
+        text, mainGroupId, "children", "\t\t\t\t$fileRefId /* $name */,\n", pbxproj,
+    )
+
+    // 2. PBXBuildFile + its Resources build phase files entry (what actually copies it in).
+    val buildFileObject = "\t\t$buildFileId /* $name in Resources */ = " +
+        "{isa = PBXBuildFile; fileRef = $fileRefId /* $name */; };\n"
+    text = addObjectToSection(text, "PBXBuildFile", buildFileObject)
+    text = insertIntoArrayById(
+        text, resourcesPhaseId, "files", "\t\t\t\t$buildFileId /* $name in Resources */,\n", pbxproj,
+    )
+
+    pbxproj.writeText(text)
     return true
 }
 
@@ -198,6 +282,18 @@ private fun singleApplicationTarget(pbxproj: File, text: String): Pair<String, S
  * emits it) when the object doesn't declare it yet. Scoped to the one object whose block
  * starts with [objectId], so sibling targets are never touched. Array items are one indent
  * (a tab) deeper than the object's keys.
+ *
+ * The trailing `/* comment */` is optional: Xcode omits it on some objects (notably the
+ * project's `mainGroup`, emitted as a bare `<id> = {`), so requiring it would fail to find
+ * exactly the group [wireResourceFile] needs to register a file reference in.
+ *
+ * Two things the pattern must get exactly right, both of which silently corrupt the project
+ * if relaxed. The `^` (with MULTILINE) pins the id to an object *declaration* at two-tab
+ * indentation: without it, `\t\t<id>` also matches the last two tabs of a four-tab-indented
+ * array entry — e.g. the same id listed in a target's `buildPhases` — and the edit lands in
+ * the wrong object. And the comment body is `[^\n]*?`, not `.*?`, because DOT_MATCHES_ALL
+ * would otherwise let it run across newlines until some later comment-close-then-brace
+ * sequence, matching an unrelated object entirely.
  */
 private fun insertIntoArrayById(
     text: String,
@@ -207,8 +303,8 @@ private fun insertIntoArrayById(
     pbxproj: File,
 ): String {
     val block = Regex(
-        """\t\t$objectId /\* .*? \*/ = \{.*?\n\t\t\};""",
-        RegexOption.DOT_MATCHES_ALL,
+        """^\t\t$objectId(?: /\* [^\n]*? \*/)? = \{.*?\n\t\t\};""",
+        setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.MULTILINE),
     ).find(text)?.value
         ?: throw GradleException("$pbxproj: object $objectId not found while adding $key.")
 

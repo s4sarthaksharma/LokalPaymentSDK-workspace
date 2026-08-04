@@ -142,8 +142,12 @@ private fun writePlist(doc: Document, file: File) {
     file.writeText(out)
 }
 
+
+// The four helpers below are shared with XcodeSchemePatcher — both edit XML the host owns and
+// must preserve its formatting, so the whitespace bookkeeping lives in one place.
+
 /** The element (non-text) children of [node], in document order. */
-private fun elementChildren(node: Node): List<Element> {
+internal fun elementChildren(node: Node): List<Element> {
     val out = ArrayList<Element>()
     val kids = node.childNodes
     for (i in 0 until kids.length) (kids.item(i) as? Element)?.let(out::add)
@@ -151,7 +155,7 @@ private fun elementChildren(node: Node): List<Element> {
 }
 
 /** The whitespace text node immediately before [parent]'s first element child (its indent), if any. */
-private fun leadingWhitespace(parent: Node): String? {
+internal fun leadingWhitespace(parent: Node): String? {
     val kids = parent.childNodes
     for (i in 0 until kids.length) {
         val n = kids.item(i)
@@ -165,9 +169,9 @@ private fun leadingWhitespace(parent: Node): String? {
 }
 
 /** [parent]'s last child when it is a whitespace-only text node (the indent before its close tag). */
-private fun trailingWhitespace(parent: Node): Node? =
+internal fun trailingWhitespace(parent: Node): Node? =
     parent.lastChild?.takeIf { it.nodeType == Node.TEXT_NODE && it.textContent.isBlank() }
 
-private fun insertBeforeOrAppend(parent: Node, child: Node, ref: Node?) {
+internal fun insertBeforeOrAppend(parent: Node, child: Node, ref: Node?) {
     if (ref != null) parent.insertBefore(child, ref) else parent.appendChild(child)
 }

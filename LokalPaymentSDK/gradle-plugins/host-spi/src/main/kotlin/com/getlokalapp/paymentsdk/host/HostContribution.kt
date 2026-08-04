@@ -26,33 +26,42 @@ package com.getlokalapp.paymentsdk.host
  *   umbrella plugin materializes every gateway's step into one generated dispatcher script
  *   the app registers as a **single** scheme pre-build action, once — the SPM reincarnation
  *   of the CocoaPods managed `post_install` dispatch. See [PrebuildStep].
+ * - [bundledResources] — files the gateway generated that MUST end up inside the built `.app`
+ *   because something reads them at runtime or at build time by bundle lookup (e.g. Juspay's
+ *   `LokalJuspayConfig.json`, which `IOSJuspayClient.resolveClientId` reads via
+ *   `NSBundle.mainBundle.pathForResource`, and `MerchantConfig.json`, which HyperSDK's asset
+ *   pipeline reads). Generating the file is not enough — it is invisible to the app until it
+ *   is a member of the app target's Resources build phase, and a missing member surfaces as a
+ *   *runtime* failure (a nil bundle path), not a build error. The umbrella plugin wires every
+ *   declared file into the host's Resources build phase when the host opted in via
+ *   `lokalPaymentSdk { iosXcodeProject = … }`, and otherwise lists them as an
+ *   `INTEGRATION.md` step — the same two-path shape as [infoPlist].
  * - [consumerNotes] — one-time manual steps the app author must perform in their own iOS
  *   project/scheme for this gateway (e.g. Juspay's scheme pre-build action), which a Gradle
  *   plugin cannot do for them because they live in the app's Xcode project, not the generated
  *   package. The umbrella plugin renders them into the generated `INTEGRATION.md` so an app
  *   sees only the steps its own gateway selection requires.
  *
- * All five default to empty/null so a gateway declares only what it needs; the umbrella
+ * All six default to empty/null so a gateway declares only what it needs; the umbrella
  * plugin skips whichever are absent. A contribution with none of them is meaningless
  * (contributors return `null` to opt out instead).
  *
- * NOT (yet) a slot: **bundled runtime config**. Juspay generates its own
- * `iosApp/LokalJuspayConfig.json` (a `{ "clientId": … }` file `IOSJuspayClient` reads at
- * runtime) via an imperative write inside its own `contribute()`, because it's the only
- * gateway that needs host config readable at runtime on iOS. If a second gateway ever needs
- * the same, promote it to a declarative slot here (e.g. `bundledConfig`) and have the umbrella
- * aggregate every gateway's entries into one namespaced `LokalPaymentConfig.json` — exactly how
- * [infoPlist] already merges into a single plist. Deferred until then on purpose: with one
- * consumer it buys nothing (HyperSDK's mandated `MerchantConfig.json` stays a separate
- * target-member file regardless, so a Juspay app needs two files either way), and a shared
- * envelope would split its schema across this build-time SPI and the `:juspay` runtime klib
- * (which can't depend on this module) for no gain.
+ * NOT (yet) a slot: **a shared runtime-config envelope**. [bundledResources] covers getting a
+ * generated file into the app bundle, but each gateway still owns its own file and schema —
+ * Juspay writes its own `{ "clientId": … }` inside its `contribute()`. If a second gateway ever
+ * needs host config readable at runtime, consider aggregating every gateway's entries into one
+ * namespaced `LokalPaymentConfig.json`, exactly how [infoPlist] already merges into a single
+ * plist. Deferred on purpose: with one consumer it buys nothing (HyperSDK's mandated
+ * `MerchantConfig.json` has a shape Juspay owns and must stay its own file regardless, so a
+ * Juspay app needs two files either way), and a shared envelope would split its schema across
+ * this build-time SPI and the `:juspay` runtime klib (which can't depend on this module).
  */
 data class HostContribution(
     val vendorPackage: VendorPackage? = null,
     val sourceTarget: SourceTarget? = null,
     val infoPlist: InfoPlistContribution? = null,
     val prebuildStep: PrebuildStep? = null,
+    val bundledResources: List<String> = emptyList(),
     val consumerNotes: List<ConsumerSetupNote> = emptyList(),
 )
 

@@ -34,9 +34,25 @@ package com.getlokalapp.paymentsdk.host
  * hosts regenerate their `pbxproj` from a spec and must declare the package there instead —
  * they simply leave this unset, exactly as they leave [iosInfoPlist] pointed at a committed
  * plist rather than a generated one.
+ *
+ * [iosXcodeScheme] is the third sibling: point it at a **shared** `.xcscheme` and the plugin
+ * registers the generated `lokal-prebuild.sh` dispatcher as a build pre-action on every sync —
+ * the one-time "Edit Scheme ▸ Build ▸ Pre-actions ▸ +" step, automated. Same lifecycle as the
+ * two above: a path resolved with `Project.file(...)`, an idempotent formatting-preserving edit
+ * (a scheme already running the dispatcher is left byte-for-byte untouched) of a git-tracked
+ * file the host owns, and opt-in — unset and the plugin edits nothing, surfacing the manual
+ * steps in `INTEGRATION.md` instead.
+ *
+ * Must be a scheme under `xcshareddata/xcschemes/`, not one Xcode left in `xcuserdata`: only a
+ * shared scheme is committed, and a pre-action every developer needs has to travel with the
+ * repo. Worth automating rather than leaving manual because the dispatcher is what keeps the
+ * staged Kotlin binary current (see `kotlinXCFrameworkPrebuildStep`) — forget it and Xcode
+ * silently builds against a stale framework, which reads as a Kotlin edit that "didn't take"
+ * rather than as a missing build step.
  */
 open class LokalPaymentSdkExtension {
     var xcFrameworkName: String? = null
     var iosInfoPlist: String? = null
     var iosXcodeProject: String? = null
+    var iosXcodeScheme: String? = null
 }

@@ -79,6 +79,16 @@ class LokalPaymentPlugin : Plugin<Project> {
                 .mapNotNull { (name, dep) -> contributors[name]?.contribute(project, config, dep) }
 
             val umbrellaTargetName = "${xcFrameworkName}Umbrella"
+
+            // The generated binaryTarget points at a fixed XCFrameworks/current/ that gets
+            // restaged per Xcode configuration (see KotlinXCFrameworkStaging). Register the
+            // staging tasks the pre-build step drives, then seed the staged copy if the host
+            // has already assembled a variant — SPM validates the binaryTarget path while
+            // resolving, which is before any pre-action can run, so a first resolve needs
+            // something already there.
+            registerXCFrameworkStagingTasks(project, xcFrameworkName)
+            seedStagedXCFrameworkIfMissing(project, xcFrameworkName)
+
             writePackageSwift(project, xcFrameworkName, umbrellaTargetName, contributions)
 
             // Info.plist: the baseline UPI query schemes (an ungated `:shared` concern —
@@ -91,16 +101,34 @@ class LokalPaymentPlugin : Plugin<Project> {
 
             // project.pbxproj: wire the generated local package into a hand-managed .xcodeproj
             // when the host opted in via `lokalPaymentSdk { iosXcodeProject = … }` — the exact
-            // sibling of the Info.plist merge above (see patchXcodeProjectIfConfigured).
-            val xcodeProjectWired = patchXcodeProjectIfConfigured(project, config, umbrellaTargetName)
+            // sibling of the Info.plist merge above (see patchXcodeProjectIfConfigured). Gateway
+            // files that must ship inside the .app ride the same opt-in: generating them isn't
+            // enough, since a non-member fails at runtime on bundle lookup, not at build time.
+            val bundledResources = contributions.flatMap { it.bundledResources }.distinct()
+            val xcodeProjectWired =
+                patchXcodeProjectIfConfigured(project, config, umbrellaTargetName, bundledResources)
 
             // Build-time steps: one generated dispatcher the app registers as a single Xcode
-            // scheme pre-build action (see writePrebuildDispatcher / PrebuildStep).
-            val prebuildScript = writePrebuildDispatcher(project, contributions)
+            // scheme pre-build action (see writePrebuildDispatcher / PrebuildStep). The SDK's
+            // own Kotlin-variant restage rides the same dispatcher as the gateway steps, so it
+            // needs no additional host wiring.
+            val prebuildScript = writePrebuildDispatcher(
+                project,
+                listOf(kotlinXCFrameworkPrebuildStep(project, xcFrameworkName)),
+                contributions,
+            )
+
+            // .xcscheme: register that dispatcher as a build pre-action when the host opted in
+            // via `lokalPaymentSdk { iosXcodeScheme = … }` — the third sibling of the plist and
+            // pbxproj opt-ins. Load-bearing rather than a convenience: the dispatcher is what
+            // restages the Kotlin binary, so a host that forgets it builds against a stale
+            // framework with nothing to indicate why.
+            val schemeWired = patchXcodeSchemeIfConfigured(project, config, prebuildScript)
 
             writeIntegrationNotes(
                 project, config, xcFrameworkName, umbrellaTargetName, contributions,
-                queriesSchemes, plistPatched, xcodeProjectWired, prebuildScript,
+                queriesSchemes, plistPatched, xcodeProjectWired, prebuildScript, bundledResources,
+                schemeWired,
             )
         }
     }
