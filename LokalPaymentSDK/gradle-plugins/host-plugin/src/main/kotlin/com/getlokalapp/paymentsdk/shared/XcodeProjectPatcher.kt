@@ -8,10 +8,10 @@ import java.security.MessageDigest
 
 /**
  * Wires the generated local Swift package into the host's hand-managed `.xcodeproj` when the
- * host opted in via `lokalPaymentSdk { iosXcodeProject = … }`; returns whether the project is
- * SDK-managed (i.e. the property was set), regardless of whether this run actually changed
- * anything. Unset → returns false and the `.xcodeproj` is left untouched, the "Add Local…"
- * step surfaced as an `INTEGRATION.md` note instead (see [writeIntegrationNotes]). The
+ * host opted in via `lokalPaymentSdk { iosXcodeProject = … }`. Unset → the `.xcodeproj` is left
+ * untouched and the "Add Local…" step stays the host's job (see docs/integrating-the-sdk.md §3).
+ * Every edit it does make is announced via `logger.lifecycle`, so a sync log is the record of
+ * what was wired. The
  * `project.pbxproj` sibling of [patchInfoPlistIfConfigured]: an opt-in, idempotent edit of a
  * git-tracked file the host owns. Accepts either the `.xcodeproj` bundle or its inner
  * `project.pbxproj`. Fails loudly if the path isn't a readable pbxproj, mirroring the
@@ -27,8 +27,8 @@ internal fun patchXcodeProjectIfConfigured(
     config: LokalPaymentSdkExtension,
     umbrellaProductName: String,
     bundledResources: List<String> = emptyList(),
-): Boolean {
-    val path = config.iosXcodeProject ?: return false
+) {
+    val path = config.iosXcodeProject ?: return
     val pbxproj = resolvePbxproj(project, path)
     val packageDir = project.layout.buildDirectory.dir("lokal/spmPackage").get().asFile
     val changed = wireLocalPackage(pbxproj, packageDir, umbrellaProductName)
@@ -39,7 +39,7 @@ internal fun patchXcodeProjectIfConfigured(
     }
     // Gateway-generated files that have to live inside the built .app. Done here rather than
     // left to the app author because a missing target member fails at RUNTIME (a nil
-    // NSBundle.pathForResource) instead of at build time — see HostContribution.bundledResources.
+    // NSBundle.pathForResource) instead of at build time — see HostContribution's BundledResource.
     bundledResources.forEach { resourcePath ->
         val resource = File(resourcePath)
         if (!resource.isFile) {
@@ -55,7 +55,6 @@ internal fun patchXcodeProjectIfConfigured(
             )
         }
     }
-    return true
 }
 
 /**

@@ -42,23 +42,10 @@ private val BUILDABLE_REFERENCE_ATTRIBUTES = listOf(
 )
 
 /**
- * What [patchXcodeSchemesIfConfigured] left behind: the [schemes] carrying the pre-action after
- * this run (empty when nothing is SDK-managed), and whether discovery ran but came up empty —
- * the one outcome that needs its own wording in `INTEGRATION.md`, since the host asked for the
- * automation implicitly (by setting `iosXcodeProject`) and has to be told why it didn't happen.
- */
-internal class SchemeWiring(
-    val schemes: List<File>,
-    val discoveryFoundNoSchemes: Boolean = false,
-) {
-    val wired: Boolean get() = schemes.isNotEmpty()
-}
-
-/**
  * Registers [prebuildScript] as a build pre-action in the host's shared `.xcscheme` files, per
  * the four-way contract on [LokalPaymentSdkExtension.iosXcodeSchemes]: an explicit list is
  * patched verbatim, an unset list with `iosXcodeProject` set discovers that project's shared
- * app schemes, an unset list without it patches nothing (manual steps land in `INTEGRATION.md`
+ * app schemes, an unset list without it patches nothing (the host registers the pre-action itself
  * instead), and an explicitly empty list opts out.
  *
  * The `.xcscheme` sibling of [patchInfoPlistIfConfigured] and [patchXcodeProjectIfConfigured]:
@@ -72,7 +59,7 @@ internal fun patchXcodeSchemesIfConfigured(
     project: Project,
     config: LokalPaymentSdkExtension,
     prebuildScript: File?,
-): SchemeWiring {
+) {
     val configured = config.iosXcodeSchemes
 
     // Explicit opt-out. Logged rather than silent: this is the one path where the host has asked
@@ -81,10 +68,10 @@ internal fun patchXcodeSchemesIfConfigured(
     if (configured != null && configured.isEmpty()) {
         project.logger.lifecycle(
             "LokalPaymentSDK: lokalPaymentSdk { iosXcodeSchemes } is empty — leaving every " +
-                "scheme alone. Register the prebuild pre-action by hand (see INTEGRATION.md), " +
+                "scheme alone. Register the prebuild pre-action by hand (see docs/integrating-the-sdk.md), " +
                 "or Xcode will build against whichever Kotlin binary is currently staged.",
         )
-        return SchemeWiring(emptyList())
+        return
     }
 
     val schemes = when {
@@ -92,7 +79,7 @@ internal fun patchXcodeSchemesIfConfigured(
         config.iosXcodeProject != null -> discoverAppSchemes(project, config)
         // Neither set: the host wires its Xcode files itself (XcodeGen/Tuist own generated
         // ones) — the same do-nothing contract as the plist and pbxproj opt-ins.
-        else -> return SchemeWiring(emptyList())
+        else -> return
     }
 
     if (configured == null && schemes.isEmpty()) {
@@ -104,13 +91,13 @@ internal fun patchXcodeSchemesIfConfigured(
                 "Scheme ▸ Manage Schemes ▸ tick Shared) and re-sync, or set " +
                 "lokalPaymentSdk { iosXcodeSchemes = listOf(\"<path-to>.xcscheme\") }.",
         )
-        return SchemeWiring(emptyList(), discoveryFoundNoSchemes = true)
+        return
     }
 
     // No dispatcher was written (no gateway contributed a step and the SDK's own staging step
     // couldn't be built) — nothing to register. Listed paths are still validated above, so a
     // wrong path is reported on the sync that introduced it rather than on some later one.
-    if (prebuildScript == null) return SchemeWiring(emptyList())
+    if (prebuildScript == null) return
 
     schemes.forEach { schemeFile ->
         if (addPreAction(schemeFile, prebuildScript)) {
@@ -119,7 +106,6 @@ internal fun patchXcodeSchemesIfConfigured(
             )
         }
     }
-    return SchemeWiring(schemes)
 }
 
 /**
@@ -150,7 +136,7 @@ private fun validateConfiguredScheme(project: Project, path: String): File {
 
 /**
  * Every shared scheme of the `iosXcodeProject` that builds its application target, sorted by
- * name so the log and `INTEGRATION.md` read the same on every machine.
+ * name so the log and the status report read the same on every machine.
  *
  * Filtering matters because a discovered set is whatever the host happens to have shared: a
  * framework-only, test-only or app-extension scheme would otherwise get a pre-action that

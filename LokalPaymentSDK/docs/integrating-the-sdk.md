@@ -25,13 +25,23 @@ generate a **local Swift package** at `build/lokal/spmPackage/`, which:
   `hypersdk-ios`) and any **first-party Swift** (native-iap's `NativeIapBridge`),
 - ties them into **one umbrella product** your app links.
 
-Two things you own, each done **once**:
+Three things you own, each done **once**:
 
 1. **Gradle/KMP module config** (§1).
-2. **Wiring the generated package into your Xcode project** (§3).
+2. **Bootstrapping the Kotlin binary** so the first Xcode resolve has something to validate (§2).
+3. **Wiring the generated package into your Xcode project** (§3) — or pointing the plugin at
+   your `.xcodeproj` and letting it do that for you.
 
-After that, the only recurring step is re-running **one Gradle task** whenever you change
-Kotlin (§4). The SDK never edits your `project.pbxproj` — declarative wiring only (D2).
+After that there is no recurring step: you just build in Xcode (§4).
+
+> **On editing your Xcode files.** The original design (D2) was declarative-only — the SDK
+> never touched `project.pbxproj`. That still holds by default, but three **opt-ins** now let
+> it edit files you own, because leaving them manual produced silent, late failures rather than
+> build errors: `iosInfoPlist` (query schemes), `iosXcodeProject` (the package reference and any
+> app-target resources a gateway generates), and `iosXcodeSchemes` (the pre-build action). Every
+> such edit is idempotent and announced in the sync log. Set none of them and the SDK writes
+> only inside `build/`, exactly as before — which is what XcodeGen/Tuist hosts want, since their
+> project files are regenerated from a spec.
 
 ---
 
@@ -104,20 +114,28 @@ nothing.
 
 ---
 
-## 2. Build the XCFramework + generate the package
+## 2. Bootstrap the Kotlin binary (one-time, after cloning)
 
 ```bash
-./gradlew :composeApp:assembleLokalPaymentSDKDemoReleaseXCFramework
-#          └ your module   └ assemble<xcFrameworkName>ReleaseXCFramework
+./gradlew :composeApp:lokalStageKotlinXCFrameworkDebug
+#          └ your module
 ```
 
-This produces `build/XCFrameworks/release/<name>.xcframework` and (re)writes
-`build/lokal/spmPackage/` — both `Package.swift` and a generated **`INTEGRATION.md`** with
-the exact wiring values for *your* module's gateway selection.
+This assembles the **debug** XCFramework and stages it at
+`build/XCFrameworks/current/<name>.xcframework`, then (re)writes `build/lokal/spmPackage/`
+with the `Package.swift` that points at it.
 
-> The package always wraps the **release** XCFramework — a `binaryTarget`'s path is static
-> and validated before any build phase runs, so there's no per-configuration swap. One
-> release binary links correctly in both Debug and Release, exactly like a vendored SDK.
+You need this one command before your first Xcode build and never again: SwiftPM validates a
+`binaryTarget`'s path while *resolving the package graph*, which happens before any scheme
+pre-action or build phase runs — so the very first resolve needs an artifact that already
+exists. Skip it and Xcode fails with `local binary target '<name>' … does not contain a
+binary artifact`. It builds the debug variant deliberately: it links far faster than release.
+
+> **Which variant Xcode links is automatic from here on.** The `binaryTarget` path is fixed
+> (`XCFrameworks/current/`), and the SDK's pre-build action restages that directory from
+> `XCFrameworks/debug/` or `XCFrameworks/release/` according to `$CONFIGURATION` on every
+> Xcode build — debug Kotlin for Debug builds, optimized for archives. See §4.
+
 
 ---
 
@@ -185,17 +203,25 @@ import LokalPaymentSDKDemo
 
 ## 4. The inner loop
 
-SPM binary targets are **prebuilt** — there is *no* per-Xcode-build Gradle step (that was a
-deliberate trade for an idiomatic SPM integration, D1). After any Kotlin change:
+**Just build in Xcode.** The SDK's scheme pre-build action reassembles and restages the Kotlin
+XCFramework on every build, picking the variant that matches your Xcode configuration. You do
+not re-run Gradle by hand after editing Kotlin, and there is no stale-binary trap.
 
-```bash
-./gradlew :composeApp:assembleLokalPaymentSDKDemoReleaseXCFramework
-```
+That action is registered for you in the schemes covered by
+`lokalPaymentSdk { iosXcodeSchemes = … }` — or, with that unset and `iosXcodeProject` set, in
+every shared scheme of that project that builds the app target. It runs one generated
+dispatcher, `build/lokal/spmPackage/lokal-prebuild.sh`, which also carries any per-gateway
+build-time steps (§5), so new gateways never require another scheme edit.
 
-then build in Xcode as usual — SPM re-resolves the local package's refreshed manifest on
-every build. If you want this automatic, hang the task on an Xcode **scheme pre-build
-action** (the same mechanism Juspay uses in §5); note that re-introduces a per-build Gradle
-run, which is the cost D1 chose to avoid.
+Two consequences worth knowing:
+
+- It reintroduces a per-build Gradle invocation. That's a deliberate reversal of the original
+  D1 trade: a prebuilt binary with no build step is only idiomatic until the binary goes stale
+  behind your back, which is a much worse failure than a few seconds of Gradle. Gradle no-ops
+  when Kotlin hasn't changed.
+- Set `LOKAL_SKIP_KOTLIN_ASSEMBLE=1` to suppress it — for CI that assembles the XCFramework
+  itself before invoking `xcodebuild`. Make sure such a CI job stages the variant it wants,
+  since the skip leaves whatever is in `XCFrameworks/current/` untouched.
 
 ---
 
@@ -207,16 +233,24 @@ native-iap via its first-party Swift target). Two exceptions:
 ### Juspay (HyperSDK)
 
 - Set the `juspayClientId` Gradle property (in `gradle.properties` or `-PjuspayClientId=…`).
-  The SDK generates `iosApp/MerchantConfig.json` from it — make sure that file is a member
-  of your app target so HyperSDK's asset pipeline can read it.
-- Add **one generic** Xcode scheme pre-build action running the generated
-  `build/lokal/spmPackage/lokal-prebuild.sh` dispatcher — not a Juspay-specific snippet.
-  The plugin itself writes the HyperSDK `Fuse.rb`/`ValidateHyperSDK.rb` invocation into
-  `prebuild.d/juspay.sh` (one script per gateway that needs a prebuild step) and the
-  dispatcher runs whatever's in `prebuild.d/` — so a second gateway needing its own
-  prebuild step in the future would just add another `prebuild.d/<name>.sh`, with no
-  change to your scheme. You do **not** need to add Juspay URL/query schemes by hand —
-  `ValidateHyperSDK.rb`, run via that dispatcher, writes them into your `Info.plist`.
+  That single value generates **two** files beside your `.xcodeproj`:
+  `iosApp/MerchantConfig.json` (HyperSDK's asset pipeline reads it) and
+  `iosApp/LokalJuspayConfig.json` (`:juspay` reads it at runtime to resolve HyperServices'
+  `clientId`). You never pass a clientId anywhere in your own code.
+- **Both files must be members of your app target.** With `iosXcodeProject` set the SDK adds
+  them to your Resources build phase on every sync; otherwise declare them as resources in
+  your XcodeGen/Tuist spec. This one bites at *runtime*, not build time — a missing
+  `LokalJuspayConfig.json` throws from `IOSJuspayClient.resolveClientId` on the first payment
+  call, because `NSBundle.pathForResource` simply returns nil. The sync log's
+  `wired resource '…'` lines are the record of what the SDK added.
+- The HyperSDK `Fuse.rb` asset download rides the same pre-build dispatcher as everything else
+  (§4) — the plugin writes it to `prebuild.d/juspay.sh`, one script per gateway that needs one,
+  so a future gateway adds another file and never touches your scheme.
+- You do **not** add Juspay URL/query schemes by hand: running `Fuse.rb` patches your
+  `Info.plist` itself. It needs the `xcodeproj` Ruby gem on the build machine
+  (`gem install xcodeproj`) — without it HyperSDK only warns, and you must add the schemes
+  manually. (`ValidateHyperSDK.rb`, which runs afterwards, only *validates*; it does not
+  write the plist.)
 
 ### UPI intent
 
@@ -235,15 +269,29 @@ The SDK needs the UPI apps' URL schemes under `LSApplicationQueriesSchemes` in y
   Point it at a plist your app target actually uses (a hand-managed `.xcodeproj`, or the
   committed plist an XcodeGen/Tuist spec references) — **not** a fully generated one
   (`GENERATE_INFOPLIST_FILE = YES` with no physical file), which has nothing to patch.
-- **Add them by hand.** Leave `iosInfoPlist` unset and the plugin patches nothing — instead
-  the generated `INTEGRATION.md` lists the exact `LSApplicationQueriesSchemes` block to paste
-  (also visible in the demo's `iosApp/Info.plist`).
+- **Add them by hand.** Leave `iosInfoPlist` unset and the plugin patches nothing — copy the
+  `LSApplicationQueriesSchemes` block from the demo's `iosApp/Info.plist`.
 
 ---
 
-## The generated `INTEGRATION.md`
+## What the plugin tells you at sync time
 
-Every Gradle sync, the plugin writes `build/lokal/spmPackage/INTEGRATION.md` with the values
-above **specialized to your module's actual gateway selection** (only the §5 steps you
-enabled appear). Treat *this* guide as the "why/how"; treat that generated file as the
-copy-paste "what, for my app right now".
+There is no generated companion document. This guide is the whole story; everything the plugin
+does to your project it announces in the Gradle sync log:
+
+```
+LokalPaymentSDK: wired local package 'ComposeAppUmbrella' into …/project.pbxproj
+LokalPaymentSDK: wired resource 'LokalJuspayConfig.json' into …/project.pbxproj
+LokalPaymentSDK: registered the prebuild pre-action in …/iosApp.xcscheme
+LokalPaymentSDK: merged LSApplicationQueriesSchemes into …/Info.plist
+```
+
+Each edit is idempotent, so those lines appear on the sync that actually changed something and
+stay quiet afterwards. When something is *not* wired — an empty `iosXcodeSchemes`, or discovery
+finding no shared scheme — the plugin warns with the reason and what to do about it.
+
+> Earlier versions generated an `INTEGRATION.md` under `build/`. It was removed: a gitignored
+> file can't be reviewed or linked, it duplicated this guide (and drifted from it), and it only
+> appeared *after* a successful sync — useless to anyone whose sync was broken. Nothing is
+> generated in its place; a leftover copy from an older plugin version goes away with any
+> `clean`.

@@ -42,12 +42,12 @@ class NativeIapHostContributor : LokalGatewayHostContributor {
         target: Project,
         config: LokalPaymentSdkExtension,
         dependency: Dependency,
-    ): HostContribution? {
+    ): List<HostContribution> {
         // The umbrella plugin only calls us when the host imports :native-iap, but building the
         // iossrc artifact coordinate needs a version — a versionless declaration can't be
         // fetched, so bail (present-but-inapplicable). group/name/version come straight off the
         // resolved dependency the plugin handed us, so nothing is hand-repeated here.
-        val version = dependency.version ?: return null
+        val version = dependency.version ?: return emptyList()
 
         // `@jar` = artifact-only (skip the KMP variant/metadata + klib graph); the lenient
         // view yields nothing if the iossrc classifier isn't published — mirrors
@@ -58,7 +58,7 @@ class NativeIapHostContributor : LokalGatewayHostContributor {
             ),
         ).apply { isTransitive = false }
             .incoming.artifactView { it.isLenient = true }.files
-        val jar = iossrc.files.firstOrNull() ?: return null
+        val jar = iossrc.files.firstOrNull() ?: return emptyList()
 
         val outDir = target.layout.buildDirectory
             .dir("lokal/spmSources/$OWNED_MODULE").get().asFile
@@ -71,8 +71,8 @@ class NativeIapHostContributor : LokalGatewayHostContributor {
             copy.into(outDir)
         }
 
-        return HostContribution(
-            sourceTarget = SourceTarget(
+        return listOf(
+            SourceTarget(
                 name = BRIDGE_TARGET,
                 sourceDir = outDir.absolutePath,
                 linkedFrameworks = listOf("StoreKit"),

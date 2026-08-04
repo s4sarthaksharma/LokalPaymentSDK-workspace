@@ -40,9 +40,9 @@ class RazorpayHostContributor : LokalGatewayHostContributor {
         target: Project,
         config: LokalPaymentSdkExtension,
         dependency: Dependency,
-    ): HostContribution? {
-        return HostContribution(
-            vendorPackage = VendorPackage(
+    ): List<HostContribution> {
+        return listOf(
+            VendorPackage(
                 url = "https://github.com/razorpay/razorpay-pod",
                 exactVersion = VENDOR_SDK_VERSION,
                 packageName = "razorpay-pod",

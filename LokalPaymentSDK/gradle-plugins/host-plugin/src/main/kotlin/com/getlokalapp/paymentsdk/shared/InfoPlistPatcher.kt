@@ -23,7 +23,7 @@ private const val QUERIES_SCHEMES_KEY = "LSApplicationQueriesSchemes"
  * host opted in via `lokalPaymentSdk { iosInfoPlist = … }`; returns whether the plist is
  * SDK-managed (i.e. the property was set), regardless of whether this run actually added
  * anything new. Unset → returns false and the plist is left untouched, the schemes being
- * surfaced as an `INTEGRATION.md` note instead (see [writeIntegrationNotes]). The
+ * left to the host to add by hand (see docs/integrating-the-sdk.md §5). The
  * SPM-flavored replacement for the CocoaPods-era `post_install` snippet that patched the
  * plist via `Xcodeproj::Plist`. Fails loudly if the configured path isn't a file, since an
  * explicit opt-in with a wrong path would otherwise silently do nothing.
@@ -32,8 +32,8 @@ internal fun patchInfoPlistIfConfigured(
     project: Project,
     config: LokalPaymentSdkExtension,
     schemes: List<String>,
-): Boolean {
-    val path = config.iosInfoPlist ?: return false
+) {
+    val path = config.iosInfoPlist ?: return
     val plistFile = project.file(path)
     if (!plistFile.isFile) {
         throw GradleException(
@@ -48,7 +48,6 @@ internal fun patchInfoPlistIfConfigured(
             "LokalPaymentSDK: merged $added UPI query scheme(s) into $plistFile",
         )
     }
-    return true
 }
 
 /**

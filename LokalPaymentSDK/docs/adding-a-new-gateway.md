@@ -279,7 +279,7 @@ shape (the Android-only variant, flipped):
   registration goes through the normal `@EagerInitialization` hook
   (`NativeIapEagerInit.kt`) — **zero host Swift code and zero Podfile lines**,
   the same guarantee every other gateway makes; the host-contributor mechanism
-  (`LokalGatewayHostContributor` → `HostContribution.sourceTarget`) is exactly
+  (`LokalGatewayHostContributor` → a `SourceTarget` contribution) is exactly
   how `native-iap` gets its first-party Swift into the host's build, the same
   extension point that injects Razorpay's and Juspay's vendor SPM packages.
   One naming gotcha hit building this: Kotlin/Native imports a Swift `@objc

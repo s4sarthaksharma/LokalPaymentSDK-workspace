@@ -59,7 +59,7 @@ private fun stagingStampFile(project: Project): File =
 /**
  * Registers `lokalStageKotlinXCFrameworkDebug` / `…Release`, each assembling its variant's
  * XCFramework and then staging it into `XCFrameworks/current/`. One task is what the pre-build
- * step invokes and what `INTEGRATION.md` tells a new developer to run once after cloning (the
+ * step invokes and what docs/integrating-the-sdk.md tells a new developer to run once after cloning (the
  * staged copy has to exist before Xcode's first resolve, which no pre-action can precede).
  *
  * Every value the task action needs is captured as a [File] outside the action so the task stays
@@ -86,7 +86,7 @@ internal fun registerXCFrameworkStagingTasks(project: Project, xcFrameworkName: 
  * Best-effort seed of `XCFrameworks/current/` at configuration time, so a host that has already
  * assembled *some* variant is resolvable in Xcode without first running a staging task. Prefers
  * the most recently assembled variant — that's the one the developer last asked for. Does nothing
- * when nothing has been assembled yet (INTEGRATION.md covers that first run) or when a staged copy
+ * when nothing has been assembled yet (docs/integrating-the-sdk.md covers that first run) or when a staged copy
  * is already present, which is the common case and must stay free of side effects.
  */
 internal fun seedStagedXCFrameworkIfMissing(project: Project, xcFrameworkName: String) {

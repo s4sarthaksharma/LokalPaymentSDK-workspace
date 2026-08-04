@@ -15,11 +15,11 @@ package com.getlokalapp.paymentsdk.host
  *
  * [iosInfoPlist] optionally points the plugin at the host app's `Info.plist` so it can
  * merge in the entries active gateways contribute (e.g. UPI apps'
- * `LSApplicationQueriesSchemes` — see [InfoPlistContribution]). A path string the plugin
+ * `LSApplicationQueriesSchemes` — see [InfoPlistEntries]). A path string the plugin
  * resolves with `Project.file(...)` (relative to the applying module, like any Gradle
  * path). The merge is idempotent (only adds missing entries) and mutates a git-tracked
  * file the host owns, so it is opt-in: leave it unset and the plugin patches nothing,
- * instead surfacing the same entries as an `INTEGRATION.md` note for the host to add by
+ * instead leaving the same entries for the host to add by
  * hand. Point it at the plist a hand-managed `.xcodeproj` references (the demo) or the
  * committed plist an XcodeGen/Tuist spec references — not a fully generated one.
  *
@@ -30,7 +30,7 @@ package com.getlokalapp.paymentsdk.host
  * with `Project.file(...)`, an idempotent edit (a project already pointing at the package
  * is left untouched, zero-diff) of a git-tracked file the host owns, and opt-in — leave it
  * unset and the plugin edits nothing, surfacing the manual "Add Local…" steps as an
- * `INTEGRATION.md` note instead. **Hand-managed `.xcodeproj` only** (the demo). XcodeGen/Tuist
+ * manual "Add Local…" step instead. **Hand-managed `.xcodeproj` only** (the demo). XcodeGen/Tuist
  * hosts regenerate their `pbxproj` from a spec and must declare the package there instead —
  * they simply leave this unset, exactly as they leave [iosInfoPlist] pointed at a committed
  * plist rather than a generated one.
@@ -48,7 +48,7 @@ package com.getlokalapp.paymentsdk.host
  * - unset **and** [iosXcodeProject] set → every shared scheme of that `.xcodeproj` that builds
  *   its application target, discovered on each sync so a scheme added later is picked up;
  * - unset **and** [iosXcodeProject] unset → nothing is touched, the manual steps surfaced as an
- *   `INTEGRATION.md` note, exactly like the two siblings above;
+ *   host's own responsibility, exactly like the two siblings above;
  * - `emptyList()` → an explicit opt-out that keeps [iosXcodeProject]'s wiring but leaves every
  *   scheme alone.
  *

@@ -3,7 +3,7 @@ package com.getlokalapp.paymentsdk.juspay.host
 import com.getlokalapp.paymentsdk.host.LokalGatewayHostContributor
 import com.getlokalapp.paymentsdk.host.LokalPaymentSdkExtension
 import com.getlokalapp.paymentsdk.host.HostContribution
-import com.getlokalapp.paymentsdk.host.ConsumerSetupNote
+import com.getlokalapp.paymentsdk.host.BundledResource
 import com.getlokalapp.paymentsdk.host.PrebuildStep
 import com.getlokalapp.paymentsdk.host.VendorPackage
 import org.gradle.api.Project
@@ -40,7 +40,7 @@ import java.io.File
  *     ever passes a clientId anywhere, matching how Android already resolves it entirely
  *     internally via `hypersdk.plugin`.
  *
- *  3. **Contribute the `Fuse.rb` pre-build step** ([HostContribution.prebuildStep]) —
+ *  3. **Contribute the `Fuse.rb` pre-build step** ([PrebuildStep]) —
  *     HyperSDK's merchant-asset download (its "Validate Mandatory Files" build phase fails
  *     without it) needs Xcode's build environment to locate the unpacked HyperSDK binary
  *     artifact under DerivedData, so it can't run at Gradle-sync time. Under CocoaPods this
@@ -55,7 +55,7 @@ import java.io.File
  *  - **Register the scheme pre-build action** — a Gradle plugin can't edit the consumer's
  *    scheme without touching their Xcode project, which this SDK avoids (same reason adding
  *    the SPM package is a one-time manual step). Adding the *one* dispatcher pre-action is a
- *    documented host step surfaced in the generated `INTEGRATION.md`; every gateway's step
+ *    documented host step (see docs/integrating-the-sdk.md §4); every gateway's step
  *    (including this one) then runs through it with no further scheme edits.
  *  - **Add a cinterop** — the Kotlin bindings already ride in via the published :juspay klib
  *    (Maven), compiled against the direct HyperSDK.xcframework cinterop (R1/S2).
@@ -68,7 +68,7 @@ class JuspayHostContributor : LokalGatewayHostContributor {
         target: Project,
         config: LokalPaymentSdkExtension,
         dependency: Dependency,
-    ): HostContribution? {
+    ): List<HostContribution> {
         // Resolve once and fail loudly here (a host that imports :juspay intends to use it),
         // mirroring the CocoaPods contributor and `hypersdk.plugin`'s own hard failure — then
         // feed both generated files from the single value.
@@ -82,41 +82,21 @@ class JuspayHostContributor : LokalGatewayHostContributor {
         val merchantConfig = writeMerchantConfig(target, clientId)
         val lokalJuspayConfig = writeLokalJuspayConfig(target, clientId)
 
-        return HostContribution(
+        return listOf(
             // Both files are useless unless they end up INSIDE the built .app: HyperSDK's asset
             // pipeline reads MerchantConfig.json, and IOSJuspayClient.resolveClientId reads
             // LokalJuspayConfig.json via NSBundle.pathForResource — which returns nil (and throws)
             // when the file isn't an app-target member. Declaring them here makes the umbrella
             // plugin wire both into the host's Resources build phase.
-            bundledResources = listOf(merchantConfig.absolutePath, lokalJuspayConfig.absolutePath),
-            vendorPackage = VendorPackage(
+            BundledResource(merchantConfig.absolutePath),
+            BundledResource(lokalJuspayConfig.absolutePath),
+            VendorPackage(
                 url = "https://github.com/juspay/hypersdk-ios",
                 exactVersion = VENDOR_SDK_VERSION,
                 packageName = "hypersdk-ios",
                 productName = "HyperSDK",
             ),
-            prebuildStep = PrebuildStep(name = "juspay", script = FUSE_PREBUILD_SCRIPT),
-            consumerNotes = listOf(
-                ConsumerSetupNote(
-                    heading = "Juspay (HyperSDK)",
-                    steps = listOf(
-                        "Juspay's `Fuse.rb` asset download runs via the SDK's pre-build action " +
-                            "(§5) — you only need to register that one action. It also writes " +
-                            "Juspay's URL/query schemes into your `Info.plist`, so you do NOT add " +
-                            "an `LSApplicationQueriesSchemes` entry for Juspay by hand. That plist " +
-                            "patching needs the `xcodeproj` Ruby gem on your build machine " +
-                            "(`gem install xcodeproj`); without it HyperSDK warns and you must add " +
-                            "the schemes manually.",
-                        "Two files are generated for you beside your `.xcodeproj` from the " +
-                            "`juspayClientId` Gradle property: `iosApp/MerchantConfig.json` " +
-                            "(HyperSDK's asset pipeline reads it) and `iosApp/LokalJuspayConfig.json` " +
-                            "(`:juspay` reads it at runtime to resolve HyperServices' clientId). " +
-                            "Both must ship inside your `.app` — see the bundled-resources section " +
-                            "for whether the SDK wired them for you. You never pass a clientId " +
-                            "anywhere in your own code.",
-                    ),
-                ),
-            ),
+            PrebuildStep(name = "juspay", script = FUSE_PREBUILD_SCRIPT),
         )
     }
 
@@ -148,9 +128,9 @@ class JuspayHostContributor : LokalGatewayHostContributor {
      * Deliberately separate from HyperSDK's own [writeMerchantConfig] output: that file's
      * `clientConfigs` shape is Juspay's contract, so reading it at runtime would couple us to a
      * schema we don't own. Like `MerchantConfig.json` it must be an app-target member — both are
-     * returned and declared via [HostContribution.bundledResources], so the umbrella plugin wires
-     * them into hosts that set `lokalPaymentSdk { iosXcodeProject = … }` and surfaces them as an
-     * `INTEGRATION.md` step for XcodeGen/Tuist hosts that declare resources in their own spec.
+     * returned as a [BundledResource], so the umbrella plugin wires them into hosts that set
+     * `lokalPaymentSdk { iosXcodeProject = … }` and documents them in docs/integrating-the-sdk.md §5
+     * for XcodeGen/Tuist hosts that declare resources in their own spec.
      */
     private fun writeLokalJuspayConfig(target: Project, clientId: String): File =
         target.file("../iosApp/LokalJuspayConfig.json").apply {
@@ -214,7 +194,7 @@ class JuspayHostContributor : LokalGatewayHostContributor {
               echo "       resolving the package graph, so this almost always means resolution did" >&2
               echo "       not complete. Check the 'Resolving package dependencies' step in the" >&2
               echo "       build log, and that the host XCFramework the generated Package.swift" >&2
-              echo "       points at has been assembled (see INTEGRATION.md)." >&2
+              echo "       points at has been assembled (see docs/integrating-the-sdk.md)." >&2
               exit 1
             fi
 

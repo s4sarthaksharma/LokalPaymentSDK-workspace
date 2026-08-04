@@ -1,5 +1,7 @@
 package com.getlokalapp.paymentsdk.shared
 
+import com.getlokalapp.paymentsdk.host.BundledResource
+import com.getlokalapp.paymentsdk.host.InfoPlistEntries
 import com.getlokalapp.paymentsdk.host.LokalGatewayHostContributor
 import com.getlokalapp.paymentsdk.host.LokalPaymentSdkExtension
 import org.gradle.api.Plugin
@@ -25,8 +27,8 @@ import java.util.ServiceLoader
  *
  * This class is pure orchestration — discover the gateway contributors, gate on the host's
  * declared dependencies, and dispatch to the iOS artifact generators. The generation itself
- * lives in sibling files: [writePackageSwift] (the SPM manifest), [writeIntegrationNotes]
- * (the app-specific `INTEGRATION.md`), [writePrebuildDispatcher] (the Xcode pre-build
+ * lives in sibling files: [writePackageSwift] (the SPM manifest),
+ * [writePrebuildDispatcher] (the Xcode pre-build
  * dispatcher), [patchInfoPlistIfConfigured] (the opt-in `Info.plist` merge), and
  * [patchXcodeProjectIfConfigured] (the opt-in `project.pbxproj` local-package wiring).
  *
@@ -42,8 +44,8 @@ import java.util.ServiceLoader
  * which own their generated project and leave the property unset — see the plan doc's D2
  * rationale. Every regeneration after that one-time wiring is picked up automatically — SPM
  * re-resolves a local package's manifest on every build. Alongside `Package.swift` the plugin
- * also writes an `INTEGRATION.md` carrying the app-specific wiring steps for the host's actual
- * gateway selection — see [writeIntegrationNotes] and docs/integrating-the-sdk.md.
+ * Every edit it makes is announced through `logger.lifecycle`, so the sync log is the record
+ * of what was wired — see docs/integrating-the-sdk.md for the host-side steps.
  */
 class LokalPaymentPlugin : Plugin<Project> {
 
@@ -66,17 +68,27 @@ class LokalPaymentPlugin : Plugin<Project> {
             // group `com.getlokalapp.paymentsdk` narrows the host's whole dependency set down to
             // our gateway modules, keyed by module name. Call only the contributor whose module
             // the host actually imports, handing it the resolved Dependency (native-iap reads its
-            // version/coordinate off it). A contributor may still return null for a
-            // present-but-inapplicable case (e.g. a missing artifact).
+            // version/coordinate off it). A contributor may still return an empty list for a
+            // present-but-inapplicable case (e.g. a missing artifact). Every gateway's
+            // contributions land in one flat list, which each writer below filters by the kinds
+            // it owns — see HostContribution.
             val contributors = ServiceLoader.load(
                 LokalGatewayHostContributor::class.java,
                 LokalGatewayHostContributor::class.java.classLoader,
             ).associateBy { it.module }
-            val contributions = project.configurations.asSequence()
+            val sdkDependencies = project.configurations.asSequence()
                 .flatMap { it.dependencies.asSequence() }
                 .filter { it.group == SDK_GROUP }
                 .associateBy { it.name }
-                .mapNotNull { (name, dep) -> contributors[name]?.contribute(project, config, dep) }
+            val contributions = sdkDependencies.flatMap { (name, dep) ->
+                contributors[name]?.contribute(project, config, dep).orEmpty()
+            }
+
+            // Sort the flat list into its kinds exactly once, here, so each writer below is handed
+            // the kinds it consumes instead of the whole list plus the job of filtering it. The
+            // `when` inside bucketed() is exhaustive, which is what makes a newly added
+            // HostContribution kind a compile error rather than a silently ignored one.
+            val contributed = contributions.bucketed()
 
             val umbrellaTargetName = "${xcFrameworkName}Umbrella"
 
@@ -89,24 +101,26 @@ class LokalPaymentPlugin : Plugin<Project> {
             registerXCFrameworkStagingTasks(project, xcFrameworkName)
             seedStagedXCFrameworkIfMissing(project, xcFrameworkName)
 
-            writePackageSwift(project, xcFrameworkName, umbrellaTargetName, contributions)
+            writePackageSwift(
+                project, xcFrameworkName, umbrellaTargetName,
+                contributed.vendorPackages, contributed.sourceTargets,
+            )
 
             // Info.plist: the baseline UPI query schemes (an ungated `:shared` concern —
             // UPI app detection is available to every host regardless of gateway, matching
             // the CocoaPods-era `shared-query-schemes.rb`) plus whatever active gateways add.
             val queriesSchemes = (BASELINE_UPI_QUERY_SCHEMES +
-                contributions.mapNotNull { it.infoPlist }.flatMap { it.queriesSchemes })
+                contributed.plistEntries.flatMap { it.queriesSchemes })
                 .distinct()
-            val plistPatched = patchInfoPlistIfConfigured(project, config, queriesSchemes)
+            patchInfoPlistIfConfigured(project, config, queriesSchemes)
 
             // project.pbxproj: wire the generated local package into a hand-managed .xcodeproj
             // when the host opted in via `lokalPaymentSdk { iosXcodeProject = … }` — the exact
             // sibling of the Info.plist merge above (see patchXcodeProjectIfConfigured). Gateway
             // files that must ship inside the .app ride the same opt-in: generating them isn't
             // enough, since a non-member fails at runtime on bundle lookup, not at build time.
-            val bundledResources = contributions.flatMap { it.bundledResources }.distinct()
-            val xcodeProjectWired =
-                patchXcodeProjectIfConfigured(project, config, umbrellaTargetName, bundledResources)
+            val bundledResources = contributed.bundledResources.map { it.path }.distinct()
+            patchXcodeProjectIfConfigured(project, config, umbrellaTargetName, bundledResources)
 
             // Build-time steps: one generated dispatcher the app registers as a single Xcode
             // scheme pre-build action (see writePrebuildDispatcher / PrebuildStep). The SDK's
@@ -115,7 +129,7 @@ class LokalPaymentPlugin : Plugin<Project> {
             val prebuildScript = writePrebuildDispatcher(
                 project,
                 listOf(kotlinXCFrameworkPrebuildStep(project, xcFrameworkName)),
-                contributions,
+                contributed.prebuildSteps,
             )
 
             // .xcscheme: register that dispatcher as a build pre-action in the schemes the host
@@ -125,13 +139,7 @@ class LokalPaymentPlugin : Plugin<Project> {
             // defaults to wiring rather than to doing nothing: it is load-bearing rather than a
             // convenience, since the dispatcher is what restages the Kotlin binary, so a host
             // that forgets it builds against a stale framework with nothing to indicate why.
-            val schemeWiring = patchXcodeSchemesIfConfigured(project, config, prebuildScript)
-
-            writeIntegrationNotes(
-                project, config, xcFrameworkName, umbrellaTargetName, contributions,
-                queriesSchemes, plistPatched, xcodeProjectWired, prebuildScript, bundledResources,
-                schemeWiring,
-            )
+            patchXcodeSchemesIfConfigured(project, config, prebuildScript)
         }
     }
 
