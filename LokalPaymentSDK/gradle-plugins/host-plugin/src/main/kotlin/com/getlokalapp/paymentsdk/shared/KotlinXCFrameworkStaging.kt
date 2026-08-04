@@ -57,6 +57,33 @@ private fun stagingStampFile(project: Project): File =
     project.layout.buildDirectory.file("XCFrameworks/.lokal-staged").get().asFile
 
 /**
+ * The single entry point the umbrella plugin calls to set up per-configuration staging: declare
+ * the machinery that keeps `XCFrameworks/current/` current, then make sure Xcode can resolve the
+ * package *before* that machinery has ever run.
+ *
+ * Those are two jobs with two lifecycles — one lazy task registration, one eager copy — which is
+ * why the body below is two calls; see each for the details. They're private to this file rather
+ * than called separately from the plugin because the split is an implementation detail of "keep
+ * the staged binary right", and nothing at the call site can meaningfully do one without the
+ * other: order between them doesn't matter, neither is conditional, and both take the same two
+ * arguments.
+ */
+internal fun configureXCFrameworkStaging(project: Project, xcFrameworkName: String) {
+    // Steady state. Declares the two staging tasks — nothing runs here; the pre-build step
+    // (kotlinXCFrameworkPrebuildStep) invokes whichever variant matches $CONFIGURATION on every
+    // Xcode build, and a developer runs one by hand for the first-ever assemble.
+    registerStagingTasks(project, xcFrameworkName)
+
+    // Bootstrap, and the reason it can't just be the task above: SwiftPM validates the
+    // binaryTarget path while *resolving* the package graph, which precedes every pre-action, so
+    // an empty current/ fails resolution — and the pre-action that would have populated it never
+    // runs, leaving the host stuck however often it rebuilds. Only something at Gradle-sync time
+    // breaks that loop, so this copies an already-assembled variant instead of assembling one (an
+    // eager Kotlin/Native link on every sync is not affordable).
+    seedStagedXCFrameworkIfMissing(project, xcFrameworkName)
+}
+
+/**
  * Registers `lokalStageKotlinXCFrameworkDebug` / `…Release`, each assembling its variant's
  * XCFramework and then staging it into `XCFrameworks/current/`. One task is what the pre-build
  * step invokes and what docs/integrating-the-sdk.md tells a new developer to run once after cloning (the
@@ -65,7 +92,7 @@ private fun stagingStampFile(project: Project): File =
  * Every value the task action needs is captured as a [File] outside the action so the task stays
  * configuration-cache compatible — no `Project` reference leaks into execution.
  */
-internal fun registerXCFrameworkStagingTasks(project: Project, xcFrameworkName: String) {
+private fun registerStagingTasks(project: Project, xcFrameworkName: String) {
     listOf("Debug", "Release").forEach { variant ->
         val source = xcFrameworkVariantDir(project, variant.lowercase(), xcFrameworkName)
         val staged = stagedXCFrameworkDir(project, xcFrameworkName)
@@ -88,8 +115,12 @@ internal fun registerXCFrameworkStagingTasks(project: Project, xcFrameworkName: 
  * the most recently assembled variant — that's the one the developer last asked for. Does nothing
  * when nothing has been assembled yet (docs/integrating-the-sdk.md covers that first run) or when a staged copy
  * is already present, which is the common case and must stay free of side effects.
+ *
+ * The bootstrap half of [configureXCFrameworkStaging] — see there for why the staging task can't
+ * establish the precondition its own invocation depends on. The one case this can't rescue (no
+ * variant assembled at all) stays a documented one-time `lokalStageKotlinXCFrameworkDebug` run.
  */
-internal fun seedStagedXCFrameworkIfMissing(project: Project, xcFrameworkName: String) {
+private fun seedStagedXCFrameworkIfMissing(project: Project, xcFrameworkName: String) {
     val staged = stagedXCFrameworkDir(project, xcFrameworkName)
     if (!staged.listFiles().isNullOrEmpty()) return
     val newest = listOf("release", "debug")

@@ -93,13 +93,9 @@ class LokalPaymentPlugin : Plugin<Project> {
             val umbrellaTargetName = "${xcFrameworkName}Umbrella"
 
             // The generated binaryTarget points at a fixed XCFrameworks/current/ that gets
-            // restaged per Xcode configuration (see KotlinXCFrameworkStaging). Register the
-            // staging tasks the pre-build step drives, then seed the staged copy if the host
-            // has already assembled a variant — SPM validates the binaryTarget path while
-            // resolving, which is before any pre-action can run, so a first resolve needs
-            // something already there.
-            registerXCFrameworkStagingTasks(project, xcFrameworkName)
-            seedStagedXCFrameworkIfMissing(project, xcFrameworkName)
+            // restaged per Xcode configuration, from tasks the pre-build step drives (see
+            // KotlinXCFrameworkStaging).
+            configureXCFrameworkStaging(project, xcFrameworkName)
 
             writePackageSwift(
                 project, xcFrameworkName, umbrellaTargetName,
