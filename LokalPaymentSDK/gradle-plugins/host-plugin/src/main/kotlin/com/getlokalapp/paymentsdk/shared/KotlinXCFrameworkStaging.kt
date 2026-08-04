@@ -45,9 +45,9 @@ import java.io.File
 internal const val STAGE_TASK_BASE = "lokalStageKotlinXCFramework"
 
 /** The fixed path the generated `Package.swift` binary target points at. */
-internal const val STAGED_VARIANT = "current"
+private const val STAGED_VARIANT = "current"
 
-internal fun xcFrameworkVariantDir(project: Project, variant: String, name: String): File =
+private fun xcFrameworkVariantDir(project: Project, variant: String, name: String): File =
     project.layout.buildDirectory.dir("XCFrameworks/$variant/$name.xcframework").get().asFile
 
 internal fun stagedXCFrameworkDir(project: Project, name: String): File =

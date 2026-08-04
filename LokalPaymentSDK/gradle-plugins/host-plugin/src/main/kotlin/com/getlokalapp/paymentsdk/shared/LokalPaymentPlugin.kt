@@ -118,17 +118,19 @@ class LokalPaymentPlugin : Plugin<Project> {
                 contributions,
             )
 
-            // .xcscheme: register that dispatcher as a build pre-action when the host opted in
-            // via `lokalPaymentSdk { iosXcodeScheme = … }` — the third sibling of the plist and
-            // pbxproj opt-ins. Load-bearing rather than a convenience: the dispatcher is what
-            // restages the Kotlin binary, so a host that forgets it builds against a stale
-            // framework with nothing to indicate why.
-            val schemeWired = patchXcodeSchemeIfConfigured(project, config, prebuildScript)
+            // .xcscheme: register that dispatcher as a build pre-action in the schemes the host
+            // listed via `lokalPaymentSdk { iosXcodeSchemes = … }`, or — with that unset and
+            // `iosXcodeProject` set — in every shared scheme of that project that builds the app
+            // target. The third sibling of the plist and pbxproj opt-ins, but the only one that
+            // defaults to wiring rather than to doing nothing: it is load-bearing rather than a
+            // convenience, since the dispatcher is what restages the Kotlin binary, so a host
+            // that forgets it builds against a stale framework with nothing to indicate why.
+            val schemeWiring = patchXcodeSchemesIfConfigured(project, config, prebuildScript)
 
             writeIntegrationNotes(
                 project, config, xcFrameworkName, umbrellaTargetName, contributions,
                 queriesSchemes, plistPatched, xcodeProjectWired, prebuildScript, bundledResources,
-                schemeWired,
+                schemeWiring,
             )
         }
     }

@@ -29,19 +29,7 @@ internal fun patchXcodeProjectIfConfigured(
     bundledResources: List<String> = emptyList(),
 ): Boolean {
     val path = config.iosXcodeProject ?: return false
-    val target = project.file(path)
-    val pbxproj = when {
-        target.isDirectory && target.name.endsWith(".xcodeproj") -> File(target, "project.pbxproj")
-        else -> target // a project.pbxproj pointed at directly
-    }
-    if (!pbxproj.isFile) {
-        throw GradleException(
-            "lokalPaymentSdk { iosXcodeProject = \"$path\" } does not resolve to a " +
-                ".xcodeproj (or its project.pbxproj) — looked at $pbxproj. Point it at the " +
-                "hand-managed .xcodeproj your app uses, or remove the property to wire the " +
-                "local package by hand.",
-        )
-    }
+    val pbxproj = resolvePbxproj(project, path)
     val packageDir = project.layout.buildDirectory.dir("lokal/spmPackage").get().asFile
     val changed = wireLocalPackage(pbxproj, packageDir, umbrellaProductName)
     if (changed) {
@@ -68,6 +56,59 @@ internal fun patchXcodeProjectIfConfigured(
         }
     }
     return true
+}
+
+/**
+ * The `project.pbxproj` a host-configured `iosXcodeProject` points at, accepting either the
+ * `.xcodeproj` bundle or the inner file directly. Fails loudly when the path resolves to
+ * neither — shared with [discoverAppSchemes], which needs the same bundle to find the project's
+ * shared schemes and must report a wrong path identically.
+ */
+internal fun resolvePbxproj(project: Project, path: String): File {
+    val target = project.file(path)
+    val pbxproj = when {
+        target.isDirectory && target.name.endsWith(".xcodeproj") -> File(target, "project.pbxproj")
+        else -> target // a project.pbxproj pointed at directly
+    }
+    if (!pbxproj.isFile) {
+        throw GradleException(
+            "lokalPaymentSdk { iosXcodeProject = \"$path\" } does not resolve to a " +
+                ".xcodeproj (or its project.pbxproj) — looked at $pbxproj. Point it at the " +
+                "hand-managed .xcodeproj your app uses, or remove the property to wire the " +
+                "local package by hand.",
+        )
+    }
+    return pbxproj
+}
+
+/**
+ * Every application target in [pbxproj], as the two identifiers a `.xcscheme` names a target by:
+ * the 24-hex object id (a scheme's `BlueprintIdentifier`) and the target name (its
+ * `BlueprintName`). Both, because a scheme can be stale on either one.
+ *
+ * The lenient counterpart of [singleApplicationTarget]: an unreadable or unexpected pbxproj
+ * yields an empty set instead of failing. Its caller ([discoverAppSchemes]) only narrows which
+ * schemes to patch, and a project the *other* patchers would reject shouldn't take the pre-action
+ * down with it.
+ */
+internal fun applicationTargetIdentifiers(pbxproj: File): Set<String> {
+    val text = runCatching { pbxproj.readText() }.getOrNull() ?: return emptySet()
+    val section = Regex(
+        """/\* Begin PBXNativeTarget section \*/(.*?)/\* End PBXNativeTarget section \*/""",
+        RegexOption.DOT_MATCHES_ALL,
+    ).find(text)?.groupValues?.get(1) ?: return emptySet()
+
+    return Regex(
+        """\t\t([0-9A-Fa-f]{24}) /\* .*? \*/ = \{.*?\n\t\t\};""",
+        RegexOption.DOT_MATCHES_ALL,
+    ).findAll(section)
+        .filter { it.value.contains("com.apple.product-type.application") }
+        .flatMap { match ->
+            val name = Regex("""\n\t\t\tname = ([^;]+);""").find(match.value)
+                ?.groupValues?.get(1)?.trim()?.trim('"')
+            listOfNotNull(match.groupValues[1], name)
+        }
+        .toSet()
 }
 
 /**

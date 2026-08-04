@@ -27,7 +27,7 @@ internal fun writeIntegrationNotes(
     xcodeProjectWired: Boolean,
     prebuildScript: File?,
     bundledResources: List<String> = emptyList(),
-    schemeWired: Boolean = false,
+    schemeWiring: SchemeWiring = SchemeWiring(emptyList()),
 ) {
     val packageDir = project.layout.buildDirectory.dir("lokal/spmPackage").get().asFile
     val bootstrapTask = "${project.path}:${STAGE_TASK_BASE}Debug"
@@ -164,17 +164,30 @@ internal fun writeIntegrationNotes(
         md += ""
         md += "## 5. Xcode pre-build action"
         md += ""
-        if (schemeWired) {
+        if (schemeWiring.wired) {
             md += "Already done for you — nothing to do here."
             md += ""
             md += "The SDK registers the dispatcher below as a build pre-action on every Gradle"
-            md += "sync, in the scheme you pointed `lokalPaymentSdk { iosXcodeScheme }` at, and"
-            md += "leaves it alone once it is there. New gateways plug into the same action."
+            md += "sync, and leaves it alone once it is there — in these shared scheme(s):"
+            md += ""
+            schemeWiring.schemes.forEach { md += "- `${it.name}`" }
+            md += ""
+            md += "A scheme you share later is picked up on the next sync. New gateways plug into"
+            md += "the same action, so this stays a one-time concern either way."
             md += ""
             md += "```sh"
             md += "\"${prebuildScript.toPath().toAbsolutePath().normalize()}\""
             md += "```"
         } else {
+            if (schemeWiring.discoveryFoundNoSchemes) {
+                md += "**The SDK could not do this for you:** your `.xcodeproj` has no *shared*"
+                md += "scheme that builds the app target. Xcode keeps unshared schemes in"
+                md += "`xcuserdata`, which isn't committed, so a pre-action added there would never"
+                md += "reach another developer. Tick **Shared** for your app scheme in Product ▸"
+                md += "Scheme ▸ Manage Schemes and re-sync to have it registered automatically —"
+                md += "or add it by hand as below."
+                md += ""
+            }
             md += "This action restages the Kotlin binary on every build, and runs whatever"
             md += "build-time steps your gateways need (e.g. Juspay's HyperSDK asset download)."
             md += "**Skip it and Xcode builds against a stale Kotlin framework.** Register it"
@@ -191,9 +204,12 @@ internal fun writeIntegrationNotes(
             md += "```"
             md += ""
             md += "In a committed XcodeGen/Tuist spec, reference the script by a path relative to"
-            md += "the spec rather than the absolute one above. For a hand-managed `.xcodeproj`,"
-            md += "set `lokalPaymentSdk { iosXcodeScheme = \"<path-to>.xcscheme\" }` and the SDK"
-            md += "will register it for you on every sync."
+            md += "the spec rather than the absolute one above — a generated scheme is rewritten on"
+            md += "every `generate`, so the SDK deliberately leaves those alone. For a hand-managed"
+            md += "`.xcodeproj`, setting `lokalPaymentSdk { iosXcodeProject = … }` is enough: the"
+            md += "SDK then registers this in every shared scheme of that project that builds your"
+            md += "app target. Use `lokalPaymentSdk { iosXcodeSchemes = listOf(…) }` to name the"
+            md += "schemes yourself, or `emptyList()` to keep managing them by hand."
         }
     }
     if (notes.isNotEmpty()) {

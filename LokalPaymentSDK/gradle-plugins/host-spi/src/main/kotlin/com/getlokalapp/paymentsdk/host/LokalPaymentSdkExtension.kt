@@ -35,24 +35,46 @@ package com.getlokalapp.paymentsdk.host
  * they simply leave this unset, exactly as they leave [iosInfoPlist] pointed at a committed
  * plist rather than a generated one.
  *
- * [iosXcodeScheme] is the third sibling: point it at a **shared** `.xcscheme` and the plugin
- * registers the generated `lokal-prebuild.sh` dispatcher as a build pre-action on every sync —
- * the one-time "Edit Scheme ▸ Build ▸ Pre-actions ▸ +" step, automated. Same lifecycle as the
- * two above: a path resolved with `Project.file(...)`, an idempotent formatting-preserving edit
- * (a scheme already running the dispatcher is left byte-for-byte untouched) of a git-tracked
- * file the host owns, and opt-in — unset and the plugin edits nothing, surfacing the manual
- * steps in `INTEGRATION.md` instead.
+ * [iosXcodeSchemes] is the third sibling, and registers the generated `lokal-prebuild.sh`
+ * dispatcher as a build pre-action on every sync — the one-time "Edit Scheme ▸ Build ▸
+ * Pre-actions ▸ +" step, automated. Same edit lifecycle as the two above: paths resolved with
+ * `Project.file(...)`, an idempotent formatting-preserving edit (a scheme already running the
+ * dispatcher is left byte-for-byte untouched) of git-tracked files the host owns. Its
+ * *default*, though, is deliberately not theirs:
  *
- * Must be a scheme under `xcshareddata/xcschemes/`, not one Xcode left in `xcuserdata`: only a
- * shared scheme is committed, and a pre-action every developer needs has to travel with the
- * repo. Worth automating rather than leaving manual because the dispatcher is what keeps the
- * staged Kotlin binary current (see `kotlinXCFrameworkPrebuildStep`) — forget it and Xcode
- * silently builds against a stale framework, which reads as a Kotlin edit that "didn't take"
- * rather than as a missing build step.
+ * - a non-empty list → exactly those schemes, each validated and each failing loudly if it
+ *   isn't a readable shared `.xcscheme` (an explicit opt-in pointing somewhere wrong must not
+ *   silently do nothing);
+ * - unset **and** [iosXcodeProject] set → every shared scheme of that `.xcodeproj` that builds
+ *   its application target, discovered on each sync so a scheme added later is picked up;
+ * - unset **and** [iosXcodeProject] unset → nothing is touched, the manual steps surfaced as an
+ *   `INTEGRATION.md` note, exactly like the two siblings above;
+ * - `emptyList()` → an explicit opt-out that keeps [iosXcodeProject]'s wiring but leaves every
+ *   scheme alone.
+ *
+ * Discovery keys off [iosXcodeProject] rather than being its own switch because the two
+ * populations coincide: a host that lets the plugin edit its `pbxproj` has a hand-managed,
+ * committed `.xcodeproj`, and its schemes are committed too. XcodeGen/Tuist hosts leave
+ * [iosXcodeProject] unset because their project is generated — and so are their schemes, where
+ * a patch would be discarded on the next `generate` — so they are excluded for free, with no
+ * second rule to keep in sync.
+ *
+ * Defaulting to "wire it" rather than "leave it alone" is what breaks the symmetry with
+ * [iosInfoPlist] and [iosXcodeProject], and it is the dispatcher's failure mode that earns it:
+ * those two fail loudly at setup (a missing package won't link, a missing query scheme is a
+ * visible UPI bug), while a missing pre-action fails *silently* — the dispatcher is what keeps
+ * the staged Kotlin binary current (see `kotlinXCFrameworkPrebuildStep`), so forgetting it
+ * reads as a Kotlin edit that "didn't take" rather than as a missing build step.
+ *
+ * Only schemes under `xcshareddata/xcschemes/` qualify, never one Xcode left in `xcuserdata`:
+ * only a shared scheme is committed, and a pre-action every developer needs has to travel with
+ * the repo. Discovery is scoped to the `.xcodeproj`'s own shared schemes and never scans a
+ * `.xcworkspace` — with a workspace there is no way to tell which of its projects is the app
+ * without guessing. A scheme shared at the workspace level still works, listed explicitly.
  */
 open class LokalPaymentSdkExtension {
     var xcFrameworkName: String? = null
     var iosInfoPlist: String? = null
     var iosXcodeProject: String? = null
-    var iosXcodeScheme: String? = null
+    var iosXcodeSchemes: List<String>? = null
 }
