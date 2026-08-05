@@ -29,9 +29,7 @@ internal fun parseOrder(orderResponseJson: String): PaymentOrder {
         gateway = gateway,
         gatewayConfig = root.getValue("gateway_config").jsonObject,
         // Host-owned passthrough: the SDK never reads this and no gateway sees
-        // it — it comes straight back on LokalPaymentEvent.metadata (see
-        // render()), which is how a real host correlates a result to the call
-        // that started it. Optional, so an order without it still parses.
+        // it — it comes straight back on LokalPaymentEvent.metadata.
         metadata = root["metadata"]?.jsonObject,
     )
 }
@@ -51,7 +49,7 @@ internal fun renderUpiApps(apps: List<UpiApp>): String {
     }.trimEnd()
 }
 
-// Dumps whatever the SDK hands back on its pay() flow: a LokalPaymentEvent
+// Dumps whatever the SDK hands back on its global paymentEvents flow: a LokalPaymentEvent
 // wrapping either an interim "gateway has taken over its own UI" heads-up or a
 // terminal PaymentResult, plus the routing gateway and the host's metadata echo.
 internal fun render(event: LokalPaymentEvent): String {

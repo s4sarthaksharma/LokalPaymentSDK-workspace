@@ -97,14 +97,14 @@ sealed interface PaymentGatewayEvent {
 }
 
 /**
- * What [com.getlokalapp.paymentsdk.LokalPaymentSdk.pay] emits: a gateway's own
+ * What [com.getlokalapp.paymentsdk.LokalPaymentSdk.paymentEvents] emits: a gateway's own
  * [PaymentGatewayEvent] wrapped with the routing context only the generic entry
  * point knows.
  *
  * [event] is the gateway's event — a non-terminal [PaymentGatewayEvent.GatewayUi] signal,
  * or a terminal [PaymentResult]. [gateway] is which gateway the backend routed
  * to; it rides here rather than on [PaymentResult] because it's routing metadata,
- * not part of the outcome, and it's always known (the host handed [pay] a typed
+ * not part of the outcome, and it's always known (the host handed `pay` a typed
  * [PaymentOrder]). [metadata] is whatever the host attached to
  * [PaymentOrder.metadata], echoed back verbatim (the SDK never reads or mutates
  * it) so the host can correlate this event to the originating call — `null` when

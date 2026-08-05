@@ -16,13 +16,18 @@ import com.getlokalapp.paymentsdk.upi.UpiApp
 import com.getlokalapp.paymentsdk.upi.detectInstalledUpiApps
 import com.getlokalapp.util.LokalLogger
 import com.getlokalapp.util.Log
-import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.onStart
-import kotlinx.coroutines.flow.transform
-import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.launch
 
 /**
  * Entry point for the shared Lokal Payment SDK.
@@ -45,16 +50,14 @@ object LokalPaymentSdk {
     private val handlers = mutableMapOf<PaymentGateway, PaymentGatewayHandler>()
     private val unavailable = mutableMapOf<PaymentGateway, UnavailableGateway>()
 
+    private val paymentScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val mutablePaymentEvents = MutableSharedFlow<LokalPaymentEvent>()
+
     /**
-     * Global single-flight guard: at most one [pay] flow may be collecting at
-     * a time, across every gateway. A second [pay] collection that starts
-     * while one is already in flight is rejected immediately with a terminal
-     * [PaymentResult.Failure] carrying the [ALREADY_IN_PROGRESS] code, rather
-     * than launching a second checkout. This is the SDK-level safety net
-     * beneath any host-side double-tap debouncing — it stops two proxy
-     * Activities / checkout sheets from ever opening at once.
+     * SDK-wide stream of payment lifecycle and result events. Hosts must start
+     * collecting before calling [pay]. Events are not replayed to late collectors.
      */
-    private val inFlight = Mutex()
+    val paymentEvents: SharedFlow<LokalPaymentEvent> = mutablePaymentEvents.asSharedFlow()
 
     /**
      * Called from a gateway singleton's own `init` block — not something a
@@ -113,76 +116,108 @@ object LokalPaymentSdk {
     }
 
     /**
-     * Runs a payment for the given order and emits [LokalPaymentEvent]s: each wraps a gateway's
+     * Starts a payment for the given order. Events are published to [paymentEvents]: each wraps a gateway's
      * own [PaymentGatewayEvent] with the resolved [gateway][LokalPaymentEvent.gateway] and the
      * host's [metadata][LokalPaymentEvent.metadata]. The wrapped event is an optional
      * [PaymentGatewayEvent.GatewayUi] pair (see its kdoc for what it means and which gateways emit
-     * it), then exactly one terminal [PaymentResult], before completing.
+     * it), then a terminal [PaymentResult]. This function returns immediately;
+     * the host owns repeat-tap prevention and the backend owns payment idempotency.
      *
-     * @param order the host's create-order response, already decoded into a [PaymentOrder]
+    * @param order the host's create-order response, already decoded into a [PaymentOrder]
      */
-    fun pay(order: PaymentOrder): Flow<LokalPaymentEvent> {
+    fun pay(order: PaymentOrder) {
+        val handler = registeredHandlerOrReportUnavailable(order) ?: return
+        paymentScope.launch {
+            // Every gateway gets the GatewayUi pair. A gateway that renders in-place
+            // (SELF_REPORTS_UI, i.e. Juspay) emits its own precise Presented; for the rest the
+            // SDK prepends a default one at flow start (handoff). Either way it flows through the
+            // same handling below, which tracks it and synthesizes the matching Dismissed just
+            // before the terminal — so a host never sees a lone Presented.
+            var uiPresented = false
+            val selfReportsUi = GatewayCapability.SELF_REPORTS_UI in handler.capabilities
+            flow {
+                // Keep creation inside the flow so catch also handles a handler that throws
+                // synchronously before returning its gateway event flow.
+                emitAll(handler.pay(order.gatewayConfig))
+            }
+                .onStart { if (!selfReportsUi) emit(PaymentGatewayEvent.GatewayUi.Presented) }
+                .catch { throwable -> emitPaymentFailure(order, throwable) }
+                .collect { event ->
+                    when (event) {
+                        is PaymentGatewayEvent.GatewayUi -> {
+                            if (event is PaymentGatewayEvent.GatewayUi.Presented) {
+                                uiPresented = true
+                                Log.d { "[$TAG] ${order.gateway} presented its UI" }
+                            }
+                        }
+
+                        is PaymentResult -> {
+                            if (uiPresented) {
+                                emit(order, PaymentGatewayEvent.GatewayUi.Dismissed)
+                            }
+                            logTerminalResult(order.gateway, event)
+                        }
+                    }
+                    emit(order, event)
+                }
+        }
+    }
+
+    private fun registeredHandlerOrReportUnavailable(order: PaymentOrder): PaymentGatewayHandler? {
         val handler = handlers[order.gateway]
         Log.d { "[$TAG] pay() called for ${order.gateway}, handlerRegistered=${handler != null}" }
         if (handler == null) {
-            val error = unavailableError(order.gateway)
-            Log.w { "[$TAG] pay() rejected for ${order.gateway}: no handler registered (${error.code})" }
-            Log.nonFatal(
-                IllegalStateException("pay() called for ${order.gateway} with no handler registered"),
-                extras = mapOf("gateway" to order.gateway.name, "reason_code" to (error.code ?: "unknown")),
-            ) { "[$TAG] no handler registered for ${order.gateway}" }
-            return flowOf(LokalPaymentEvent(order.gateway, error, order.metadata))
+            return rejectPayment(
+                order = order,
+                error = unavailableError(order.gateway),
+                reason = "no handler registered",
+            )
         }
-        return flow {
-            if (!inFlight.tryLock()) {
-                Log.w {
-                    "[$TAG] pay() rejected for ${order.gateway}: another payment is already in progress"
-                }
-                emit(LokalPaymentEvent(order.gateway, alreadyInProgressError(), order.metadata))
-                return@flow
-            }
-            try {
-                // Every gateway gets the GatewayUi pair. A gateway that renders in-place
-                // (SELF_REPORTS_UI, i.e. Juspay) emits its own precise Presented; for the rest the
-                // SDK prepends a default one at flow start (handoff). Either way it flows through the
-                // same handling below, which tracks it and synthesizes the matching Dismissed just
-                // before the terminal — so a host never sees a lone Presented.
-                var uiPresented = false
-                val gatewayEvents = handler.pay(order.gatewayConfig)
-                val selfReportsUi = GatewayCapability.SELF_REPORTS_UI in handler.capabilities
-                emitAll(
-                    gatewayEvents
-                        .onStart { if (!selfReportsUi) emit(PaymentGatewayEvent.GatewayUi.Presented) }
-                        .transform { event ->
-                            when (event) {
-                                is PaymentGatewayEvent.GatewayUi -> {
-                                    if (event is PaymentGatewayEvent.GatewayUi.Presented) {
-                                        uiPresented = true
-                                        Log.d { "[$TAG] ${order.gateway} presented its UI" }
-                                    }
-                                    emit(LokalPaymentEvent(order.gateway, event, order.metadata))
-                                }
 
-                                is PaymentResult -> {
-                                    if (uiPresented) {
-                                        emit(
-                                            LokalPaymentEvent(
-                                                order.gateway,
-                                                PaymentGatewayEvent.GatewayUi.Dismissed,
-                                                order.metadata
-                                            )
-                                        )
-                                    }
-                                    logTerminalResult(order.gateway, event)
-                                    emit(LokalPaymentEvent(order.gateway, event, order.metadata))
-                                }
-                            }
-                        },
-                )
-            } finally {
-                inFlight.unlock()
-            }
+        return when (val readiness = handler.readiness()) {
+            GatewayReadiness.Ready -> handler
+            is GatewayReadiness.NotReady -> rejectPayment(
+                order = order,
+                error = PaymentResult.Failure(
+                    code = readiness.reasonCode,
+                    message = readiness.reasonMessage,
+                ),
+                reason = "gateway not ready",
+            )
         }
+    }
+
+    private fun rejectPayment(
+        order: PaymentOrder,
+        error: PaymentResult.Failure,
+        reason: String,
+    ): PaymentGatewayHandler? {
+        Log.w { "[$TAG] pay() rejected for ${order.gateway}: $reason (${error.code})" }
+        Log.nonFatal(
+            IllegalStateException("pay() called for ${order.gateway}: $reason"),
+            extras = mapOf("gateway" to order.gateway.name, "reason_code" to (error.code ?: "unknown")),
+        ) { "[$TAG] $reason for ${order.gateway}" }
+        paymentScope.launch { emit(order, error) }
+        return null
+    }
+
+    private suspend fun emitPaymentFailure(order: PaymentOrder, throwable: Throwable) {
+        Log.nonFatal(throwable, extras = mapOf("gateway" to order.gateway.name)) {
+            "[$TAG] ${order.gateway} payment flow failed"
+        }
+        emit(
+            order,
+            PaymentResult.Failure(
+                code = "payment_flow_failed",
+                message = "Payment flow failed unexpectedly.",
+            ),
+        )
+    }
+
+    private suspend fun emit(order: PaymentOrder, event: PaymentGatewayEvent) {
+        mutablePaymentEvents.emit(
+            LokalPaymentEvent(order.gateway, event, order.metadata),
+        )
     }
 
     private fun logTerminalResult(gateway: PaymentGateway, result: PaymentResult) {
@@ -193,12 +228,6 @@ object LokalPaymentSdk {
             Log.d { description }
         }
     }
-
-    private fun alreadyInProgressError(): PaymentResult.Failure =
-        PaymentResult.Failure(
-            code = ALREADY_IN_PROGRESS,
-            message = "A payment is already in progress; ignoring this concurrent pay() call.",
-        )
 
     private fun unavailableError(gateway: PaymentGateway): PaymentResult.Failure {
         val reason = unavailable[gateway]
@@ -244,11 +273,4 @@ object LokalPaymentSdk {
 
     const val VERSION: String = PAYMENT_SDK_VERSION
 
-    /**
-     * Stable [PaymentResult.Failure.code] on the terminal [PaymentResult.Failure] emitted
-     * when a [pay] call is rejected because another payment is already in flight
-     * (see [inFlight]). Hosts can match on this to silently ignore a double-tap
-     * rather than surfacing it as a real failure.
-     */
-    const val ALREADY_IN_PROGRESS: String = "already_in_progress"
 }

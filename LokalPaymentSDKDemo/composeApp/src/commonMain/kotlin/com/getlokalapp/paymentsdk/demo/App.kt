@@ -13,10 +13,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -24,8 +24,6 @@ import androidx.compose.ui.unit.dp
 import com.getlokalapp.paymentsdk.LokalPaymentSdk
 import com.getlokalapp.paymentsdk.juspay.JuspaySdk
 import com.getlokalapp.paymentsdk.model.PaymentGateway
-import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.launch
 
 // Each gated "Pay with …" button is just a (gateway, sample, label) triple.
 private data class PaymentDemo(
@@ -53,25 +51,26 @@ fun App() {
                 LokalPaymentSdk.gatewayStatus()
             }
             val registeredGateways = gatewayStatus.available.map { it.gateway }
-            val scope = rememberCoroutineScope()
-
             var status by remember { mutableStateOf("LokalPayment SDK ${LokalPaymentSdk.VERSION}") }
             var inFlight by remember { mutableStateOf(false) }
 
-            fun pay(orderResponseJson: String) {
-                scope.launch {
-                    inFlight = true
-                    val order = runCatching { parseOrder(orderResponseJson) }
-                        .getOrElse {
-                            status = "Error: ${it.message}"
-                            inFlight = false
-                            return@launch
-                        }
-                        LokalPaymentSdk.pay(order)
-                        .catch { status = "Error: ${it.message}" }
-                        .collect { status = render(it) }
-                    inFlight = false
+            LaunchedEffect(Unit) {
+                LokalPaymentSdk.paymentEvents.collect { event ->
+                    status = render(event)
+                    if (event.event is com.getlokalapp.paymentsdk.model.PaymentGatewayEvent.PaymentResult) {
+                        inFlight = false
+                    }
                 }
+            }
+
+            fun pay(orderResponseJson: String) {
+                val order = runCatching { parseOrder(orderResponseJson) }
+                    .getOrElse {
+                        status = "Error: ${it.message}"
+                        return
+                    }
+                inFlight = true
+                LokalPaymentSdk.pay(order)
             }
 
             Column(
