@@ -3,8 +3,10 @@ package com.getlokalapp.paymentsdk.nativeiap
 import com.getlokalapp.paymentsdk.GatewayResultScope
 import com.getlokalapp.paymentsdk.LokalPaymentSdk
 import com.getlokalapp.paymentsdk.TypedPaymentGatewayHandler
+import com.getlokalapp.paymentsdk.model.GatewayCapability
 import com.getlokalapp.paymentsdk.model.GatewayMetadata
 import com.getlokalapp.paymentsdk.model.PaymentGateway
+import com.getlokalapp.paymentsdk.model.PaymentGatewayEvent
 import com.getlokalapp.paymentsdk.model.describeForLog
 import com.getlokalapp.util.Log
 import kotlinx.coroutines.Job
@@ -29,6 +31,12 @@ internal object NativeIapGatewayHandler : TypedPaymentGatewayHandler<NativeIapCo
         moduleVersion = MODULE_VERSION,
         vendorSdkVersion = VENDOR_SDK_VERSION,
     )
+
+    // StoreKit's sheet doesn't come up when pay() is called — resolving the product with the App
+    // Store happens first, and that round trip runs into seconds when cold or in Sandbox. The
+    // SDK's default Presented (emitted at flow start) would tell a host the sheet is up while the
+    // screen is still blank, so this gateway reports its own from the handoff point instead.
+    override val capabilities: Set<GatewayCapability> = setOf(GatewayCapability.SELF_REPORTS_UI)
 
     override val configSerializer = NativeIapConfig.serializer()
 
@@ -57,7 +65,10 @@ internal object NativeIapGatewayHandler : TypedPaymentGatewayHandler<NativeIapCo
         }
 
         Log.d { "[$TAG] purchasing productId=${config.productId}" }
-        val direct = client.purchase(config.productId, config.appAccountToken)
+        val direct = client.purchase(config.productId, config.appAccountToken) {
+            Log.d { "[$TAG] handing off to StoreKit for productId=${config.productId}" }
+            sendUi(PaymentGatewayEvent.GatewayUi.Presented)
+        }
         if (!emitIfTerminal(direct)) {
             Log.d { "[$TAG] purchase pending, waiting on transactionUpdates for productId=${config.productId}" }
             updatesJob = launch {

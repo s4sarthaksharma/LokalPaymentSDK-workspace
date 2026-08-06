@@ -145,7 +145,7 @@ Two names, deliberately different — getting them swapped is the most common mi
 
 | Purpose | Name (demo) |
 | --- | --- |
-| **Product** your target links | `<xcFrameworkName>Umbrella` (`LokalPaymentSDKDemoUmbrella`) |
+| **Product** your target links | `<xcFrameworkName>PaymentsUmbrella` (`LokalPaymentSDKDemoPaymentsUmbrella`) |
 | **Module** you `import` in Swift | `<xcFrameworkName>` (`LokalPaymentSDKDemo`) |
 
 Point your project at `…/<module>/build/lokal/spmPackage`. In a committed spec use a path
@@ -161,7 +161,7 @@ targets:
   MyApp:
     dependencies:
       - package: LokalPaymentSDK
-        product: LokalPaymentSDKDemoUmbrella
+        product: LokalPaymentSDKDemoPaymentsUmbrella
 ```
 
 ### Tuist — `Project.swift`
@@ -174,7 +174,7 @@ let project = Project(
         .target(
             name: "MyApp",
             // …
-            dependencies: [.package(product: "LokalPaymentSDKDemoUmbrella")]
+            dependencies: [.package(product: "LokalPaymentSDKDemoPaymentsUmbrella")]
         ),
     ]
 )
@@ -188,7 +188,7 @@ let project = Project(
 
 The demo commits its `.xcodeproj` directly, so it uses the GUI once:
 **File ▸ Add Package Dependencies… ▸ Add Local…** → select `composeApp/build/lokal/spmPackage`
-→ add the `…Umbrella` product to the app target. If you are **migrating from the old
+→ add the `…PaymentsUmbrella` product to the app target. If you are **migrating from the old
 CocoaPods setup**, also delete the leftover "Compile Kotlin Framework" run-script build
 phase (the one calling `embedAndSignAppleFrameworkForXcode`) — the binary target supplies
 the framework now, and keeping both double-links. A fresh app never has that phase.
@@ -280,7 +280,7 @@ There is no generated companion document. This guide is the whole story; everyth
 does to your project it announces in the Gradle sync log:
 
 ```
-LokalPaymentSDK: wired local package 'ComposeAppUmbrella' into …/project.pbxproj
+LokalPaymentSDK: wired local package 'ComposeAppPaymentsUmbrella' into …/project.pbxproj
 LokalPaymentSDK: wired resource 'LokalJuspayConfig.json' into …/project.pbxproj
 LokalPaymentSDK: registered the prebuild pre-action in …/iosApp.xcscheme
 LokalPaymentSDK: merged LSApplicationQueriesSchemes into …/Info.plist

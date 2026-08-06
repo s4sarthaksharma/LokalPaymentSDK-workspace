@@ -90,7 +90,12 @@ class LokalPaymentPlugin : Plugin<Project> {
             // HostContribution kind a compile error rather than a silently ignored one.
             val contributed = contributions.bucketed()
 
-            val umbrellaTargetName = "${xcFrameworkName}Umbrella"
+            // Host name first so the package is unique per host and stays visibly related to the
+            // framework the app imports; "Payments" so a developer meeting this package in Xcode's
+            // package list can tell what generated it without opening Package.swift. Derived, not
+            // configurable: the SDK owns this name, and a host toggle would only let the two halves
+            // (link `<name>PaymentsUmbrella`, import `<name>`) drift apart.
+            val umbrellaTargetName = "${xcFrameworkName}PaymentsUmbrella"
 
             // The generated binaryTarget points at a fixed XCFrameworks/current/ that gets
             // restaged per Xcode configuration, from tasks the pre-build step drives (see

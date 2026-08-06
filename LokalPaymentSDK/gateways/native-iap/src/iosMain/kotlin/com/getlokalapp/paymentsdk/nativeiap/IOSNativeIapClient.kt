@@ -35,11 +35,16 @@ internal class IOSNativeIapClient : NativeIapClient {
         awaitClose { NativeIapBridge.shared.setTransactionUpdateHandler(null) }
     }
 
-    override suspend fun purchase(productId: String, appAccountToken: String?): NativeIapPurchaseResult {
+    override suspend fun purchase(
+        productId: String,
+        appAccountToken: String?,
+        onPresented: () -> Unit,
+    ): NativeIapPurchaseResult {
         val deferred = CompletableDeferred<NativeIapPurchaseResult>()
         NativeIapBridge.shared.purchaseProductWithProductId(
             productId = productId,
             appAccountToken = appAccountToken,
+            onPresented = { onPresented() },
             completion = { result -> deferred.complete(result.toDomainOrFailure()) },
         )
         return deferred.await()

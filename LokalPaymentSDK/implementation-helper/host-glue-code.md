@@ -69,13 +69,13 @@ fun MainViewController(): UIViewController = ComposeUIViewController { App() }
 The `lokal-payment` plugin generates a **local Swift package** at
 `<module>/build/lokal/spmPackage`. Its Package.swift declares:
 
-- a **library product** named `<xcFrameworkName>Umbrella` — this is what the app
+- a **library product** named `<xcFrameworkName>PaymentsUmbrella` — this is what the app
   target *links*, and
 - a **binary target** named `<xcFrameworkName>` (wrapping the `.xcframework`) —
   this is what Swift code *imports*.
 
 So the umbrella-product name and the import name deliberately differ by the
-`Umbrella` suffix. Don't mix them up.
+`PaymentsUmbrella` suffix. Don't mix them up.
 
 1. **Generate the package + framework first** (see the runbook's §6 Verify) — the
    folder only exists after a Gradle run. If Xcode can't find it, you built
@@ -87,7 +87,7 @@ So the umbrella-product name and the import name deliberately differ by the
    next build.
    - *File ▸ Add Package Dependencies… ▸ Add Local…* → select
      `<module>/build/lokal/spmPackage`.
-   - Add the **`<xcFrameworkName>Umbrella`** library product to the app target.
+   - Add the **`<xcFrameworkName>PaymentsUmbrella`** library product to the app target.
    - (In the demo `iosApp.xcodeproj` this shows up as an
      `XCLocalSwiftPackageReference` with
      `relativePath = ../composeApp/build/lokal/spmPackage`.)
@@ -104,7 +104,7 @@ So the umbrella-product name and the import name deliberately differ by the
 
    ```swift
    import SwiftUI
-   import MyHostApp // == xcFrameworkName (NOT MyHostAppUmbrella)
+   import MyHostApp // == xcFrameworkName (NOT MyHostAppPaymentsUmbrella)
 
    struct ComposeView: UIViewControllerRepresentable {
        func makeUIViewController(context: Context) -> UIViewController {

@@ -98,6 +98,12 @@ val vendorXcFrameworksDir = fetchHyperSdkXcFramework.map {
 // cinterops are configured below with plain compilerOpts strings, so Gradle can't infer this
 // dependency on its own — same wiring as razorpay-checkout's fetch task.
 tasks.matching { it.name.startsWith("cinteropHyperSDK") }.configureEach {
+    // Same reasoning as razorpay-checkout's cinterop inputs: dependsOn orders, these invalidate.
+    // All three versions, since all three frameworks are on the -F path and any of their headers
+    // can change what the bindings resolve to.
+    inputs.property("hypersdk", iosVendorSdkVersion)
+    inputs.property("hypercore", hyperCoreVersion)
+    inputs.property("airborne", airborneVersion)
     dependsOn(fetchHyperSdkXcFramework)
 }
 

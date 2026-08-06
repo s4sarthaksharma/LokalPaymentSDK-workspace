@@ -91,8 +91,11 @@ sealed interface GatewayReadiness {
  */
 enum class GatewayCapability {
     /**
-     * The gateway renders its UI in-place inside the host's own view (Juspay's HyperSDK Fragment)
-     * and reports the [PaymentGatewayEvent.GatewayUi.Presented] moment itself, precisely. For a
+     * Flow start is not when this gateway's UI actually appears, so it reports the
+     * [PaymentGatewayEvent.GatewayUi.Presented] moment itself, precisely. Two shapes today: a
+     * gateway that renders in-place inside the host's own view (Juspay's HyperSDK Fragment), and
+     * one with slow async work ahead of its UI (`:native-iap` resolving the product with the App
+     * Store before StoreKit's sheet can come up). For a
      * gateway *without* this capability the SDK brackets the [PaymentGatewayEvent.GatewayUi]
      * lifecycle by default — emitting [PaymentGatewayEvent.GatewayUi.Presented] at flow start and
      * [PaymentGatewayEvent.GatewayUi.Dismissed] before the terminal — so every gateway produces the

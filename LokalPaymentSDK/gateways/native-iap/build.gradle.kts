@@ -107,6 +107,13 @@ val nativeIapBridgeInteropDir = generateNativeIapBridgeInterface.map {
 // cinterops are configured below with plain compilerOpts strings, so Gradle can't infer this
 // dependency on its own — same wiring as razorpay-checkout's fetch task.
 tasks.matching { it.name.startsWith("cinteropNativeIapBridge") }.configureEach {
+    // dependsOn only orders these two — it says nothing about whether cinterop needs to re-run,
+    // and the generated header reaches it as an opaque `-I` string Gradle can't see into. Without
+    // the generated dir as a declared input, an @objc signature change in NativeIapBridge.swift
+    // regenerates the header but leaves the bindings UP-TO-DATE, and iosMain then fails to compile
+    // against the stale interface ("No parameter with name ..."). Content-hashed, so a Swift edit
+    // that doesn't alter the emitted ObjC surface still skips.
+    inputs.dir(nativeIapBridgeInteropDir)
     dependsOn(generateNativeIapBridgeInterface)
 }
 

@@ -63,9 +63,18 @@ import StoreKit
         transactionUpdateHandler = handler
     }
 
+    /// [onPresented] fires once the product has resolved and StoreKit is about to
+    /// take over — the closest observable proxy for "the payment sheet is coming
+    /// up", since StoreKit 2 has no sheet-presentation callback. Everything before
+    /// it is our own `Product.products(for:)` round trip, which can run into
+    /// seconds on a cold or Sandbox connection; Kotlin turns this into
+    /// `GatewayUi.Presented` so a host can hold its loader for the real duration
+    /// instead of dropping it the moment `pay()` is called. Not fired when the
+    /// product lookup fails — no sheet ever appears on that path.
     @objc public func purchaseProduct(
         productId: String,
         appAccountToken: String?,
+        onPresented: @escaping () -> Void,
         completion: @escaping (NativeIapResult) -> Void
     ) {
         Task {
@@ -88,6 +97,7 @@ import StoreKit
                     options.insert(.appAccountToken(token))
                 }
 
+                onPresented()
                 let result = try await product.purchase(options: options)
                 switch result {
                 case .success(let verificationResult):

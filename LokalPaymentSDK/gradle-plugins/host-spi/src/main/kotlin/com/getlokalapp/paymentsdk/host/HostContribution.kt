@@ -161,9 +161,9 @@ data class PrebuildStep(
  *
  * [path] is an absolute path to the already-written file. The umbrella plugin adds every
  * declared file to the host's Resources build phase when the host opted in via
- * `lokalPaymentSdk { iosXcodeProject = … }`, and otherwise lists them in the generated
- * docs/integrating-the-sdk.md for the app to declare in its own XcodeGen/Tuist spec — the same two-path
- * shape as [InfoPlistEntries].
+ * `lokalPaymentSdk { iosXcodeProject = … }`, logging a `wired resource '…'` line per file;
+ * otherwise the app declares them as resources in its own XcodeGen/Tuist spec, which
+ * docs/integrating-the-sdk.md §5 walks through — the same two-path shape as [InfoPlistEntries].
  */
 data class BundledResource(
     val path: String,

@@ -85,6 +85,12 @@ val razorpayXcFrameworkDir = fetchRazorpayXcFramework.map {
 // cinterops are configured below via plain compilerOpts strings, so Gradle can't infer
 // this dependency on its own.
 tasks.matching { it.name.startsWith("cinteropRazorpay") }.configureEach {
+    // dependsOn only orders these two; without a declared input the bindings stay UP-TO-DATE
+    // across a vendor bump — exactly when the ObjC surface changes — and iosMain compiles against
+    // the previous version's interface. The pinned version fully determines the fetched headers,
+    // so tracking it is as precise as snapshotting the xcframework and far cheaper than hashing
+    // a tree that size on every build.
+    inputs.property("razorpayPodVersion", iosVendorSdkVersion)
     dependsOn(fetchRazorpayXcFramework)
 }
 

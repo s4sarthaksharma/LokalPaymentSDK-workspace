@@ -9,8 +9,20 @@ import kotlinx.coroutines.flow.Flow
  */
 internal interface NativeIapClient {
 
-    /** Drives a single purchase attempt; may resolve [NativeIapPurchaseResult.Pending]. */
-    suspend fun purchase(productId: String, appAccountToken: String?): NativeIapPurchaseResult
+    /**
+     * Drives a single purchase attempt; may resolve [NativeIapPurchaseResult.Pending].
+     *
+     * [onPresented] is invoked at most once, before this returns, when the store is about to put
+     * its own payment UI on screen — the work before that point (resolving the product with the
+     * store) is ours and can take seconds, so a handler turns this into
+     * `GatewayUi.Presented` rather than claiming the UI is up the moment `pay()` starts. Not
+     * invoked when the attempt fails before reaching the store's UI. May arrive on any thread.
+     */
+    suspend fun purchase(
+        productId: String,
+        appAccountToken: String?,
+        onPresented: () -> Unit,
+    ): NativeIapPurchaseResult
 
     /**
      * Deferred/restored transactions the store reports outside any single

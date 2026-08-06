@@ -18,13 +18,14 @@ enum class CancelReason {
  * either a non-terminal [GatewayUi] lifecycle signal, or a terminal [PaymentResult] — which is
  * itself a `PaymentGatewayEvent`, so a gateway emits the result directly with no wrapper.
  *
- * [GatewayUi] is optional, non-terminal lifecycle information about the gateway's own UI. A
- * gateway emits [GatewayUi.Presented] at most once, always before the terminal [PaymentResult],
- * to mean "I've taken over my own UI now (a full-screen sheet, an in-place Fragment/WebView, ...)
- * - it's safe to drop whatever 'please wait' UI you were showing since the call to pay()." Most
- * gateways never emit it at all (they launch their own Activity/sheet, which already covers a
- * host's loader with no signal needed); only a gateway whose UI renders in-place - Juspay's
- * HyperSDK Android Fragment being the one case today - has a use for it. The matching
+ * [GatewayUi] is non-terminal lifecycle information about the gateway's own UI. [GatewayUi.Presented]
+ * arrives at most once, always before the terminal [PaymentResult], and means "the gateway has taken
+ * over the screen now (a full-screen sheet, an in-place Fragment/WebView, ...) - it's safe to drop
+ * whatever 'please wait' UI you were showing since the call to pay()." Most gateways take over as
+ * good as immediately, so [com.getlokalapp.paymentsdk.LokalPaymentSdk.pay] emits their Presented at
+ * flow start on their behalf; a gateway that needs slow work *before* its UI can appear declares
+ * [com.getlokalapp.paymentsdk.model.GatewayCapability.SELF_REPORTS_UI] and emits its own at the right
+ * moment instead. The matching
  * [GatewayUi.Dismissed] is synthesized by [com.getlokalapp.paymentsdk.LokalPaymentSdk.pay] itself,
  * right before the terminal, whenever a [GatewayUi.Presented] was emitted - so a host always sees
  * the two as a matched pair (or neither), never a lone Presented.
@@ -34,13 +35,13 @@ enum class CancelReason {
 sealed interface PaymentGatewayEvent {
 
     /**
-     * The gateway's own UI lifecycle - a non-terminal, paired signal for gateways that render
-     * in-place (Juspay's HyperSDK Fragment being the only case today). A gateway that presents its
-     * UI emits [Presented]; [com.getlokalapp.paymentsdk.LokalPaymentSdk.pay] then guarantees a
+     * The gateway's own UI lifecycle - a non-terminal, paired signal every gateway produces.
+     * [Presented] comes either from the SDK at flow start or, for a
+     * [GatewayCapability.SELF_REPORTS_UI] gateway, from the gateway itself at the precise moment;
+     * [com.getlokalapp.paymentsdk.LokalPaymentSdk.pay] then guarantees a
      * matching [Dismissed] right before the terminal [PaymentResult], so a host that reacts to
      * [Presented] (pausing a video, hiding a loader, ...) can cleanly undo it on [Dismissed]
-     * without having to treat "any terminal" as the dismissal. Gateways that launch their own
-     * Activity/sheet never present, so a host sees neither.
+     * without having to treat "any terminal" as the dismissal.
      */
     sealed interface GatewayUi : PaymentGatewayEvent {
         data object Presented : GatewayUi
