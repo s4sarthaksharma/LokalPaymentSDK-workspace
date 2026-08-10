@@ -26,6 +26,8 @@ import platform.WebKit.WKUserScriptInjectionTime.WKUserScriptInjectionTimeAtDocu
 import platform.WebKit.WKWebView
 import platform.WebKit.WKWebViewConfiguration
 import platform.darwin.NSObject
+import platform.darwin.dispatch_async
+import platform.darwin.dispatch_get_main_queue
 
 actual fun createWebViewSession(config: WebViewConfig): WebViewSession = IosWebViewSession(config)
 
@@ -61,7 +63,7 @@ internal class IosWebViewSession(private val config: WebViewConfig) : WebViewSes
     }
 
     override fun close() {
-        controller?.dismissViewControllerAnimated(true, null)
+        controller?.closeWithoutNotifyingListener()
     }
 
     private companion object {
@@ -94,6 +96,7 @@ private class WebViewController(
     private var webView: WKWebView? = null
     private var dispatcher: BridgeDispatcher? = null
     private var handlerAttached = false
+    private var notifyListenerOnClose = true
 
     override fun viewDidLoad() {
         super.viewDidLoad()
@@ -116,8 +119,10 @@ private class WebViewController(
                 ),
             )
         }
-        contentController.addScriptMessageHandler(WeakScriptMessageProxy(this), name = TRANSPORT_NAME)
-        handlerAttached = true
+        if (config.handlers.isNotEmpty() && config.bridgeHosts.isNotEmpty()) {
+            contentController.addScriptMessageHandler(WeakScriptMessageProxy(this), name = TRANSPORT_NAME)
+            handlerAttached = true
+        }
 
         val configuration = WKWebViewConfiguration()
         configuration.userContentController = contentController
@@ -140,8 +145,12 @@ private class WebViewController(
             ),
         )
         webView = wv
-        // Reply evaluation always on main (this delegate/handler already runs there).
-        dispatcher = BridgeDispatcher(config) { script -> wv.evaluateJavaScript(script, null) }
+        dispatcher = BridgeDispatcher(config) { script ->
+            // A handler may invoke its reply later from any thread.
+            dispatch_async(dispatch_get_main_queue()) {
+                wv.evaluateJavaScript(script, null)
+            }
+        }
     }
 
     fun loadRequest(request: WebViewRequest) {
@@ -159,12 +168,20 @@ private class WebViewController(
         webView?.evaluateJavaScript(script) { result, _ -> onResult?.invoke(result?.toString()) }
     }
 
+    fun closeWithoutNotifyingListener() {
+        notifyListenerOnClose = false
+        dismissViewControllerAnimated(true, null)
+    }
+
     override fun userContentController(
         userContentController: WKUserContentController,
         didReceiveScriptMessage: WKScriptMessage,
     ) {
         if (didReceiveScriptMessage.name != TRANSPORT_NAME) return
-        if (!isOriginAllowed(config.allowedOrigins, webView?.URL?.absoluteString)) return
+        val frame = didReceiveScriptMessage.frameInfo
+        if (!frame.mainFrame) return
+        val origin = frame.securityOrigin
+        if (!isBridgeHostAllowed(config.bridgeHosts, origin.protocol, origin.host)) return
         val body = didReceiveScriptMessage.body as? String ?: return
         dispatcher?.dispatch(body)
     }
@@ -203,7 +220,7 @@ private class WebViewController(
         }
         webView?.navigationDelegate = null
         onClosed()
-        config.listener?.onClosed()
+        if (notifyListenerOnClose) config.listener?.onClosed()
     }
 }
 

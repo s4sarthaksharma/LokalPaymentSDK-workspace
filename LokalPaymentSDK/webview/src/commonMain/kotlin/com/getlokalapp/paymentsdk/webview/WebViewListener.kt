@@ -22,7 +22,10 @@ interface WebViewListener {
      */
     fun onNavigation(url: String): Boolean = false
 
-    /** The WebView was dismissed — user-initiated (back/swipe) or via [WebViewSession.close]. */
+    /**
+     * The WebView was dismissed by the user or system (for example back/swipe).
+     * A caller-initiated [WebViewSession.close] is deliberately silent.
+     */
     fun onClosed() {}
 
     /** A session-level failure with a machine-checkable [code] and a message. */

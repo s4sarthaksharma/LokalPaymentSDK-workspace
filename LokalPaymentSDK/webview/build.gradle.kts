@@ -48,6 +48,7 @@ kotlin {
             // WebView (ViewCompat/WindowCompat/WindowInsetsCompat). Views, no Compose.
             implementation(libs.androidx.core)
             implementation(libs.androidx.activity)
+            implementation(libs.androidx.webkit)
         }
     }
 }

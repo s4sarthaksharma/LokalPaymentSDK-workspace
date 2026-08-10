@@ -6,7 +6,6 @@ import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
 import android.view.ViewGroup
-import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -16,6 +15,9 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
+import com.getlokalapp.util.Log
 
 /**
  * Internal proxy Activity that owns the `android.webkit.WebView`. Keeping it
@@ -30,6 +32,8 @@ internal class WebViewActivity : ComponentActivity() {
 
     private var session: AndroidWebViewSession? = null
     private var webView: WebView? = null
+    private var bridgeAttached = false
+    private var terminalFailureReported = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -74,16 +78,19 @@ internal class WebViewActivity : ComponentActivity() {
         wv.settings.javaScriptEnabled = config.javaScriptEnabled
         wv.settings.domStorageEnabled = config.domStorageEnabled
 
-        val dispatcher = BridgeDispatcher(config) { script -> runOnUiThread { wv.evaluateJavascript(script, null) } }
-        wv.addJavascriptInterface(
-            TransportBridge(
-                config = config,
-                dispatcher = dispatcher,
-                mainPost = ::runOnUiThread,
-                currentUrl = { wv.url },
-            ),
-            TRANSPORT_NAME,
-        )
+        if (config.handlers.isNotEmpty() && config.bridgeHosts.isNotEmpty()) {
+            if (!attachBridge(wv, config)) {
+                terminalFailureReported = true
+                val providerVersion = WebViewCompat.getCurrentWebViewPackage(this)?.versionName ?: "unknown"
+                Log.w {
+                    "[WebView] $BRIDGE_UNAVAILABLE, providerVersion=$providerVersion"
+                }
+                config.listener?.onError(BRIDGE_UNAVAILABLE, "Secure WebView messaging is unavailable.")
+                finish()
+                return
+            }
+            bridgeAttached = true
+        }
 
         wv.webViewClient = object : WebViewClient() {
             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
@@ -143,14 +150,19 @@ internal class WebViewActivity : ComponentActivity() {
         // pinned in the static slot if the launch was never consumed elsewhere.
         if (WebViewLaunchBridge.pending === current) WebViewLaunchBridge.pending = null
         current?.pendingRequest = null
-        current?.config?.listener?.onClosed()
+        if (!terminalFailureReported && current?.closeRequested != true) {
+            current?.config?.listener?.onClosed()
+        }
         session = null
         // Full WebView teardown: detach the JS bridge, stop loads, and remove it
         // from the view tree before destroy() so a stray reference can't keep the
         // (Activity-context) WebView — and thus the Activity — alive.
         webView?.let { wv ->
             wv.stopLoading()
-            wv.removeJavascriptInterface(TRANSPORT_NAME)
+            if (bridgeAttached) {
+                WebViewCompat.removeWebMessageListener(wv, TRANSPORT_NAME)
+                bridgeAttached = false
+            }
             (wv.parent as? ViewGroup)?.removeView(wv)
             wv.destroy()
         }
@@ -160,22 +172,28 @@ internal class WebViewActivity : ComponentActivity() {
 }
 
 /**
- * The `@JavascriptInterface` object the shim relays through (registered under
- * [TRANSPORT_NAME]). `@JavascriptInterface` methods run on a background
- * (JavaBridge) thread, so [postMessage] hops to the main thread before touching
- * the WebView URL (origin check) and dispatching to handlers — matching iOS,
- * which delivers on main.
+ * Attaches a frame-aware AndroidX WebKit message listener. The WebView engine
+ * supplies the sending frame's origin and whether it is the main frame, so no
+ * authorization decision is based on the top-level WebView URL.
  */
-internal class TransportBridge(
-    private val config: WebViewConfig,
-    private val dispatcher: BridgeDispatcher,
-    private val mainPost: (Runnable) -> Unit,
-    private val currentUrl: () -> String?,
-) {
-    @JavascriptInterface
-    fun postMessage(message: String) {
-        mainPost(Runnable {
-            if (isOriginAllowed(config.allowedOrigins, currentUrl())) dispatcher.dispatch(message)
-        })
+private fun attachBridge(webView: WebView, config: WebViewConfig): Boolean {
+    if (!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)) return false
+
+    val dispatcher = BridgeDispatcher(config) { script ->
+        webView.post { webView.evaluateJavascript(script, null) }
     }
+    WebViewCompat.addWebMessageListener(
+        webView,
+        TRANSPORT_NAME,
+        setOf("*"),
+    ) { _, message, sourceOrigin, isMainFrame, _ ->
+        if (!isMainFrame) return@addWebMessageListener
+        if (!isBridgeHostAllowed(config.bridgeHosts, sourceOrigin.scheme, sourceOrigin.host)) {
+            return@addWebMessageListener
+        }
+        message.data?.let(dispatcher::dispatch)
+    }
+    return true
 }
+
+private const val BRIDGE_UNAVAILABLE = "secure_web_message_unavailable"

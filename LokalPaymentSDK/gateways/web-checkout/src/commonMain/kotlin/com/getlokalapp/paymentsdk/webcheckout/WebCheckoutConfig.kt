@@ -1,5 +1,7 @@
 package com.getlokalapp.paymentsdk.webcheckout
 
+import com.getlokalapp.paymentsdk.webview.TrustedWebHost
+import com.getlokalapp.paymentsdk.webview.trustedWebHostOf
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -22,14 +24,11 @@ internal data class WebCheckoutConfig(
 )
 
 /**
- * The scheme+host(+port) prefix of [url], used as the bridge's allowed origin so
- * only the gateway's own pages (`/callback`, `/cancel`, `/pay`) may post events —
- * never the provider's checkout domain. Prefix match, matching `:webview`'s
- * origin gating. Returns null when [url] has no scheme (allow-all fallback).
+ * Validates [url] as an absolute HTTPS checkout URL and returns its normalized
+ * scheme/host identity. The identity authorizes only the checkout host's pages
+ * to call the native bridge; provider redirects remain navigable but cannot
+ * report native payment events. Invalid input fails closed. Kept as a named
+ * gateway seam so a future production/staging host allowlist can be enforced
+ * here without leaking that policy into the generic `:webview` module.
  */
-internal fun originOf(url: String): String? {
-    val schemeSep = url.indexOf("://")
-    if (schemeSep < 0) return null
-    val pathStart = url.indexOf('/', startIndex = schemeSep + 3)
-    return if (pathStart < 0) url else url.substring(0, pathStart)
-}
+internal fun checkoutBridgeHost(url: String): TrustedWebHost? = trustedWebHostOf(url)

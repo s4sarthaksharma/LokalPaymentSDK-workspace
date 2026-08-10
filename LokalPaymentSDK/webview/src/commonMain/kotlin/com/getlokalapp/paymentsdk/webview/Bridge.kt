@@ -13,15 +13,15 @@ import kotlinx.serialization.json.JsonPrimitive
  * The single native transport channel both platforms funnel bridge traffic
  * through. Distinct from [WebViewConfig.bridgeName] (the page-facing global):
  * the page calls `window.<bridgeName>.postMessage(...)`, the shim relays it over
- * this fixed channel — Android as an `@JavascriptInterface` object of this name,
- * iOS as `window.webkit.messageHandlers.<this>`.
+ * this fixed channel — Android as an AndroidX WebKit `WebMessageListener`
+ * object of this name, iOS as `window.webkit.messageHandlers.<this>`.
  */
 internal const val TRANSPORT_NAME = "LokalNativeTransport"
 
 /** Global JS function the native side calls to resolve an awaited reply. */
 internal const val REPLY_FN = "__lokalBridgeReply__"
 
-/** Android shim: relays over `addJavascriptInterface`. */
+/** Android shim: relays over AndroidX WebKit's injected WebMessageListener object. */
 internal fun androidBridgeShim(bridgeName: String): String =
     bridgeShim(bridgeName, "$TRANSPORT_NAME.postMessage(envelope);")
 

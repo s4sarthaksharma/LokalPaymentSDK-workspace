@@ -17,9 +17,9 @@ plan covers only the KMP/native side.
   SDK. Same bridge path on both.
 - **Gateway URL comes from the backend** (`gatewayConfig`), fully built — the SDK
   does **not** assemble URLs or hold environment domains. The SDK opens it as-is.
-- **`allowedOrigins` is derived from the gateway URL's own origin** — only the
-  gateway's own pages (`/callback`, `/cancel`, `/pay` error) may post events; the
-  provider's checkout domain cannot.
+- **`bridgeHosts` is derived from the validated absolute HTTPS gateway URL's
+  normalized scheme/host** — only a main frame on the gateway host may post
+  events; provider pages and all subframes cannot.
 - `PAYMENT_SUCCESS → PaymentResult.Success`.
 - Module `:gateways:web-checkout`, gateway code `web_checkout`.
 - `provider` (dodo/stripe) stays **opaque** inside `gatewayConfig` — the SDK never
@@ -94,8 +94,9 @@ Not doing for v1: an `onBackPressed` hook (provider-specific back handling). Use
     factory that maps each to a `PaymentResult` and completes the flow.
   - `ReactNativeBridgeShim` — the `window.ReactNativeWebView` JS shim string passed
     via `WebViewConfig.userScripts`.
-- `pay()` flow: decode config → build `WebViewConfig(handlers = 7 events,
-  userScripts = [rn shim], allowedOrigins = [gatewayUrl origin], listener)` →
+- `pay()` flow: decode config → validate absolute HTTPS URL → build
+  `WebViewConfig(handlers = 7 events, userScripts = [rn shim], bridgeHosts =
+  [gatewayUrl scheme/host], listener)` →
   `createWebViewSession(config).load(WebViewRequest.Url(gatewayUrl))` →
   `trySend`+`close()` on first event; `onClosed` with no event → `Cancelled`;
   `awaitClose { session.close() }`.

@@ -33,6 +33,10 @@ internal class AndroidWebViewSession(internal val config: WebViewConfig) : WebVi
     @Volatile
     internal var activity: WebViewActivity? = null
 
+    /** True when teardown was initiated by [close], not by a user dismissal. */
+    @Volatile
+    internal var closeRequested: Boolean = false
+
     private val main = Handler(Looper.getMainLooper())
 
     override fun load(request: WebViewRequest) {
@@ -41,6 +45,10 @@ internal class AndroidWebViewSession(internal val config: WebViewConfig) : WebVi
             main.post { bound.loadRequest(request) }
             return
         }
+        // closeRequested belongs to one presentation. A session may be loaded
+        // again after close(), and that new presentation must report a later
+        // user dismissal normally.
+        closeRequested = false
         val host = ActivityTracker.current
         if (host == null) {
             config.listener?.onError(ERROR_NO_ACTIVITY, "webview_no_activity")
@@ -57,6 +65,7 @@ internal class AndroidWebViewSession(internal val config: WebViewConfig) : WebVi
     }
 
     override fun close() {
+        closeRequested = true
         // If close() lands before the Activity ever started, abandon the pending
         // launch so the static slot doesn't keep this session (and its host
         // listener/handlers) pinned.

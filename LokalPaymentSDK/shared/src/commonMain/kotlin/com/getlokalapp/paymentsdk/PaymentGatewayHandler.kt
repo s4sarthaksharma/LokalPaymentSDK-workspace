@@ -18,7 +18,7 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.json.JsonObject
-import kotlin.concurrent.atomics.AtomicReference
+import kotlin.concurrent.atomics.AtomicBoolean
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
 /**
@@ -143,7 +143,7 @@ fun <T> gatewayCallbackFlow(
 class GatewayResultScope internal constructor(
     private val producerScope: ProducerScope<PaymentGatewayEvent>,
 ) {
-    private val terminalSent = AtomicReference(false)
+    private val terminalSent = AtomicBoolean(false)
 
     /** Passthrough for the non-terminal [PaymentGatewayEvent.GatewayUi] signal — no guard needed. */
     fun sendUi(event: PaymentGatewayEvent.GatewayUi) {

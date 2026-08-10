@@ -58,6 +58,17 @@ internal object WebCheckoutGatewayHandler : TypedPaymentGatewayHandler<WebChecko
      * intent, the host must confirm final state with its own backend.
      */
     override suspend fun GatewayResultScope.handle(config: WebCheckoutConfig) {
+        val bridgeHost = checkoutBridgeHost(config.gatewayUrl)
+        if (bridgeHost == null) {
+            sendTerminal(
+                PaymentResult.Failure(
+                    code = INVALID_CHECKOUT_URL,
+                    message = "Checkout URL must be an absolute HTTPS URL.",
+                ),
+            )
+            return
+        }
+
         // First-wins: the page posts one event and closes; a bridge event then
         // dismisses the view, whose onClosed must not overwrite the real result — sendTerminal's
         // own guard is what actually enforces this now.
@@ -70,7 +81,7 @@ internal object WebCheckoutGatewayHandler : TypedPaymentGatewayHandler<WebChecko
             bridgeName = BRIDGE_NAME,
             handlers = webCheckoutHandlers(onResult = { settle(it) }),
             userScripts = listOf(REACT_NATIVE_BRIDGE_SHIM),
-            allowedOrigins = originOf(config.gatewayUrl)?.let { listOf(it) },
+            bridgeHosts = setOf(bridgeHost),
             listener = object : WebViewListener {
                 // Dismissed (Android hardware back) with no terminal event yet →
                 // user cancellation.
@@ -92,4 +103,6 @@ internal object WebCheckoutGatewayHandler : TypedPaymentGatewayHandler<WebChecko
 
         awaitClose { session.close() }
     }
+
+    private const val INVALID_CHECKOUT_URL = "invalid_checkout_url"
 }
