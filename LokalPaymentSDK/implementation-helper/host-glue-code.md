@@ -19,7 +19,7 @@ Assumes the build wiring in the runbook is already done — SDK plugins applied,
 `com.getlokalapp.paymentsdk:shared` (plus any gateways) resolvable.
 
 One dependency detail matters for the code below. The SDK's **public** API
-exposes types from kotlinx libraries — `pay(...)` returns a `Flow`, and
+exposes types from kotlinx libraries — `paymentEvents` is a `SharedFlow`, and
 `PaymentOrder` takes a `JsonObject` `gatewayConfig` — but `:shared` depends on
 those via `implementation`, so they are **not** inherited transitively. The host
 must declare them itself (this is the runbook's §5.3 dependency block):
@@ -28,7 +28,7 @@ must declare them itself (this is the runbook's §5.3 dependency block):
 commonMain.dependencies {
     implementation(libs.lokalpaymentsdk.shared)      // REQUIRED — core runtime
     // Needed to reference the SDK's public API types from host code:
-    implementation(libs.kotlinx.coroutines.core)     // Flow returned by pay()
+    implementation(libs.kotlinx.coroutines.core)     // SharedFlow paymentEvents
     implementation(libs.kotlinx.serialization.json)  // JsonObject gatewayConfig
 }
 ```
@@ -119,8 +119,8 @@ So the umbrella-product name and the import name deliberately differ by the
 ## 3. Host-owned glue code
 
 The SDK is JSON-agnostic: **the host converts its backend response into a typed
-`PaymentOrder`, calls `LokalPaymentSdk.pay(...)`, and renders the
-`LokalPaymentResult`.** Mirror the demo's `Conversions.kt` and `App.kt`.
+`PaymentOrder`, starts payment through `LokalPaymentSdk.pay(...)`, and routes
+events from `LokalPaymentSdk.paymentEvents`.**
 
 ### 3.1 Backend JSON → `PaymentOrder`
 
@@ -140,7 +140,8 @@ fun parseOrder(orderResponseJson: String): PaymentOrder {
         gateway = gateway,
         gatewayConfig = root.getValue("gateway_config").jsonObject,
         // Optional host-owned passthrough — the SDK carries it back untouched on
-        // LokalPaymentResult.metadata so you can correlate the result to the call.
+        // LokalPaymentEvent.metadata. Correlate SDK attempts with operationId;
+        // metadata remains optional host business context.
         metadata = root["metadata"]?.jsonObject,
     )
 }
@@ -150,35 +151,73 @@ fun parseOrder(orderResponseJson: String): PaymentOrder {
 > tree directly; the shape the SDK needs is just `gateway` + `gatewayConfig`
 > (+ optional `metadata`).
 
-### 3.2 Call the SDK and collect the result
+### 3.2 Establish one long-lived event collector
 
-`LokalPaymentSdk.pay(order)` returns a `Flow<LokalPaymentResult>`:
+Start one collector in an application- or authenticated-session-level owner
+before enabling any payment action. Do not create the delivery-critical
+collector in the payment screen or immediately beside `pay()`:
 
 ```kotlin
 import com.getlokalapp.paymentsdk.LokalPaymentSdk
-import kotlinx.coroutines.flow.catch
+import com.getlokalapp.paymentsdk.model.LokalPaymentEvent
 
-scope.launch {
-    val order = parseOrder(orderResponseJson)
-    LokalPaymentSdk.pay(order)
-        .catch { status = "Error: ${it.message}" }
-        .collect { result -> status = render(result) }
+class HostPaymentCoordinator(private val scope: CoroutineScope) {
+    private val attempts = mutableMapOf<String, HostPaymentState>()
+
+    fun start() {
+        scope.launch {
+            LokalPaymentSdk.paymentEvents.collect { event ->
+                runCatching { route(event) }
+                    .onFailure(::reportEventHandlingFailure)
+            }
+        }
+    }
+
+    fun pay(orderResponseJson: String): String {
+        val order = parseOrder(orderResponseJson)
+        return LokalPaymentSdk.pay(order)
+    }
+
+    private fun route(event: LokalPaymentEvent) {
+        attempts[event.operationId] = render(event)
+    }
 }
 ```
 
-### 3.3 Render `LokalPaymentResult`
+`pay()` returns a UUID string identifying the SDK attempt. It does **not** mean
+the gateway accepted, presented, or financially initiated the payment. Those
+outcomes arrive on `paymentEvents` with the same `operationId`.
+
+The host must disable/debounce repeated payment taps. The SDK does not block
+future payments on a gateway callback or subscriber-count check.
+
+### 3.3 Render `LokalPaymentEvent`
 
 ```kotlin
-import com.getlokalapp.paymentsdk.model.LokalPaymentResult
-import com.getlokalapp.paymentsdk.model.PaymentResult
+import com.getlokalapp.paymentsdk.model.LokalPaymentEvent
+import com.getlokalapp.paymentsdk.model.PaymentGatewayEvent
 
-fun render(payment: LokalPaymentResult): String = when (val r = payment.result) {
-    is PaymentResult.Success   -> "Success: ${r.paymentId} / ${r.orderId} / ${r.signature}"
-    is PaymentResult.Cancelled -> "Cancelled: ${r.reason}"
-    is PaymentResult.Failure   -> "Failure: ${r.error.code} ${r.error.message}"
-    is PaymentResult.Pending   -> "Pending: ${r.txnRef} (${r.clientHint}) — verify with backend"
-} + (payment.metadata?.let { "\nmetadata = $it" } ?: "")
+fun render(payment: LokalPaymentEvent): HostPaymentState =
+    when (val event = payment.event) {
+        PaymentGatewayEvent.GatewayUi.Presented -> HostPaymentState.Presented
+        PaymentGatewayEvent.GatewayUi.Dismissed -> HostPaymentState.Dismissed
+        is PaymentGatewayEvent.PaymentResult.Success -> {
+            verifyWithBackend(payment.operationId, event.gatewayData)
+            HostPaymentState.Verifying
+        }
+        is PaymentGatewayEvent.PaymentResult.Pending -> {
+            pollBackendUntilTerminal(payment.operationId, event.gatewayData)
+            HostPaymentState.Pending
+        }
+        is PaymentGatewayEvent.PaymentResult.Cancelled ->
+            HostPaymentState.Cancelled(event.reason)
+        is PaymentGatewayEvent.PaymentResult.Failure ->
+            HostPaymentState.Failed(event.code, event.message)
+    }
 ```
+
+`Success` and `Pending` contain gateway-specific data for backend verification;
+the client event is not authoritative financial status.
 
 ### 3.4 Discovery APIs (optional)
 

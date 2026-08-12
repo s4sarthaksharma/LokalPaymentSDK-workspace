@@ -251,8 +251,8 @@ commonMain.dependencies {
     implementation(libs.lokalpaymentsdk.native.iap)
     implementation(libs.lokalpaymentsdk.web.checkout)
 
-    // Required to reference the SDK's public API types from host code: pay()
-    // returns a Flow and PaymentOrder takes a JsonObject gatewayConfig, and
+    // Required to reference the SDK's public API types from host code:
+    // paymentEvents is a SharedFlow and PaymentOrder takes a JsonObject, and
     // :shared exposes both via `implementation` (not inherited transitively).
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)
@@ -333,7 +333,9 @@ The smallest working wiring, for a KMP+iOS host with a catalog:
 5. Also set `lokalPaymentSdk { iosInfoPlist = "…" }` (iOS hosts) — this applies even
    with zero gateways, since the baseline UPI query schemes are an ungated `:shared`
    concern, merged into the host's `Info.plist` on every sync
-6. Glue: `parseOrder` → `LokalPaymentSdk.pay(order).collect { render(it) }`
+6. Glue: start one long-lived `paymentEvents` collector before enabling payment,
+   then `parseOrder` → `val operationId = LokalPaymentSdk.pay(order)` and route
+   received events by `event.operationId`
 
 Add gateways later by dropping one catalog entry + one `implementation(...)` line
 per gateway (and any gateway-specific init/repo). Nothing else changes.

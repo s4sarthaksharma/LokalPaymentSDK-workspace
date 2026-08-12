@@ -18,7 +18,9 @@ import com.getlokalapp.util.LokalLogger
 import com.getlokalapp.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -26,8 +28,9 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.uuid.Uuid
 
 /**
@@ -48,6 +51,7 @@ object LokalPaymentSdk {
 
     private const val TAG = "LokalPaymentSdk"
     private const val FLOW_COMPLETED_WITHOUT_RESULT = "gateway_flow_completed_without_result"
+    private const val DEFAULT_PRESENTED_DELAY_MS = 500L
 
     private val handlers = mutableMapOf<PaymentGateway, PaymentGatewayHandler>()
     private val unavailable = mutableMapOf<PaymentGateway, UnavailableGateway>()
@@ -141,32 +145,55 @@ object LokalPaymentSdk {
             var uiPresented = false
             var terminalReceived = false
             val selfReportsUi = GatewayCapability.SELF_REPORTS_UI in handler.capabilities
+            val eventMutex = Mutex()
+            val presentedJob: Job? = if (selfReportsUi) {
+                null
+            } else {
+                launch {
+                    delay(DEFAULT_PRESENTED_DELAY_MS)
+                    eventMutex.withLock {
+                        emit(operationId, order, PaymentGatewayEvent.GatewayUi.Presented)
+                        uiPresented = true
+                        Log.d { "[$TAG] ${order.gateway} took ownership of payment UI" }
+                    }
+                }
+            }
             flow {
                 // Keep creation inside the flow so catch also handles a handler that throws
                 // synchronously before returning its gateway event flow.
                 emitAll(handler.pay(order.gatewayConfig))
             }
-                .onStart { if (!selfReportsUi) emit(PaymentGatewayEvent.GatewayUi.Presented) }
-                .catch { throwable -> emitPaymentFailure(operationId, order, throwable) }
+                .catch { throwable -> emit(paymentFlowFailure(order, throwable)) }
                 .collect { event ->
-                    when (event) {
-                        is PaymentGatewayEvent.GatewayUi -> {
-                            if (event is PaymentGatewayEvent.GatewayUi.Presented) {
-                                uiPresented = true
-                                Log.d { "[$TAG] ${order.gateway} presented its UI" }
-                            }
-                        }
+                    if (event is PaymentResult) presentedJob?.cancel()
+                    eventMutex.withLock {
+                        when (event) {
+                            is PaymentGatewayEvent.GatewayUi -> {
+                                when (event) {
+                                    PaymentGatewayEvent.GatewayUi.Presented -> {
+                                        uiPresented = true
+                                        Log.d { "[$TAG] ${order.gateway} presented its UI" }
+                                    }
 
-                        is PaymentResult -> {
-                            terminalReceived = true
-                            if (uiPresented) {
-                                emit(operationId, order, PaymentGatewayEvent.GatewayUi.Dismissed)
+                                    PaymentGatewayEvent.GatewayUi.Dismissed -> {
+                                        uiPresented = false
+                                        Log.d { "[$TAG] ${order.gateway} dismissed its UI" }
+                                    }
+                                }
                             }
-                            logTerminalResult(order.gateway, event)
+
+                            is PaymentResult -> {
+                                terminalReceived = true
+                                if (uiPresented) {
+                                    emit(operationId, order, PaymentGatewayEvent.GatewayUi.Dismissed)
+                                }
+                                logTerminalResult(order.gateway, event)
+                            }
                         }
+                        emit(operationId, order, event)
                     }
-                    emit(operationId, order, event)
                 }
+            presentedJob?.cancel()
             if (!terminalReceived) {
                 val error = IllegalStateException(
                     "Gateway flow completed without a terminal PaymentResult.",
@@ -230,21 +257,16 @@ object LokalPaymentSdk {
         return null
     }
 
-    private suspend fun emitPaymentFailure(
-        operationId: String,
+    private fun paymentFlowFailure(
         order: PaymentOrder,
         throwable: Throwable,
-    ) {
+    ): PaymentResult.Failure {
         Log.nonFatal(throwable, extras = mapOf("gateway" to order.gateway.name)) {
             "[$TAG] ${order.gateway} payment flow failed"
         }
-        emit(
-            operationId,
-            order,
-            PaymentResult.Failure(
-                code = "payment_flow_failed",
-                message = "Payment flow failed unexpectedly.",
-            ),
+        return PaymentResult.Failure(
+            code = "payment_flow_failed",
+            message = "Payment flow failed unexpectedly.",
         )
     }
 
