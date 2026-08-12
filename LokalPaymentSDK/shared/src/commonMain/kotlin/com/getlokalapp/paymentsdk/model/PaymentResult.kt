@@ -112,6 +112,8 @@ sealed interface PaymentGatewayEvent {
  * the order carried none.
  */
 data class LokalPaymentEvent(
+    /** SDK-generated UUID string identifying this specific pay() attempt. */
+    val operationId: String,
     val gateway: PaymentGateway,
     val event: PaymentGatewayEvent,
     val metadata: JsonObject? = null,

@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
+import kotlin.uuid.Uuid
 
 /**
  * Entry point for the shared Lokal Payment SDK.
@@ -120,13 +121,16 @@ object LokalPaymentSdk {
      * own [PaymentGatewayEvent] with the resolved [gateway][LokalPaymentEvent.gateway] and the
      * host's [metadata][LokalPaymentEvent.metadata]. The wrapped event is an optional
      * [PaymentGatewayEvent.GatewayUi] pair (see its kdoc for what it means and which gateways emit
-     * it), then a terminal [PaymentResult]. This function returns immediately;
+     * it), then a terminal [PaymentResult]. Every event carries the returned
+     * operation ID. This function returns immediately after creating the ID;
      * the host owns repeat-tap prevention and the backend owns payment idempotency.
      *
-    * @param order the host's create-order response, already decoded into a [PaymentOrder]
+     * @param order the host's create-order response, already decoded into a [PaymentOrder]
+     * @return a unique SDK operation ID for correlating this attempt's events
      */
-    fun pay(order: PaymentOrder) {
-        val handler = registeredHandlerOrReportUnavailable(order) ?: return
+    fun pay(order: PaymentOrder): String {
+        val operationId = Uuid.random().toString()
+        val handler = registeredHandlerOrReportUnavailable(operationId, order) ?: return operationId
         paymentScope.launch {
             // Every gateway gets the GatewayUi pair. A gateway that renders in-place
             // (SELF_REPORTS_UI, i.e. Juspay) emits its own precise Presented; for the rest the
@@ -141,7 +145,7 @@ object LokalPaymentSdk {
                 emitAll(handler.pay(order.gatewayConfig))
             }
                 .onStart { if (!selfReportsUi) emit(PaymentGatewayEvent.GatewayUi.Presented) }
-                .catch { throwable -> emitPaymentFailure(order, throwable) }
+                .catch { throwable -> emitPaymentFailure(operationId, order, throwable) }
                 .collect { event ->
                     when (event) {
                         is PaymentGatewayEvent.GatewayUi -> {
@@ -153,21 +157,26 @@ object LokalPaymentSdk {
 
                         is PaymentResult -> {
                             if (uiPresented) {
-                                emit(order, PaymentGatewayEvent.GatewayUi.Dismissed)
+                                emit(operationId, order, PaymentGatewayEvent.GatewayUi.Dismissed)
                             }
                             logTerminalResult(order.gateway, event)
                         }
                     }
-                    emit(order, event)
+                    emit(operationId, order, event)
                 }
         }
+        return operationId
     }
 
-    private fun registeredHandlerOrReportUnavailable(order: PaymentOrder): PaymentGatewayHandler? {
+    private fun registeredHandlerOrReportUnavailable(
+        operationId: String,
+        order: PaymentOrder,
+    ): PaymentGatewayHandler? {
         val handler = handlers[order.gateway]
         Log.d { "[$TAG] pay() called for ${order.gateway}, handlerRegistered=${handler != null}" }
         if (handler == null) {
             return rejectPayment(
+                operationId = operationId,
                 order = order,
                 error = unavailableError(order.gateway),
                 reason = "no handler registered",
@@ -177,6 +186,7 @@ object LokalPaymentSdk {
         return when (val readiness = handler.readiness()) {
             GatewayReadiness.Ready -> handler
             is GatewayReadiness.NotReady -> rejectPayment(
+                operationId = operationId,
                 order = order,
                 error = PaymentResult.Failure(
                     code = readiness.reasonCode,
@@ -188,6 +198,7 @@ object LokalPaymentSdk {
     }
 
     private fun rejectPayment(
+        operationId: String,
         order: PaymentOrder,
         error: PaymentResult.Failure,
         reason: String,
@@ -197,15 +208,20 @@ object LokalPaymentSdk {
             IllegalStateException("pay() called for ${order.gateway}: $reason"),
             extras = mapOf("gateway" to order.gateway.name, "reason_code" to (error.code ?: "unknown")),
         ) { "[$TAG] $reason for ${order.gateway}" }
-        paymentScope.launch { emit(order, error) }
+        paymentScope.launch { emit(operationId, order, error) }
         return null
     }
 
-    private suspend fun emitPaymentFailure(order: PaymentOrder, throwable: Throwable) {
+    private suspend fun emitPaymentFailure(
+        operationId: String,
+        order: PaymentOrder,
+        throwable: Throwable,
+    ) {
         Log.nonFatal(throwable, extras = mapOf("gateway" to order.gateway.name)) {
             "[$TAG] ${order.gateway} payment flow failed"
         }
         emit(
+            operationId,
             order,
             PaymentResult.Failure(
                 code = "payment_flow_failed",
@@ -214,9 +230,18 @@ object LokalPaymentSdk {
         )
     }
 
-    private suspend fun emit(order: PaymentOrder, event: PaymentGatewayEvent) {
+    private suspend fun emit(
+        operationId: String,
+        order: PaymentOrder,
+        event: PaymentGatewayEvent,
+    ) {
         mutablePaymentEvents.emit(
-            LokalPaymentEvent(order.gateway, event, order.metadata),
+            LokalPaymentEvent(
+                operationId = operationId,
+                gateway = order.gateway,
+                event = event,
+                metadata = order.metadata,
+            ),
         )
     }
 
