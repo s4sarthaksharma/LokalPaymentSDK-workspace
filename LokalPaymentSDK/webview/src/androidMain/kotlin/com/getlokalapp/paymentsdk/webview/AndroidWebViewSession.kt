@@ -4,6 +4,8 @@ import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import com.getlokalapp.paymentsdk.hostcontext.ActivityTracker
+import com.getlokalapp.paymentsdk.infrastructure.BridgeErrorCodes
+import com.getlokalapp.paymentsdk.infrastructure.SinglePendingHandoff
 
 actual fun createWebViewSession(config: WebViewConfig): WebViewSession = AndroidWebViewSession(config)
 
@@ -11,13 +13,10 @@ actual fun createWebViewSession(config: WebViewConfig): WebViewSession = Android
  * Handoff for the single in-flight WebView launch. The [WebViewConfig] and its
  * handlers/listener can't ride along in the launch Intent (lambdas aren't
  * Parcelable), so the session parks itself here for [WebViewActivity] to pick
- * up — same pattern as `:razorpay-checkout`'s RazorpayCheckoutBridge. One
+ * up — the same process-local handoff pattern used by the payment gateways. One
  * WebView at a time, so a single slot suffices.
  */
-internal object WebViewLaunchBridge {
-    @Volatile
-    var pending: AndroidWebViewSession? = null
-}
+internal val webViewLaunchHandoff = SinglePendingHandoff<AndroidWebViewSession>()
 
 /**
  * Drives a WebView on Android by launching [WebViewActivity], an internal proxy
@@ -54,9 +53,19 @@ internal class AndroidWebViewSession(internal val config: WebViewConfig) : WebVi
             config.listener?.onError(ERROR_NO_ACTIVITY, "webview_no_activity")
             return
         }
-        WebViewLaunchBridge.pending = this
         pendingRequest = request
-        host.startActivity(Intent(host, WebViewActivity::class.java))
+        if (!webViewLaunchHandoff.tryInstall(this)) {
+            pendingRequest = null
+            config.listener?.onError(BridgeErrorCodes.HANDOFF_IN_PROGRESS, BridgeErrorCodes.HANDOFF_IN_PROGRESS)
+            return
+        }
+        try {
+            host.startActivity(Intent(host, WebViewActivity::class.java))
+        } catch (t: Throwable) {
+            webViewLaunchHandoff.clearIfOwned(this)
+            pendingRequest = null
+            config.listener?.onError(BridgeErrorCodes.ACTIVITY_LAUNCH_FAILED, BridgeErrorCodes.ACTIVITY_LAUNCH_FAILED)
+        }
     }
 
     override fun evaluateJavascript(script: String, onResult: ((String?) -> Unit)?) {
@@ -69,8 +78,7 @@ internal class AndroidWebViewSession(internal val config: WebViewConfig) : WebVi
         // If close() lands before the Activity ever started, abandon the pending
         // launch so the static slot doesn't keep this session (and its host
         // listener/handlers) pinned.
-        if (WebViewLaunchBridge.pending === this) {
-            WebViewLaunchBridge.pending = null
+        if (webViewLaunchHandoff.clearIfOwned(this)) {
             pendingRequest = null
         }
         val bound = activity

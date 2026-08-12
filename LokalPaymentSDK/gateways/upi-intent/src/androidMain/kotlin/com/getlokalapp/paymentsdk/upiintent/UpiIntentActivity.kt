@@ -31,24 +31,22 @@ import com.getlokalapp.paymentsdk.LokalPaymentSdk
 internal class UpiIntentActivity : Activity() {
 
     private var dialog: Dialog? = null
+    private var request: PendingUpiIntent? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         makeInvisible()
 
-        val pending = UpiIntentBridge.pending
-        if (pending == null) {
+        val owned = upiIntentHandoff.take()
+        if (owned == null) {
             // No in-flight request — e.g. the process was recreated after death
             // mid-payment and the listener is gone. Nothing to drive; bail.
             finish()
             return
         }
+        request = owned
 
-        // Only act on first creation; on recreation the launch/pick already
-        // happened and the result will arrive at onActivityResult.
-        if (savedInstanceState != null) return
-
-        val url = pending.intentUrl
+        val url = owned.intentUrl
         // An app-specific scheme (phonepe://…) already names its target — launch
         // directly, no chooser.
         if (!url.isGenericUpiScheme()) {
@@ -56,7 +54,7 @@ internal class UpiIntentActivity : Activity() {
             return
         }
         val installed = LokalPaymentSdk.installedUpiApps().filter { it.packageName != null }
-        val allowed = pending.allowedApps
+        val allowed = owned.allowedApps
         val apps = installed.toChooserApps(allowed)
         when {
             // Backend restricted the chooser but none of those apps are installed:
@@ -129,9 +127,9 @@ internal class UpiIntentActivity : Activity() {
         dialog?.setOnCancelListener(null)
         dialog?.dismiss()
         dialog = null
-        val listener = UpiIntentBridge.pending?.listener
-        UpiIntentBridge.pending = null
-        listener?.action()
+        val owned = request ?: return
+        request = null
+        owned.listener?.action()
         finish()
     }
 

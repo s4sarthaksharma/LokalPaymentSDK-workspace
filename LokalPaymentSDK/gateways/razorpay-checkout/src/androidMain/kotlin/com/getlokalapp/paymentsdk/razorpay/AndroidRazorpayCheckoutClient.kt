@@ -2,6 +2,7 @@ package com.getlokalapp.paymentsdk.razorpay
 
 import android.content.Intent
 import com.getlokalapp.paymentsdk.hostcontext.ActivityTracker
+import com.getlokalapp.paymentsdk.infrastructure.BridgeErrorCodes
 import com.getlokalapp.paymentsdk.json.toOrgJson
 
 internal actual fun createRazorpayCheckoutClient(): RazorpayCheckoutClient = AndroidRazorpayCheckoutClient()
@@ -25,12 +26,21 @@ internal class AndroidRazorpayCheckoutClient : RazorpayCheckoutClient {
             listener?.onPaymentError(ACTIVITY_UNAVAILABLE_ERROR, "razorpay_activity_unavailable")
             return
         }
-        RazorpayCheckoutBridge.pending = PendingCheckout(
+        val request = PendingCheckout(
             key = config.razorpayKey,
             data = config.data.toOrgJson(),
             listener = listener,
         )
-        activity.startActivity(Intent(activity, RazorpayCheckoutActivity::class.java))
+        if (!razorpayCheckoutHandoff.tryInstall(request)) {
+            listener?.onPaymentError(BRIDGE_BUSY_ERROR, BridgeErrorCodes.HANDOFF_IN_PROGRESS)
+            return
+        }
+        try {
+            activity.startActivity(Intent(activity, RazorpayCheckoutActivity::class.java))
+        } catch (t: Throwable) {
+            razorpayCheckoutHandoff.clearIfOwned(request)
+            listener?.onPaymentError(ACTIVITY_LAUNCH_ERROR, BridgeErrorCodes.ACTIVITY_LAUNCH_FAILED)
+        }
     }
 
     override fun setPaymentResultListener(listener: RazorpayPaymentResultListener?) {
@@ -40,5 +50,7 @@ internal class AndroidRazorpayCheckoutClient : RazorpayCheckoutClient {
     private companion object {
         // Non-zero so the orchestrator classifies it as a failure, not a cancel.
         const val ACTIVITY_UNAVAILABLE_ERROR = 2
+        const val BRIDGE_BUSY_ERROR = 3
+        const val ACTIVITY_LAUNCH_ERROR = 4
     }
 }

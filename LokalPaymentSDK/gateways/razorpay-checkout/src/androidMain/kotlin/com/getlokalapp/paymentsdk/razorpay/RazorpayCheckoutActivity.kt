@@ -2,6 +2,7 @@ package com.getlokalapp.paymentsdk.razorpay
 
 import android.app.Activity
 import android.os.Bundle
+import com.getlokalapp.paymentsdk.infrastructure.SinglePendingHandoff
 import com.razorpay.Checkout
 import com.razorpay.PaymentData
 import com.razorpay.PaymentResultWithDataListener
@@ -14,10 +15,7 @@ import org.json.JSONObject
  * here for [RazorpayCheckoutActivity] to pick up. Only one checkout can be in
  * flight at a time, so a single slot is sufficient.
  */
-internal object RazorpayCheckoutBridge {
-    @Volatile
-    var pending: PendingCheckout? = null
-}
+internal val razorpayCheckoutHandoff = SinglePendingHandoff<PendingCheckout>()
 
 internal class PendingCheckout(
     val key: String,
@@ -33,34 +31,38 @@ internal class PendingCheckout(
  */
 internal class RazorpayCheckoutActivity : Activity(), PaymentResultWithDataListener {
 
+    private var request: PendingCheckout? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val pending = RazorpayCheckoutBridge.pending
-        if (pending == null) {
+        // This proxy handles normal configuration changes itself in the merged
+        // manifest, so onCreate is expected once for a live checkout. Process
+        // recreation cannot restore the non-Parcelable listener and exits safely.
+        val owned = razorpayCheckoutHandoff.take()
+        if (owned == null) {
             // No in-flight request — e.g. the process was recreated after death
             // mid-payment and the listener is gone. Nothing to drive; bail.
             finish()
             return
         }
+        request = owned
 
-        // Launch once; on configuration-change recreation the sheet is already up.
-        if (savedInstanceState == null) {
-            try {
-                Checkout().apply { setKeyID(pending.key) }.open(this, pending.data)
-            } catch (t: Throwable) {
-                deliverError(GENERIC_ERROR, t.message)
-            }
+        try {
+            Checkout().apply { setKeyID(owned.key) }.open(this, owned.data)
+        } catch (t: Throwable) {
+            deliverError(GENERIC_ERROR, t.message)
         }
     }
 
     override fun onPaymentSuccess(razorpayPaymentId: String?, paymentData: PaymentData?) {
-        takeListener()?.onPaymentSuccess(
-            paymentId = razorpayPaymentId.orEmpty(),
-            orderId = paymentData?.orderId,
-            signature = paymentData?.signature.orEmpty(),
-        )
-        finish()
+        deliverOnce { listener ->
+            listener.onPaymentSuccess(
+                paymentId = razorpayPaymentId.orEmpty(),
+                orderId = paymentData?.orderId,
+                signature = paymentData?.signature.orEmpty(),
+            )
+        }
     }
 
     override fun onPaymentError(code: Int, description: String?, paymentData: PaymentData?) {
@@ -68,15 +70,14 @@ internal class RazorpayCheckoutActivity : Activity(), PaymentResultWithDataListe
     }
 
     private fun deliverError(code: Int, description: String?) {
-        takeListener()?.onPaymentError(code, description)
-        finish()
+        deliverOnce { listener -> listener.onPaymentError(code, description) }
     }
 
-    /** Returns the pending listener once and clears the slot so it fires exactly once. */
-    private fun takeListener(): RazorpayPaymentResultListener? {
-        val listener = RazorpayCheckoutBridge.pending?.listener
-        RazorpayCheckoutBridge.pending = null
-        return listener
+    private inline fun deliverOnce(deliver: (RazorpayPaymentResultListener) -> Unit) {
+        val owned = request ?: return
+        request = null
+        owned.listener?.let(deliver)
+        finish()
     }
 
     private companion object {

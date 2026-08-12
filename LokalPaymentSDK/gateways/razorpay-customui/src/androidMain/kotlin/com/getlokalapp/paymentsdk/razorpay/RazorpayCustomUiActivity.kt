@@ -5,6 +5,8 @@ import android.content.Intent
 import android.os.Bundle
 import android.webkit.WebView
 import com.getlokalapp.paymentsdk.hostcontext.ActivityTracker
+import com.getlokalapp.paymentsdk.infrastructure.BridgeErrorCodes
+import com.getlokalapp.paymentsdk.infrastructure.SinglePendingHandoff
 import com.getlokalapp.paymentsdk.json.toOrgJson
 import com.razorpay.PaymentData
 import com.razorpay.PaymentResultWithDataListener
@@ -13,15 +15,12 @@ import org.json.JSONObject
 
 /**
  * Handoff for the single in-flight Custom UI payment. Same reasoning as
- * `:razorpay-checkout`'s RazorpayCheckoutBridge — the listener isn't
+ * `:razorpay-checkout`'s process-local handoff slot — the listener isn't
  * Parcelable, so it can't ride along in the launch Intent; it's parked here
  * for [RazorpayCustomUiActivity] to pick up. Only one Custom UI payment
  * can be in flight at a time, so a single slot is sufficient.
  */
-internal object RazorpayCustomUiBridge {
-    @Volatile
-    var pending: PendingCustomUiCheckout? = null
-}
+internal val razorpayCustomUiHandoff = SinglePendingHandoff<PendingCustomUiCheckout>()
 
 internal class PendingCustomUiCheckout(
     val key: String,
@@ -50,12 +49,21 @@ internal class AndroidRazorpayCustomUiClient {
             listener?.onPaymentError(ACTIVITY_UNAVAILABLE_ERROR, "razorpay_activity_unavailable")
             return
         }
-        RazorpayCustomUiBridge.pending = PendingCustomUiCheckout(
+        val request = PendingCustomUiCheckout(
             key = config.razorpayKey,
             data = config.data.toOrgJson(),
             listener = listener,
         )
-        activity.startActivity(Intent(activity, RazorpayCustomUiActivity::class.java))
+        if (!razorpayCustomUiHandoff.tryInstall(request)) {
+            listener?.onPaymentError(BRIDGE_BUSY_ERROR, BridgeErrorCodes.HANDOFF_IN_PROGRESS)
+            return
+        }
+        try {
+            activity.startActivity(Intent(activity, RazorpayCustomUiActivity::class.java))
+        } catch (t: Throwable) {
+            razorpayCustomUiHandoff.clearIfOwned(request)
+            listener?.onPaymentError(ACTIVITY_LAUNCH_ERROR, BridgeErrorCodes.ACTIVITY_LAUNCH_FAILED)
+        }
     }
 
     fun setPaymentResultListener(listener: RazorpayCustomUiResultListener?) {
@@ -66,6 +74,8 @@ internal class AndroidRazorpayCustomUiClient {
         // Non-zero and distinct from Razorpay's own PAYMENT_CANCELLED (5) so
         // the orchestrator classifies it as a failure, not a cancel.
         const val ACTIVITY_UNAVAILABLE_ERROR = 2
+        const val BRIDGE_BUSY_ERROR = 3
+        const val ACTIVITY_LAUNCH_ERROR = 4
     }
 }
 
@@ -84,27 +94,26 @@ internal class AndroidRazorpayCustomUiClient {
 internal class RazorpayCustomUiActivity : Activity(), PaymentResultWithDataListener {
 
     private var razorpay: Razorpay? = null
+    private var request: PendingCustomUiCheckout? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val pending = RazorpayCustomUiBridge.pending
-        if (pending == null) {
+        val owned = razorpayCustomUiHandoff.take()
+        if (owned == null) {
             // No in-flight request — e.g. the process was recreated after death
             // mid-payment and the listener is gone. Nothing to drive; bail.
             finish()
             return
         }
+        request = owned
 
-        // Launch once; on configuration-change recreation submit() is already running.
-        if (savedInstanceState == null) {
-            try {
-                val webView = WebView(this)
-                razorpay = Razorpay(this, pending.key).apply { setWebView(webView) }
-                    .also { it.submit(pending.data, this) }
-            } catch (t: Throwable) {
-                deliverError(GENERIC_ERROR, t.message)
-            }
+        try {
+            val webView = WebView(this)
+            razorpay = Razorpay(this, owned.key).apply { setWebView(webView) }
+                .also { it.submit(owned.data, this) }
+        } catch (t: Throwable) {
+            deliverError(GENERIC_ERROR, t.message)
         }
     }
 
@@ -117,12 +126,13 @@ internal class RazorpayCustomUiActivity : Activity(), PaymentResultWithDataListe
     }
 
     override fun onPaymentSuccess(razorpayPaymentId: String?, paymentData: PaymentData?) {
-        takeListener()?.onPaymentSuccess(
-            paymentId = razorpayPaymentId.orEmpty(),
-            orderId = paymentData?.orderId,
-            signature = paymentData?.signature.orEmpty(),
-        )
-        finish()
+        deliverOnce { listener ->
+            listener.onPaymentSuccess(
+                paymentId = razorpayPaymentId.orEmpty(),
+                orderId = paymentData?.orderId,
+                signature = paymentData?.signature.orEmpty(),
+            )
+        }
     }
 
     override fun onPaymentError(code: Int, description: String?, paymentData: PaymentData?) {
@@ -130,15 +140,14 @@ internal class RazorpayCustomUiActivity : Activity(), PaymentResultWithDataListe
     }
 
     private fun deliverError(code: Int, description: String?) {
-        takeListener()?.onPaymentError(code, description)
-        finish()
+        deliverOnce { listener -> listener.onPaymentError(code, description) }
     }
 
-    /** Returns the pending listener once and clears the slot so it fires exactly once. */
-    private fun takeListener(): RazorpayCustomUiResultListener? {
-        val listener = RazorpayCustomUiBridge.pending?.listener
-        RazorpayCustomUiBridge.pending = null
-        return listener
+    private inline fun deliverOnce(deliver: (RazorpayCustomUiResultListener) -> Unit) {
+        val owned = request ?: return
+        request = null
+        owned.listener?.let(deliver)
+        finish()
     }
 
     private companion object {

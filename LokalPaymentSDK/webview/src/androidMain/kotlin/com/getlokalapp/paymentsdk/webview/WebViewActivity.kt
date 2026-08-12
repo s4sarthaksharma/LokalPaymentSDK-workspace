@@ -24,7 +24,7 @@ import com.getlokalapp.util.Log
  * here means host apps never supply or receive a WebView — mirrors
  * `:razorpay-checkout`'s RazorpayCheckoutActivity, except this one shows the
  * WebView full-screen (it's the actual UI, not an invisible bridge). Picks up
- * the in-flight [AndroidWebViewSession] from [WebViewLaunchBridge] and binds
+ * the in-flight [AndroidWebViewSession] from [webViewLaunchHandoff] and binds
  * itself back to it so the session can drive the live WebView.
  */
 @SuppressLint("SetJavaScriptEnabled")
@@ -38,14 +38,13 @@ internal class WebViewActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val current = WebViewLaunchBridge.pending
+        val current = webViewLaunchHandoff.take()
         if (current == null) {
             // No in-flight launch — e.g. process recreated after death. Nothing
             // to drive; bail.
             finish()
             return
         }
-        WebViewLaunchBridge.pending = null
         session = current
         current.activity = this
         val config = current.config
@@ -146,9 +145,7 @@ internal class WebViewActivity : ComponentActivity() {
     override fun onDestroy() {
         val current = session
         if (current?.activity === this) current.activity = null
-        // Defensive: don't leave this session (and its host listener/handlers)
-        // pinned in the static slot if the launch was never consumed elsewhere.
-        if (WebViewLaunchBridge.pending === current) WebViewLaunchBridge.pending = null
+        current?.let(webViewLaunchHandoff::clearIfOwned)
         current?.pendingRequest = null
         if (!terminalFailureReported && current?.closeRequested != true) {
             current?.config?.listener?.onClosed()
