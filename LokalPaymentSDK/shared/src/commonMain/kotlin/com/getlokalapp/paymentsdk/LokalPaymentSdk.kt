@@ -47,6 +47,7 @@ import kotlin.uuid.Uuid
 object LokalPaymentSdk {
 
     private const val TAG = "LokalPaymentSdk"
+    private const val FLOW_COMPLETED_WITHOUT_RESULT = "gateway_flow_completed_without_result"
 
     private val handlers = mutableMapOf<PaymentGateway, PaymentGatewayHandler>()
     private val unavailable = mutableMapOf<PaymentGateway, UnavailableGateway>()
@@ -138,6 +139,7 @@ object LokalPaymentSdk {
             // same handling below, which tracks it and synthesizes the matching Dismissed just
             // before the terminal — so a host never sees a lone Presented.
             var uiPresented = false
+            var terminalReceived = false
             val selfReportsUi = GatewayCapability.SELF_REPORTS_UI in handler.capabilities
             flow {
                 // Keep creation inside the flow so catch also handles a handler that throws
@@ -156,6 +158,7 @@ object LokalPaymentSdk {
                         }
 
                         is PaymentResult -> {
+                            terminalReceived = true
                             if (uiPresented) {
                                 emit(operationId, order, PaymentGatewayEvent.GatewayUi.Dismissed)
                             }
@@ -164,6 +167,21 @@ object LokalPaymentSdk {
                     }
                     emit(operationId, order, event)
                 }
+            if (!terminalReceived) {
+                val error = IllegalStateException(
+                    "Gateway flow completed without a terminal PaymentResult.",
+                )
+                Log.e(err = error, tag = FLOW_COMPLETED_WITHOUT_RESULT) {
+                    "[$TAG] ${order.gateway} flow completed without a terminal result"
+                }
+                Log.nonFatal(
+                    error,
+                    extras = mapOf(
+                        "gateway" to order.gateway.name,
+                        "code" to FLOW_COMPLETED_WITHOUT_RESULT,
+                    ),
+                ) { "[$TAG] gateway flow contract violated for ${order.gateway}" }
+            }
         }
         return operationId
     }
