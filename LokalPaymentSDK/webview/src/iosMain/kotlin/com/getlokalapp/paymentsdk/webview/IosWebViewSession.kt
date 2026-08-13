@@ -7,7 +7,9 @@ import kotlin.experimental.ExperimentalNativeApi
 import kotlin.native.ref.WeakReference
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.ObjCSignatureOverride
+import platform.Foundation.NSError
 import platform.Foundation.NSMutableURLRequest
+import platform.Foundation.NSURLErrorCancelled
 import platform.Foundation.NSURL
 import platform.Foundation.setValue
 import platform.UIKit.NSLayoutConstraint
@@ -18,6 +20,7 @@ import platform.WebKit.WKNavigation
 import platform.WebKit.WKNavigationAction
 import platform.WebKit.WKNavigationActionPolicy
 import platform.WebKit.WKNavigationDelegateProtocol
+import platform.WebKit.WKWebpagePreferences
 import platform.WebKit.WKScriptMessage
 import platform.WebKit.WKScriptMessageHandlerProtocol
 import platform.WebKit.WKUserContentController
@@ -25,6 +28,7 @@ import platform.WebKit.WKUserScript
 import platform.WebKit.WKUserScriptInjectionTime.WKUserScriptInjectionTimeAtDocumentStart
 import platform.WebKit.WKWebView
 import platform.WebKit.WKWebViewConfiguration
+import platform.WebKit.WKWebsiteDataStore
 import platform.darwin.NSObject
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
@@ -97,6 +101,7 @@ private class WebViewController(
     private var dispatcher: BridgeDispatcher? = null
     private var handlerAttached = false
     private var notifyListenerOnClose = true
+    private var terminalFailureReported = false
 
     override fun viewDidLoad() {
         super.viewDidLoad()
@@ -126,6 +131,10 @@ private class WebViewController(
 
         val configuration = WKWebViewConfiguration()
         configuration.userContentController = contentController
+        configuration.websiteDataStore = WKWebsiteDataStore.defaultDataStore()
+        configuration.defaultWebpagePreferences = WKWebpagePreferences().apply {
+            allowsContentJavaScript = config.javaScriptEnabled
+        }
 
         val wv = WKWebView(frame = root.bounds, configuration = configuration)
         wv.navigationDelegate = this
@@ -209,6 +218,41 @@ private class WebViewController(
         config.listener?.safePageFinished(webView.URL?.absoluteString.orEmpty())
     }
 
+    @ObjCSignatureOverride
+    override fun webView(
+        webView: WKWebView,
+        didFailProvisionalNavigation: WKNavigation?,
+        withError: NSError,
+    ) {
+        if (withError.code == NSURLErrorCancelled) return
+        failSessionOnce(WEBVIEW_NETWORK_ERROR, "The checkout page could not be loaded.")
+    }
+
+    @ObjCSignatureOverride
+    override fun webView(
+        webView: WKWebView,
+        didFailNavigation: WKNavigation?,
+        withError: NSError,
+    ) {
+        if (withError.code == NSURLErrorCancelled) return
+        failSessionOnce(WEBVIEW_NETWORK_ERROR, "The checkout page could not be loaded.")
+    }
+
+    override fun webViewWebContentProcessDidTerminate(webView: WKWebView) {
+        failSessionOnce(
+            WEBVIEW_CONTENT_PROCESS_TERMINATED,
+            "The checkout WebView content process stopped.",
+        )
+    }
+
+    private fun failSessionOnce(code: String, message: String) {
+        if (terminalFailureReported) return
+        terminalFailureReported = true
+        notifyListenerOnClose = false
+        config.listener?.safeError(code, message)
+        dismissViewControllerAnimated(true, null)
+    }
+
     override fun viewDidDisappear(animated: Boolean) {
         super.viewDidDisappear(animated)
         // Only when this controller is actually going away — viewDidDisappear
@@ -244,3 +288,6 @@ private class WeakScriptMessageProxy(
         handler.get()?.userContentController(userContentController, didReceiveScriptMessage)
     }
 }
+
+private const val WEBVIEW_NETWORK_ERROR = "webview_network_error"
+private const val WEBVIEW_CONTENT_PROCESS_TERMINATED = "webview_content_process_terminated"

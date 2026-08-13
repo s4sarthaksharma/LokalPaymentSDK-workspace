@@ -4,9 +4,15 @@ import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
+import android.net.http.SslError
 import android.os.Bundle
 import android.view.ViewGroup
+import android.webkit.RenderProcessGoneDetail
+import android.webkit.SslErrorHandler
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
@@ -74,18 +80,23 @@ internal class WebViewActivity : ComponentActivity() {
             }
         })
 
-        wv.settings.javaScriptEnabled = config.javaScriptEnabled
-        wv.settings.domStorageEnabled = config.domStorageEnabled
+        with(wv.settings) {
+            javaScriptEnabled = config.javaScriptEnabled
+            domStorageEnabled = config.domStorageEnabled
+            allowFileAccess = false
+            allowContentAccess = false
+            mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+            setSupportMultipleWindows(false)
+            javaScriptCanOpenWindowsAutomatically = false
+        }
 
         if (config.handlers.isNotEmpty() && config.bridgeHosts.isNotEmpty()) {
             if (!attachBridge(wv, config)) {
-                terminalFailureReported = true
                 val providerVersion = WebViewCompat.getCurrentWebViewPackage(this)?.versionName ?: "unknown"
                 Log.w {
                     "[WebView] $BRIDGE_UNAVAILABLE, providerVersion=$providerVersion"
                 }
-                    config.listener?.safeError(BRIDGE_UNAVAILABLE, "Secure WebView messaging is unavailable.")
-                finish()
+                failSessionOnce(BRIDGE_UNAVAILABLE, "Secure WebView messaging is unavailable.")
                 return
             }
             bridgeAttached = true
@@ -109,6 +120,41 @@ internal class WebViewActivity : ComponentActivity() {
                 val url = request?.url?.toString() ?: return false
                 return config.listener?.safeNavigation(url) ?: false
             }
+
+            override fun onReceivedError(
+                view: WebView?,
+                request: WebResourceRequest?,
+                error: WebResourceError?,
+            ) {
+                if (request?.isForMainFrame != true) return
+                failSessionOnce(WEBVIEW_NETWORK_ERROR, "The checkout page could not be loaded.")
+            }
+
+            override fun onReceivedHttpError(
+                view: WebView?,
+                request: WebResourceRequest?,
+                errorResponse: WebResourceResponse?,
+            ) {
+                if (request?.isForMainFrame != true) return
+                failSessionOnce(WEBVIEW_HTTP_ERROR, "The checkout page returned an HTTP error.")
+            }
+
+            override fun onReceivedSslError(
+                view: WebView?,
+                handler: SslErrorHandler?,
+                error: SslError?,
+            ) {
+                handler?.cancel()
+                failSessionOnce(WEBVIEW_SSL_ERROR, "The checkout page failed TLS validation.")
+            }
+
+            override fun onRenderProcessGone(
+                view: WebView?,
+                detail: RenderProcessGoneDetail?,
+            ): Boolean {
+                failSessionOnce(WEBVIEW_RENDERER_GONE, "The checkout WebView renderer stopped.")
+                return true
+            }
         }
 
         setContentView(wv)
@@ -127,6 +173,13 @@ internal class WebViewActivity : ComponentActivity() {
 
         current.pendingRequest?.let { loadRequest(it) }
         current.pendingRequest = null
+    }
+
+    private fun failSessionOnce(code: String, message: String) {
+        if (terminalFailureReported) return
+        terminalFailureReported = true
+        session?.config?.listener?.safeError(code, message)
+        finish()
     }
 
     internal fun loadRequest(request: WebViewRequest) {
@@ -194,3 +247,7 @@ private fun attachBridge(webView: WebView, config: WebViewConfig): Boolean {
 }
 
 private const val BRIDGE_UNAVAILABLE = "secure_web_message_unavailable"
+private const val WEBVIEW_NETWORK_ERROR = "webview_network_error"
+private const val WEBVIEW_HTTP_ERROR = "webview_http_error"
+private const val WEBVIEW_SSL_ERROR = "webview_ssl_error"
+private const val WEBVIEW_RENDERER_GONE = "webview_renderer_gone"

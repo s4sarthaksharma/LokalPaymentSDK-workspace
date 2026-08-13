@@ -17,7 +17,9 @@ package com.getlokalapp.paymentsdk.webview
  *   the built-in bridge shim (so it may reference `window.<bridgeName>`). Use it
  *   to install compatibility shims — e.g. a `window.ReactNativeWebView` that
  *   relays to the Lokal bridge — without baking that knowledge into `:webview`.
- * @param javaScriptEnabled / domStorageEnabled WebView engine toggles.
+ * @param javaScriptEnabled enables page JavaScript on both platforms.
+ * @param domStorageEnabled enables Android WebView DOM storage. WebKit does not
+ *   expose an equivalent per-WebView toggle, so this value has no effect on iOS.
  */
 class WebViewConfig(
     val bridgeName: String = "LokalBridge",

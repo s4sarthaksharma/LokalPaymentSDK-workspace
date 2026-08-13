@@ -26,7 +26,11 @@ interface WebViewSession {
      */
     fun evaluateJavascript(script: String, onResult: ((String?) -> Unit)? = null)
 
-    /** Dismisses the WebView. Triggers [WebViewListener.onClosed]. */
+    /**
+     * Dismisses the WebView programmatically. This is deliberately silent and
+     * does not trigger [WebViewListener.onClosed]; that callback is reserved for
+     * user- or system-initiated dismissal.
+     */
     fun close()
 }
 
