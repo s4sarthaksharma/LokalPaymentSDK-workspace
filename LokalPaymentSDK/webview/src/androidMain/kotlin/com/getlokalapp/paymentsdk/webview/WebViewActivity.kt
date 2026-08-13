@@ -84,7 +84,7 @@ internal class WebViewActivity : ComponentActivity() {
                 Log.w {
                     "[WebView] $BRIDGE_UNAVAILABLE, providerVersion=$providerVersion"
                 }
-                config.listener?.onError(BRIDGE_UNAVAILABLE, "Secure WebView messaging is unavailable.")
+                    config.listener?.safeError(BRIDGE_UNAVAILABLE, "Secure WebView messaging is unavailable.")
                 finish()
                 return
             }
@@ -98,16 +98,16 @@ internal class WebViewActivity : ComponentActivity() {
                 // after DOM ready; see plan's known-limitations note.
                 wv.evaluateJavascript(androidBridgeShim(config.bridgeName), null)
                 config.userScripts.forEach { wv.evaluateJavascript(it, null) }
-                config.listener?.onPageStarted(url.orEmpty())
+                    config.listener?.safePageStarted(url.orEmpty())
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
-                config.listener?.onPageFinished(url.orEmpty())
+                    config.listener?.safePageFinished(url.orEmpty())
             }
 
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val url = request?.url?.toString() ?: return false
-                return config.listener?.onNavigation(url) ?: false
+                return config.listener?.safeNavigation(url) ?: false
             }
         }
 
@@ -148,7 +148,7 @@ internal class WebViewActivity : ComponentActivity() {
         current?.let(webViewLaunchHandoff::clearIfOwned)
         current?.pendingRequest = null
         if (!terminalFailureReported && current?.closeRequested != true) {
-            current?.config?.listener?.onClosed()
+            current?.config?.listener?.safeClosed()
         }
         session = null
         // Full WebView teardown: detach the JS bridge, stop loads, and remove it

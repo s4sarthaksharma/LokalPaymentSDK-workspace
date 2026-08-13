@@ -50,13 +50,13 @@ internal class AndroidWebViewSession(internal val config: WebViewConfig) : WebVi
         closeRequested = false
         val host = ActivityTracker.current
         if (host == null) {
-            config.listener?.onError(ERROR_NO_ACTIVITY, "webview_no_activity")
+            config.listener?.safeError(ERROR_NO_ACTIVITY, "webview_no_activity")
             return
         }
         pendingRequest = request
         if (!webViewLaunchHandoff.tryInstall(this)) {
             pendingRequest = null
-            config.listener?.onError(BridgeErrorCodes.HANDOFF_IN_PROGRESS, BridgeErrorCodes.HANDOFF_IN_PROGRESS)
+            config.listener?.safeError(BridgeErrorCodes.HANDOFF_IN_PROGRESS, BridgeErrorCodes.HANDOFF_IN_PROGRESS)
             return
         }
         try {
@@ -64,7 +64,7 @@ internal class AndroidWebViewSession(internal val config: WebViewConfig) : WebVi
         } catch (t: Throwable) {
             webViewLaunchHandoff.clearIfOwned(this)
             pendingRequest = null
-            config.listener?.onError(BridgeErrorCodes.ACTIVITY_LAUNCH_FAILED, BridgeErrorCodes.ACTIVITY_LAUNCH_FAILED)
+            config.listener?.safeError(BridgeErrorCodes.ACTIVITY_LAUNCH_FAILED, BridgeErrorCodes.ACTIVITY_LAUNCH_FAILED)
         }
     }
 

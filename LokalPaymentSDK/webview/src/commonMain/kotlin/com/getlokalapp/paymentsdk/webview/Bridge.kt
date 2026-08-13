@@ -1,6 +1,7 @@
 package com.getlokalapp.paymentsdk.webview
 
 import com.getlokalapp.paymentsdk.json.lenientJson
+import com.getlokalapp.util.Log
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
@@ -100,8 +101,17 @@ internal class BridgeDispatcher(
         val handler = handlersByName[envelope.name] ?: return
         val payload = envelope.payload?.toString() ?: "null"
         val id = envelope.id
-        handler.onMessage(payload) { result ->
-            if (id != null) evaluate(replyScript(id, result))
+        try {
+            handler.onMessage(payload) { result ->
+                if (id != null) {
+                    runCatching { evaluate(replyScript(id, result)) }
+                        .onFailure { reportCallbackFailure("bridge reply", it) }
+                }
+            }
+        } catch (t: Throwable) {
+            // Host/application handlers are optional extension points. Their
+            // failure must not escape into the WebView transport callback.
+            reportCallbackFailure("bridge handler", t)
         }
     }
 
@@ -112,4 +122,12 @@ internal class BridgeDispatcher(
      */
     private fun replyScript(id: String, result: String): String =
         "window.$REPLY_FN(${JsonPrimitive(id)}, ${JsonPrimitive(result)});"
+}
+
+private fun reportCallbackFailure(kind: String, throwable: Throwable) {
+    runCatching {
+        Log.nonFatal(throwable, extras = mapOf("callback" to kind)) {
+            "WebView $kind callback failed"
+        }
+    }
 }

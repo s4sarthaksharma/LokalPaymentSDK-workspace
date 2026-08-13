@@ -49,7 +49,7 @@ internal class IosWebViewSession(private val config: WebViewConfig) : WebViewSes
         }
         val presenter = topmostViewController()
         if (presenter == null) {
-            config.listener?.onError(ERROR_NO_VIEW_CONTROLLER, "webview_no_view_controller")
+            config.listener?.safeError(ERROR_NO_VIEW_CONTROLLER, "webview_no_view_controller")
             return
         }
         val created = WebViewController(config) { controller = null }
@@ -192,7 +192,7 @@ private class WebViewController(
         decisionHandler: (WKNavigationActionPolicy) -> Unit,
     ) {
         val url = decidePolicyForNavigationAction.request.URL?.absoluteString
-        val intercept = url != null && (config.listener?.onNavigation(url) ?: false)
+        val intercept = url != null && (config.listener?.safeNavigation(url) ?: false)
         decisionHandler(
             if (intercept) WKNavigationActionPolicy.WKNavigationActionPolicyCancel
             else WKNavigationActionPolicy.WKNavigationActionPolicyAllow,
@@ -201,12 +201,12 @@ private class WebViewController(
 
     @ObjCSignatureOverride
     override fun webView(webView: WKWebView, didStartProvisionalNavigation: WKNavigation?) {
-        config.listener?.onPageStarted(webView.URL?.absoluteString.orEmpty())
+        config.listener?.safePageStarted(webView.URL?.absoluteString.orEmpty())
     }
 
     @ObjCSignatureOverride
     override fun webView(webView: WKWebView, didFinishNavigation: WKNavigation?) {
-        config.listener?.onPageFinished(webView.URL?.absoluteString.orEmpty())
+        config.listener?.safePageFinished(webView.URL?.absoluteString.orEmpty())
     }
 
     override fun viewDidDisappear(animated: Boolean) {
@@ -220,7 +220,7 @@ private class WebViewController(
         }
         webView?.navigationDelegate = null
         onClosed()
-        if (notifyListenerOnClose) config.listener?.onClosed()
+        if (notifyListenerOnClose) config.listener?.safeClosed()
     }
 }
 

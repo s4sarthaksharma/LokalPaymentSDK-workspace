@@ -1,6 +1,8 @@
 package com.getlokalapp.paymentsdk.juspay
 
 import androidx.fragment.app.FragmentActivity
+import android.os.Handler
+import android.os.Looper
 import com.getlokalapp.paymentsdk.hostcontext.ActivityTracker
 import com.getlokalapp.paymentsdk.json.toOrgJson
 import com.getlokalapp.util.Log
@@ -56,6 +58,7 @@ internal class AndroidJuspayClient : JuspayClient {
     @Volatile private var pendingProcess: JsonObject? = null
     @Volatile private var isInitiating = false
     private var listener: JuspayResultListener? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     init {
         ActivityTracker.addOnActivityResumedListener { activity ->
@@ -84,6 +87,17 @@ internal class AndroidJuspayClient : JuspayClient {
 
     private val callback = object : HyperPaymentsCallbackAdapter() {
         override fun onEvent(json: JSONObject, responseHandler: JuspayResponseHandler?) {
+            // HyperSDK normally calls back on the UI thread, but keep the
+            // client state machine thread-confined even if a vendor callback
+            // arrives from a worker thread.
+            if (Looper.myLooper() != Looper.getMainLooper()) {
+                mainHandler.post { handleEventOnMain(json) }
+                return
+            }
+            handleEventOnMain(json)
+        }
+
+        private fun handleEventOnMain(json: JSONObject) {
             when (val event = json.optString("event")) {
                 JuspayEvents.INITIATE_RESULT -> {
                     isInitiating = false
