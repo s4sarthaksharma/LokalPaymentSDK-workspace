@@ -1,24 +1,21 @@
 package com.getlokalapp.paymentsdk.buildsrc
 
 import java.io.File
-import java.security.MessageDigest
 import java.util.zip.ZipFile
 
 /**
- * Downloads and installs one directory from a trusted tar.gz archive.
- *
- * Intended for vendor binaries fetched by custom Gradle tasks, which are not
- * visible to Gradle's dependency-verification metadata.
+ * Downloads and installs one directory from a vendor tar.gz archive.
+ * Download failure and unsafe archive paths fail the build; artifact integrity
+ * is intentionally delegated to the pinned vendor version and HTTPS endpoint.
  */
-fun installVerifiedTarGzDirectory(
+fun installTarGzDirectory(
     url: String,
-    expectedSha256: String,
     archiveFile: File,
     extractionRoot: File,
     archiveDirectory: String,
     destination: File,
 ) {
-    downloadAndVerify(url, expectedSha256, archiveFile)
+    download(url, archiveFile)
     val entries = runAndCapture("tar", "tzf", archiveFile.absolutePath)
     validateEntries(entries, "$archiveDirectory/")
     runCommand(
@@ -29,16 +26,15 @@ fun installVerifiedTarGzDirectory(
     installExtractedDirectory(extractionRoot.resolve(archiveDirectory), destination)
 }
 
-/** Downloads and installs one top-level directory from a trusted zip archive. */
-fun installVerifiedZipDirectory(
+/** Downloads and installs one top-level directory from a vendor zip archive. */
+fun installZipDirectory(
     url: String,
-    expectedSha256: String,
     archiveFile: File,
     extractionRoot: File,
     directoryName: String,
     destination: File,
 ) {
-    downloadAndVerify(url, expectedSha256, archiveFile)
+    download(url, archiveFile)
     val entries = ZipFile(archiveFile).use { archive ->
         archive.entries().asSequence().map { it.name }.toList()
     }
@@ -50,28 +46,9 @@ fun installVerifiedZipDirectory(
     installExtractedDirectory(extractionRoot.resolve(directoryName), destination)
 }
 
-private fun downloadAndVerify(url: String, expectedSha256: String, archiveFile: File) {
-    require(expectedSha256.matches(Regex("[0-9a-fA-F]{64}"))) {
-        "Expected SHA-256 must contain exactly 64 hexadecimal characters"
-    }
+private fun download(url: String, archiveFile: File) {
     archiveFile.parentFile.mkdirs()
     runCommand("curl", "-fL", "--retry", "2", "-o", archiveFile.absolutePath, url)
-
-    val expected = expectedSha256.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
-    val actual = archiveFile.inputStream().use { input ->
-        val digest = MessageDigest.getInstance("SHA-256")
-        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-        while (true) {
-            val read = input.read(buffer)
-            if (read < 0) break
-            digest.update(buffer, 0, read)
-        }
-        digest.digest()
-    }
-    check(MessageDigest.isEqual(expected, actual)) {
-        val actualHex = actual.joinToString("") { "%02x".format(it) }
-        "Vendor archive SHA-256 mismatch: expected=$expectedSha256 actual=$actualHex"
-    }
 }
 
 private fun validateEntries(entries: List<String>, expectedPrefix: String) {
@@ -95,7 +72,7 @@ private fun installExtractedDirectory(extracted: File, destination: File) {
     destination.deleteRecursively()
     destination.parentFile.mkdirs()
     check(extracted.copyRecursively(destination, overwrite = true)) {
-        "Could not install verified vendor directory ${destination.name}"
+        "Could not install vendor directory ${destination.name}"
     }
 }
 

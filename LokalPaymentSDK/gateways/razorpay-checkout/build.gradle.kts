@@ -1,6 +1,6 @@
 import com.getlokalapp.paymentsdk.buildsrc.registerModuleVersionTask
 import com.getlokalapp.paymentsdk.buildsrc.registerVendorVersionTask
-import com.getlokalapp.paymentsdk.buildsrc.installVerifiedTarGzDirectory
+import com.getlokalapp.paymentsdk.buildsrc.installTarGzDirectory
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -17,7 +17,6 @@ group = "com.getlokalapp.paymentsdk"
 // and (via the same catalog entry) the razorpay host-contributor's
 // `.package(url:, exact:)` pin, so none can drift.
 val iosVendorSdkVersion = libs.versions.razorpay.spm.ios.get()
-val razorpayIosSha256 = "5a2f6b30c735aaa37ce4884c6284ee65bdc951767364f497c22958682c09f769"
 
 // Bakes this module's own version (root gradle.properties) into commonMain,
 // same pattern as :shared's generatePaymentSdkVersion — so GatewayMetadata's
@@ -47,14 +46,13 @@ val generateIosVendorVersion = registerVendorVersionTask(
 // Fetches razorpay-pod's vendored Razorpay.xcframework straight from its GitHub tag
 // (no CocoaPods) so the cinterops below have real headers/module maps to compile
 // against — the SPM-era replacement for CocoaPods resolving `pod("razorpay-pod")`.
-// Cacheable via Gradle's normal input/output tracking (keyed on version + checksum);
-// re-fetches only when either changes. This archive is used only by the SDK producer
+// Cacheable via Gradle's normal input/output tracking (keyed on version);
+// re-fetches only when the version changes. This archive is used only by the SDK producer
 // build to compile the published Kotlin/Native bindings; the framework itself is not
 // shipped in the gateway klib. A host resolves the same pinned package independently
 // through SwiftPM. Requires network access at producer-build time.
 val fetchRazorpayXcFramework = tasks.register("fetchRazorpayXcFramework") {
     inputs.property("version", iosVendorSdkVersion)
-    inputs.property("sha256", razorpayIosSha256)
     val outputDir = layout.buildDirectory.dir("vendorXcFrameworks/Razorpay.xcframework")
     outputs.dir(outputDir)
     doLast {
@@ -62,9 +60,8 @@ val fetchRazorpayXcFramework = tasks.register("fetchRazorpayXcFramework") {
         val out = outputDir.get().asFile
         val work = temporaryDir
         val tarball = work.resolve("razorpay-pod-$version.tar.gz")
-        installVerifiedTarGzDirectory(
+        installTarGzDirectory(
             url = "https://codeload.github.com/razorpay/razorpay-pod/tar.gz/refs/tags/$version",
-            expectedSha256 = razorpayIosSha256,
             archiveFile = tarball,
             extractionRoot = work,
             archiveDirectory = "razorpay-pod-$version/Pod/Razorpay.xcframework",

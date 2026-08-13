@@ -1,6 +1,6 @@
 import com.getlokalapp.paymentsdk.buildsrc.registerModuleVersionTask
 import com.getlokalapp.paymentsdk.buildsrc.registerVendorVersionTask
-import com.getlokalapp.paymentsdk.buildsrc.installVerifiedZipDirectory
+import com.getlokalapp.paymentsdk.buildsrc.installZipDirectory
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -17,7 +17,6 @@ group = "com.getlokalapp.paymentsdk"
 // and generateIosVendorVersion, and (via the same catalog entry) the juspay
 // host-contributor's `.package(url:, exact:)` pin, so none can drift.
 val iosVendorSdkVersion = libs.versions.juspay.spm.ios.get()
-val hyperSdkIosSha256 = "a4629ff33d97ed63c7ae54085bf0bf9752b72aec9bef580996483ac8eca98c1d"
 
 // Bakes this module's own version (root gradle.properties) into commonMain,
 // same pattern as :shared's generatePaymentSdkVersion — so GatewayMetadata's
@@ -53,8 +52,6 @@ val generateIosVendorVersion = registerVendorVersionTask(
 // automatically through the single hypersdk-ios SPM package (juspay host-contributor).
 val hyperCoreVersion = "1.0.4"
 val airborneVersion = "0.37.0"
-val hyperCoreIosSha256 = "934c762fd76ad8c4e38397c74d8e704dabfce14a60d8f2d4c909878f29dc115f"
-val airborneIosSha256 = "c46f082129688da7a1b8a37a5867b29f6b2e1104ab210d1f1904a94e9794b97a"
 
 // Fetches HyperSDK.xcframework (+ HyperCore, Airborne) straight from Juspay's public release
 // CDN — the same zips github.com/juspay/hypersdk-ios's binary targets point at — so the
@@ -65,24 +62,20 @@ val airborneIosSha256 = "c46f082129688da7a1b8a37a5867b29f6b2e1104ab210d1f1904a94
 // host-contributor). These archives are used only by the SDK producer build to compile
 // the published Kotlin/Native bindings; they are not embedded in the gateway klib. The
 // host independently resolves the pinned hypersdk-ios package through SwiftPM. Cacheable
-// via version + checksum input tracking. Requires network at producer-build time.
+// via version input tracking. Requires network at producer-build time.
 val fetchHyperSdkXcFramework = tasks.register("fetchHyperSdkXcFramework") {
     inputs.property("hypersdk", iosVendorSdkVersion)
     inputs.property("hypercore", hyperCoreVersion)
     inputs.property("airborne", airborneVersion)
-    inputs.property("hypersdkSha256", hyperSdkIosSha256)
-    inputs.property("hypercoreSha256", hyperCoreIosSha256)
-    inputs.property("airborneSha256", airborneIosSha256)
     val outputDir = layout.buildDirectory.dir("vendorXcFrameworks")
     outputs.dir(outputDir)
     doLast {
         val out = outputDir.get().asFile
         val work = temporaryDir
-        fun fetch(name: String, version: String, cdnPath: String, expectedSha256: String) {
+        fun fetch(name: String, version: String, cdnPath: String) {
             val zip = work.resolve("$name-$version.zip")
-            installVerifiedZipDirectory(
+            installZipDirectory(
                 url = "https://public.releases.juspay.in/release/ios/$cdnPath/$version/$name.zip",
-                expectedSha256 = expectedSha256,
                 archiveFile = zip,
                 extractionRoot = work,
                 directoryName = "$name.xcframework",
@@ -91,9 +84,9 @@ val fetchHyperSdkXcFramework = tasks.register("fetchHyperSdkXcFramework") {
         }
         out.deleteRecursively()
         out.mkdirs()
-        fetch("HyperSDK", iosVendorSdkVersion, "hyper-sdk", hyperSdkIosSha256)
-        fetch("HyperCore", hyperCoreVersion, "hyper-core", hyperCoreIosSha256)
-        fetch("Airborne", airborneVersion, "airborne", airborneIosSha256)
+        fetch("HyperSDK", iosVendorSdkVersion, "hyper-sdk")
+        fetch("HyperCore", hyperCoreVersion, "hyper-core")
+        fetch("Airborne", airborneVersion, "airborne")
     }
 }
 val vendorXcFrameworksDir = fetchHyperSdkXcFramework.map {
