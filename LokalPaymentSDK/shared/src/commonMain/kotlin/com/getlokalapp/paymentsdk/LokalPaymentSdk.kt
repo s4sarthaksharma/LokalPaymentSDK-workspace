@@ -32,6 +32,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.uuid.Uuid
+import kotlin.concurrent.atomics.AtomicReference
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
 /**
  * Entry point for the shared Lokal Payment SDK.
@@ -47,14 +49,15 @@ import kotlin.uuid.Uuid
  * gateway modules the host actually included. Registration is app-lifetime;
  * there is no unregister.
  */
+@OptIn(ExperimentalAtomicApi::class)
 object LokalPaymentSdk {
 
     private const val TAG = "LokalPaymentSdk"
     private const val FLOW_COMPLETED_WITHOUT_RESULT = "gateway_flow_completed_without_result"
     private const val DEFAULT_PRESENTED_DELAY_MS = 500L
 
-    private val handlers = mutableMapOf<PaymentGateway, PaymentGatewayHandler>()
-    private val unavailable = mutableMapOf<PaymentGateway, UnavailableGateway>()
+    private val handlers = AtomicReference<Map<PaymentGateway, PaymentGatewayHandler>>(emptyMap())
+    private val unavailable = AtomicReference<Map<PaymentGateway, UnavailableGateway>>(emptyMap())
 
     private val paymentScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val mutablePaymentEvents = MutableSharedFlow<LokalPaymentEvent>()
@@ -76,7 +79,7 @@ object LokalPaymentSdk {
      * (e.g. Juspay's `initialize(...)`) before [pay] actually works.
      */
     fun register(handler: PaymentGatewayHandler) {
-        handlers[handler.gateway] = handler
+        updateMap(handlers) { it + (handler.gateway to handler) }
     }
 
     /**
@@ -87,7 +90,9 @@ object LokalPaymentSdk {
      * build info, same as a registered handler's [PaymentGatewayHandler.metadata].
      */
     fun registerUnavailable(gateway: PaymentGateway, reasonCode: String, reasonMessage: String, metadata: GatewayMetadata) {
-        unavailable[gateway] = UnavailableGateway(gateway, reasonCode, reasonMessage, metadata)
+        updateMap(unavailable) {
+            it + (gateway to UnavailableGateway(gateway, reasonCode, reasonMessage, metadata))
+        }
     }
 
     /**
@@ -106,7 +111,9 @@ object LokalPaymentSdk {
     fun gatewayStatus(): GatewayStatusReport {
         val available = mutableListOf<AvailableGateway>()
         val notReady = mutableListOf<UnavailableGateway>()
-        for (handler in handlers.values) {
+        val handlerSnapshot = handlers.load()
+        val unavailableSnapshot = unavailable.load()
+        for (handler in handlerSnapshot.values) {
             when (val readiness = handler.readiness()) {
                 is GatewayReadiness.Ready ->
                     available += AvailableGateway(handler.gateway, handler.metadata)
@@ -117,7 +124,7 @@ object LokalPaymentSdk {
         return GatewayStatusReport(
             paymentSdkVersion = VERSION,
             available = available,
-            unavailable = unavailable.values.toList() + notReady,
+            unavailable = unavailableSnapshot.values.toList() + notReady,
         )
     }
 
@@ -217,7 +224,7 @@ object LokalPaymentSdk {
         operationId: String,
         order: PaymentOrder,
     ): PaymentGatewayHandler? {
-        val handler = handlers[order.gateway]
+        val handler = handlers.load()[order.gateway]
         Log.d { "[$TAG] pay() called for ${order.gateway}, handlerRegistered=${handler != null}" }
         if (handler == null) {
             return rejectPayment(
@@ -295,7 +302,7 @@ object LokalPaymentSdk {
     }
 
     private fun unavailableError(gateway: PaymentGateway): PaymentResult.Failure {
-        val reason = unavailable[gateway]
+        val reason = unavailable.load()[gateway]
         return if (reason != null) {
             PaymentResult.Failure(code = reason.reasonCode, message = reason.reasonMessage)
         } else {
@@ -305,6 +312,17 @@ object LokalPaymentSdk {
                     "$gateway. Did you forget to include that gateway's module, " +
                     "or to call its initialize function if it has one?",
             )
+        }
+    }
+
+    private fun <K, V> updateMap(
+        ref: AtomicReference<Map<K, V>>,
+        transform: (Map<K, V>) -> Map<K, V>,
+    ) {
+        while (true) {
+            val current = ref.load()
+            val next = transform(current)
+            if (ref.compareAndSet(current, next)) return
         }
     }
 
@@ -332,8 +350,8 @@ object LokalPaymentSdk {
      * lifetime — logging before this is called (e.g. during a gateway's own eager startup)
      * is silently skipped rather than buffered.
      */
-    fun setLogger(logger: LokalLogger) {
-        Log = logger
+    fun setLogger(logger: LokalLogger?) {
+        Log = logger ?: com.getlokalapp.util.NoOpLokalLogger
     }
 
     const val VERSION: String = PAYMENT_SDK_VERSION

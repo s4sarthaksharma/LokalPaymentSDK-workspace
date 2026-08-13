@@ -11,9 +11,13 @@ library the way a real host app would: via a published artifact
 
 ## Structure
 
-- `shared/` — the KMP library (Android + iOS). Common code in
-  `commonMain`, platform code in `androidMain` / `iosMain`. Publishes an
-  Android artifact to Maven and a `Shared` CocoaPod for iOS.
+- `shared/` — the gateway-agnostic KMP core (Android + iOS).
+- `webview/` — reusable secure WebView bridge/session support.
+- `gateways/` — opt-in gateway modules (Razorpay, UPI Intent, Juspay, Web
+  Checkout, Native IAP, and others as added). Include only the gateways the
+  host uses.
+- `gradle-plugins/` — host/build integration plugins used to assemble the
+  Android and iOS SDK artifacts.
 
 ## Toolchain
 
@@ -46,10 +50,8 @@ you bump `version` in `shared/build.gradle.kts` or force a refresh
 
 ## iOS
 
-This module is CocoaPods-integrated (`org.jetbrains.kotlin.native.cocoapods`).
-A consuming iOS app needs a `Podfile` pointing at this module's `shared/`
-directory, e.g. (from `LokalPaymentSDKDemo/iosApp/Podfile`):
-
-```ruby
-pod 'Shared', :path => '../../LokalPaymentSDK/shared'
-```
+iOS integration is Swift Package Manager-based. The host integration plugin
+assembles the selected gateway klibs and vendor dependencies into the host's
+generated umbrella package. CocoaPods integration is retired; see
+[`docs/integrating-the-sdk.md`](docs/integrating-the-sdk.md) for the current
+SPM setup.
