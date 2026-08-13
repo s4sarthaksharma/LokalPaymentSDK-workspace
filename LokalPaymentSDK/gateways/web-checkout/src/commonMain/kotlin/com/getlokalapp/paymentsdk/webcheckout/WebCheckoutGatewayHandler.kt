@@ -97,11 +97,14 @@ internal object WebCheckoutGatewayHandler : TypedPaymentGatewayHandler<WebChecko
             },
         )
 
-        Log.d { "[$TAG] loading gateway url" }
         val session = createWebViewSession(webConfig)
-        session.load(WebViewRequest.Url(config.gatewayUrl))
-
-        awaitClose { session.close() }
+        runUntilClosed(
+            start = {
+                Log.d { "[$TAG] loading gateway url" }
+                session.load(WebViewRequest.Url(config.gatewayUrl))
+            },
+            cleanup = { session.close() },
+        )
     }
 
     private const val INVALID_CHECKOUT_URL = "invalid_checkout_url"

@@ -51,7 +51,7 @@ internal object RazorpayCustomUiGatewayHandler : TypedPaymentGatewayHandler<Razo
      */
     override suspend fun GatewayResultScope.handle(config: RazorpayCustomUiConfig) {
         val client = AndroidRazorpayCustomUiClient()
-        client.setPaymentResultListener(object : RazorpayCustomUiResultListener {
+        val listener = object : RazorpayCustomUiResultListener {
             override fun onPaymentSuccess(paymentId: String, orderId: String?, signature: String) {
                 Log.d { "[$TAG] payment success, paymentId=$paymentId, orderId=$orderId" }
                 sendTerminal(razorpayCustomUiSuccess(paymentId, orderId, signature))
@@ -61,10 +61,14 @@ internal object RazorpayCustomUiGatewayHandler : TypedPaymentGatewayHandler<Razo
                 Log.w { "[$TAG] payment error, code=$code, description=$description" }
                 sendTerminal(razorpayCustomUiErrorToResult(code, description))
             }
-        })
-        Log.d { "[$TAG] submitting payment" }
-        client.submit(config)
-
-        awaitClose { client.setPaymentResultListener(null) }
+        }
+        runUntilClosed(
+            start = {
+                client.setPaymentResultListener(listener)
+                Log.d { "[$TAG] submitting payment" }
+                client.submit(config)
+            },
+            cleanup = { client.setPaymentResultListener(null) },
+        )
     }
 }

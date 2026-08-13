@@ -72,6 +72,12 @@ const val BAD_GATEWAY_CONFIG: String = "bad_gateway_config"
 /** Stable, machine-checkable code reported (never sent to a host) for a duplicate terminal emission. */
 private const val DUPLICATE_TERMINAL_RESULT: String = "duplicate_terminal_result"
 
+/** Stable internal diagnostic for gateway-specific teardown that throws. */
+private const val GATEWAY_CLEANUP_FAILED: String = "gateway_cleanup_failed"
+
+/** Stable internal diagnostic for a terminal event whose flow was already unavailable. */
+private const val TERMINAL_DELIVERY_FAILED: String = "terminal_delivery_failed"
+
 /**
  * A [PaymentGatewayHandler] whose [pay] is always the same shape: decode `gateway_config` into
  * [T] via [configSerializer], then hand it to [handle]. Gateways implement this instead of
@@ -135,9 +141,9 @@ fun <T> gatewayCallbackFlow(
 /**
  * Scopes a gateway's [PaymentGatewayHandler.pay] body to the two things it's allowed to emit:
  * an optional non-terminal [PaymentGatewayEvent.GatewayUi] signal via [sendUi], and exactly one
- * terminal [PaymentResult] via [sendTerminal]. [awaitClose], [close] and [launch] pass through to
- * the underlying `ProducerScope` unchanged, for cleanup, the bad-config short-circuit, and
- * gateways whose result may arrive on a side channel.
+ * terminal [PaymentResult] via [sendTerminal]. [runUntilClosed] centralizes startup and guaranteed
+ * cleanup; [close] and [launch] provide the remaining narrow `ProducerScope` capabilities needed
+ * by the bad-config short-circuit and gateways whose result arrives on a side channel.
  */
 @OptIn(ExperimentalAtomicApi::class)
 class GatewayResultScope internal constructor(
@@ -165,11 +171,55 @@ class GatewayResultScope internal constructor(
             }
             return
         }
-        producerScope.trySend(result)
+        val delivery = producerScope.trySend(result)
+        if (delivery.isFailure) {
+            val error = IllegalStateException("Terminal PaymentResult could not be delivered to the gateway flow.")
+            // Do not include `result`: success/pending gatewayData can contain
+            // signatures, transaction references or other sensitive values.
+            runCatching {
+                Log.e(err = error, tag = TERMINAL_DELIVERY_FAILED) {
+                    "Gateway terminal result could not be delivered"
+                }
+                Log.nonFatal(error, extras = mapOf("code" to TERMINAL_DELIVERY_FAILED)) {
+                    "Gateway terminal result could not be delivered"
+                }
+            }
+        }
         producerScope.close()
     }
 
     suspend fun awaitClose(onClose: () -> Unit) = producerScope.awaitClose(onClose)
+
+    /**
+     * Runs gateway-specific listener/session installation and launch in [start], keeps the
+     * callback flow alive until it closes, and guarantees [cleanup] for normal terminal
+     * completion, collector cancellation, and synchronous startup failure.
+     *
+     * Cleanup failures are diagnostic-only: teardown must not replace the original payment
+     * result or startup exception that caused this scope to close.
+     */
+    suspend fun runUntilClosed(
+        start: suspend () -> Unit,
+        cleanup: () -> Unit,
+    ) {
+        try {
+            start()
+            producerScope.awaitClose {}
+        } finally {
+            try {
+                cleanup()
+            } catch (t: Throwable) {
+                runCatching {
+                    Log.e(err = t, tag = GATEWAY_CLEANUP_FAILED) {
+                        "Gateway flow cleanup failed"
+                    }
+                    Log.nonFatal(t, extras = mapOf("code" to GATEWAY_CLEANUP_FAILED)) {
+                        "Gateway flow cleanup failed"
+                    }
+                }
+            }
+        }
+    }
 
     fun close(cause: Throwable? = null) = producerScope.close(cause)
 

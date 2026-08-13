@@ -37,7 +37,7 @@ internal object RazorpayCheckoutGatewayHandler : TypedPaymentGatewayHandler<Razo
 
     override suspend fun GatewayResultScope.handle(config: RazorpayCheckoutConfig) {
         val client = createRazorpayCheckoutClient()
-        client.setPaymentResultListener(object : RazorpayPaymentResultListener {
+        val listener = object : RazorpayPaymentResultListener {
             override fun onPaymentSuccess(paymentId: String, orderId: String?, signature: String) {
                 Log.d { "[$TAG] payment success, paymentId=$paymentId, orderId=$orderId" }
                 sendTerminal(razorpaySuccess(paymentId, orderId, signature))
@@ -47,10 +47,14 @@ internal object RazorpayCheckoutGatewayHandler : TypedPaymentGatewayHandler<Razo
                 Log.w { "[$TAG] payment error, code=$code, description=$description" }
                 sendTerminal(razorpayErrorToResult(code, description))
             }
-        })
-        Log.d { "[$TAG] opening checkout" }
-        client.openCheckout(config)
-
-        awaitClose { client.setPaymentResultListener(null) }
+        }
+        runUntilClosed(
+            start = {
+                client.setPaymentResultListener(listener)
+                Log.d { "[$TAG] opening checkout" }
+                client.openCheckout(config)
+            },
+            cleanup = { client.setPaymentResultListener(null) },
+        )
     }
 }

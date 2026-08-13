@@ -134,11 +134,15 @@ internal object JuspayGatewayHandler : TypedPaymentGatewayHandler<JuspayConfig> 
                 sendTerminal(juspayResultToPaymentResult(data))
             }
         }
-        c.setResultListener(resultListener)
-        Log.d { "[$TAG] processing payment" }
-        c.process(config.sdkPayload)
-        // Identity-checked clear: if a newer pay() has already installed
-        // its own listener, this stale flow's teardown must not remove it.
-        awaitClose { c.clearResultListener(resultListener) }
+        runUntilClosed(
+            start = {
+                c.setResultListener(resultListener)
+                Log.d { "[$TAG] processing payment" }
+                c.process(config.sdkPayload)
+            },
+            // Identity-checked clear: if a newer pay() has already installed
+            // its own listener, this stale flow's teardown must not remove it.
+            cleanup = { c.clearResultListener(resultListener) },
+        )
     }
 }

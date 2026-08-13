@@ -25,14 +25,20 @@ internal fun createNativeIapClient(): NativeIapClient = IOSNativeIapClient()
 internal class IOSNativeIapClient : NativeIapClient {
 
     override val transactionUpdates: Flow<NativeIapPurchaseResult> = callbackFlow {
-        // The generated Kotlin binding types this handler's block parameter as
-        // nullable even though NativeIapBridge.swift declares it non-optional —
-        // Objective-C blocks don't carry the same nullability guarantees cinterop
-        // otherwise enforces for plain method parameters.
-        NativeIapBridge.shared.setTransactionUpdateHandler { result ->
-            trySend(result.toDomainOrFailure())
+        try {
+            // The generated Kotlin binding types this handler's block parameter as
+            // nullable even though NativeIapBridge.swift declares it non-optional —
+            // Objective-C blocks don't carry the same nullability guarantees cinterop
+            // otherwise enforces for plain method parameters.
+            NativeIapBridge.shared.setTransactionUpdateHandler { result ->
+                trySend(result.toDomainOrFailure())
+            }
+            awaitClose {}
+        } finally {
+            // This stream is below GatewayResultScope, so it cannot use runUntilClosed.
+            // Still guarantee handler removal if installation/startup or collection fails.
+            runCatching { NativeIapBridge.shared.setTransactionUpdateHandler(null) }
         }
-        awaitClose { NativeIapBridge.shared.setTransactionUpdateHandler(null) }
     }
 
     override suspend fun purchase(

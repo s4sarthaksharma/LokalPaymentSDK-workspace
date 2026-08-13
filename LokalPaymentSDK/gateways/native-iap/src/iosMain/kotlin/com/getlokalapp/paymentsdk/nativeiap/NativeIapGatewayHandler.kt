@@ -64,26 +64,33 @@ internal object NativeIapGatewayHandler : TypedPaymentGatewayHandler<NativeIapCo
             return true
         }
 
-        Log.d { "[$TAG] purchasing productId=${config.productId}" }
-        val direct = client.purchase(config.productId, config.appAccountToken) {
-            Log.d { "[$TAG] handing off to StoreKit for productId=${config.productId}" }
-            sendUi(PaymentGatewayEvent.GatewayUi.Presented)
-        }
-        if (!emitIfTerminal(direct)) {
-            Log.d { "[$TAG] purchase pending, waiting on transactionUpdates for productId=${config.productId}" }
-            updatesJob = launch {
-                client.transactionUpdates.collect { update ->
-                    // A Success from transactionUpdates might belong to a
-                    // different, unrelated product than the one this pay()
-                    // call is waiting on (StoreKit reports all deferred
-                    // transactions on one shared stream) — only treat a
-                    // matching product as resolving this call.
-                    if (update is NativeIapPurchaseResult.Success && update.productId != config.productId) return@collect
-                    emitIfTerminal(update)
+        runUntilClosed(
+            start = {
+                Log.d { "[$TAG] purchasing productId=${config.productId}" }
+                val direct = client.purchase(config.productId, config.appAccountToken) {
+                    Log.d { "[$TAG] handing off to StoreKit for productId=${config.productId}" }
+                    sendUi(PaymentGatewayEvent.GatewayUi.Presented)
                 }
-            }
-        }
-
-        awaitClose { updatesJob?.cancel() }
+                if (!emitIfTerminal(direct)) {
+                    Log.d { "[$TAG] purchase pending, waiting on transactionUpdates for productId=${config.productId}" }
+                    updatesJob = launch {
+                        client.transactionUpdates.collect { update ->
+                            // A Success from transactionUpdates might belong to a
+                            // different, unrelated product than the one this pay()
+                            // call is waiting on (StoreKit reports all deferred
+                            // transactions on one shared stream) — only treat a
+                            // matching product as resolving this call.
+                            if (update is NativeIapPurchaseResult.Success &&
+                                update.productId != config.productId
+                            ) {
+                                return@collect
+                            }
+                            emitIfTerminal(update)
+                        }
+                    }
+                }
+            },
+            cleanup = { updatesJob?.cancel() },
+        )
     }
 }

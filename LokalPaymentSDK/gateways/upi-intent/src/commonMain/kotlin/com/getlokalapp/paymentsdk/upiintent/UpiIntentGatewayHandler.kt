@@ -55,7 +55,7 @@ internal object UpiIntentGatewayHandler : TypedPaymentGatewayHandler<UpiIntentCo
     override suspend fun GatewayResultScope.handle(config: UpiIntentConfig) {
         val txnRef = config.resolveTxnRef()
         val client = createUpiIntentClient()
-        client.setResultListener(object : UpiIntentResultListener {
+        val listener = object : UpiIntentResultListener {
             override fun onPending(clientHint: ClientStatus) {
                 Log.d { "[$TAG] pending, txnRef=$txnRef, clientHint=$clientHint" }
                 sendTerminal(
@@ -77,11 +77,15 @@ internal object UpiIntentGatewayHandler : TypedPaymentGatewayHandler<UpiIntentCo
                 Log.d { "[$TAG] cancelled by user" }
                 sendTerminal(PaymentResult.Cancelled(CancelReason.USER_DISMISSED))
             }
-        })
-        Log.d { "[$TAG] launching UPI intent, txnRef=$txnRef" }
-        client.launch(config)
-
-        awaitClose { client.setResultListener(null) }
+        }
+        runUntilClosed(
+            start = {
+                client.setResultListener(listener)
+                Log.d { "[$TAG] launching UPI intent, txnRef=$txnRef" }
+                client.launch(config)
+            },
+            cleanup = { client.setResultListener(null) },
+        )
     }
 }
 
