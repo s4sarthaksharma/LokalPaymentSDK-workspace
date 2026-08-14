@@ -2,13 +2,21 @@ package com.getlokalapp.paymentsdk.juspay
 
 import vendor.HyperSDK.HyperServices
 import com.getlokalapp.paymentsdk.hostcontext.topmostViewController
+import com.getlokalapp.paymentsdk.json.lenientJson
 import com.getlokalapp.paymentsdk.json.toPlainMap
 import com.getlokalapp.util.Log
+import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.put
 import platform.Foundation.NSBundle
 import platform.Foundation.NSData
 import platform.Foundation.NSJSONSerialization
+import platform.Foundation.NSString
+import platform.Foundation.NSUTF8StringEncoding
+import platform.Foundation.create
 import platform.Foundation.dataWithContentsOfFile
 import platform.UIKit.UIActivityIndicatorView
 import platform.UIKit.UIActivityIndicatorViewStyleLarge
@@ -51,7 +59,7 @@ internal actual fun createJuspayClient(tenantId: String): JuspayClient = IOSJusp
  * connectedScenes walk below is standard practice but similarly unverified
  * against a real multi-scene/SwiftUI host — check before shipping.
  */
-@OptIn(ExperimentalForeignApi::class)
+@OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 internal class IOSJuspayClient(private val tenantId: String) : JuspayClient {
 
     private companion object {
@@ -178,15 +186,9 @@ internal class IOSJuspayClient(private val tenantId: String) : JuspayClient {
                 val status = (payload?.get("status") as? String).orEmpty()
                 val errorCode = data["errorCode"] as? String
                 Log.d { "[$TAG] PROCESS_RESULT, status=$status, errorCode=$errorCode" }
-                listener?.onResult(
-                    JuspayResultData(
-                        status = status,
-                        orderId = data["orderId"] as? String ?: payload?.get("orderId") as? String,
-                        txnId = data["epgTxnId"] as? String ?: payload?.get("epgTxnId") as? String,
-                        errorCode = errorCode,
-                        errorMessage = data["errorMessage"] as? String,
-                    ),
-                )
+                val result = runCatching { data.toKotlinJsonObject() }
+                    .getOrElse { errorData("invalid_process_result") }
+                listener?.onResult(result)
             }
 
             else -> {
@@ -195,8 +197,18 @@ internal class IOSJuspayClient(private val tenantId: String) : JuspayClient {
         }
     }
 
-    private fun errorData(code: String) =
-        JuspayResultData(status = code, orderId = null, txnId = null, errorCode = code, errorMessage = null)
+    private fun errorData(code: String): JsonObject = buildJsonObject {
+        put("status", code)
+        put("errorCode", code)
+    }
+
+    private fun Map<Any?, *>.toKotlinJsonObject(): JsonObject {
+        val jsonData = checkNotNull(NSJSONSerialization.dataWithJSONObject(this, 0uL, null)) {
+            "Juspay process_result could not be serialized as JSON."
+        }
+        val jsonText = NSString.create(jsonData, NSUTF8StringEncoding).toString()
+        return lenientJson.parseToJsonElement(jsonText).jsonObject
+    }
 
     /**
      * Reads the merchant clientId out of the bundled `LokalJuspayConfig.json`

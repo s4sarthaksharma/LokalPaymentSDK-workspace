@@ -1,11 +1,12 @@
 package com.getlokalapp.paymentsdk.juspay
 
-import com.getlokalapp.paymentsdk.json.toJsonObject
 import com.getlokalapp.paymentsdk.model.CancelReason
 import com.getlokalapp.paymentsdk.model.PaymentGatewayEvent.PaymentResult
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 
 // Everything that crosses the HyperSDK boundary lives here: the inbound
 // gateway_config parsing and the outbound process_result classification.
@@ -25,51 +26,41 @@ internal data class JuspayConfig(
     @SerialName("generated_order_id") val generatedOrderId: String? = null,
 )
 
-/** Raw, already-extracted fields from a Juspay process_result event. */
-internal data class JuspayResultData(
-    val status: String,
-    val orderId: String?,
-    val txnId: String?,
-    val errorCode: String?,
-    val errorMessage: String?,
-) {
-    /** Typed view of [status]; null = status we don't recognize. */
-    val parsedStatus: JuspayStatus? get() = JuspayStatus.fromWire(status)
-}
-
 /**
- * Juspay's success payload, encoded into [PaymentResult.Success.gatewayData].
- * There is no signature — Juspay's SDK callback returns none — so, unlike the
- * Razorpay gateways, this blob carries only the ids the host's backend needs to
- * verify the charge server-side (`txn_id` = Juspay's epgTxnId).
+ * Classifies Juspay's complete `process_result` object while preserving it
+ * unchanged as the gateway blob for successful and pending outcomes. Only the
+ * fields needed to choose the public result subtype or describe a failure are
+ * inspected; the SDK does not reconstruct a provider-specific result schema.
  */
-@Serializable
-internal data class JuspaySuccessResult(
-    @SerialName("txn_id") val txnId: String,
-    @SerialName("order_id") val orderId: String?,
-)
+internal fun juspayResultToPaymentResult(data: JsonObject): PaymentResult {
+    val status = data.juspayStatus()
+    return when (JuspayStatus.fromWire(status)) {
+        JuspayStatus.CHARGED ->
+            PaymentResult.Success(data)
 
-/**
- * Classifies Juspay's own statuses into a PaymentResult (D6/D7) — the "one
- * layer up" judgment kept out of the platform clients, mirroring
- * RazorpayResultMapper.
- */
-internal fun juspayResultToPaymentResult(data: JuspayResultData): PaymentResult =
-    when (data.parsedStatus) {
-        JuspayStatus.CHARGED, JuspayStatus.AUTHORIZING, JuspayStatus.PENDING_VBV ->
-            PaymentResult.Success(
-                JuspaySuccessResult(
-                    txnId = data.txnId.orEmpty(),
-                    orderId = data.orderId
-                ).toJsonObject(),
-            )
+        JuspayStatus.AUTHORIZING, JuspayStatus.PENDING_VBV ->
+            PaymentResult.Pending(data)
 
         JuspayStatus.BACKPRESSED, JuspayStatus.USER_ABORTED ->
             PaymentResult.Cancelled(CancelReason.USER_DISMISSED)
 
         null ->
             PaymentResult.Failure(
-                code = data.errorCode ?: data.status,
-                message = data.errorMessage ?: "Juspay payment failed (status=${data.status})",
+                code = data.juspayErrorCode() ?: status,
+                message = data.juspayErrorMessage() ?: "Juspay payment failed (status=$status)",
+                gatewayData = data,
             )
     }
+}
+
+internal fun JsonObject.juspayStatus(): String = payloadString("status").orEmpty()
+
+internal fun JsonObject.juspayErrorCode(): String? = string("errorCode")
+
+internal fun JsonObject.juspayErrorMessage(): String? = string("errorMessage")
+
+private fun JsonObject.payloadString(key: String): String? =
+    (this["payload"] as? JsonObject)?.string(key) ?: string(key)
+
+private fun JsonObject.string(key: String): String? =
+    (this[key] as? JsonPrimitive)?.contentOrNull

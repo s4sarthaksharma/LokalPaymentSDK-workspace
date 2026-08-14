@@ -1,13 +1,10 @@
 package com.getlokalapp.paymentsdk.webcheckout
 
 import com.getlokalapp.paymentsdk.json.lenientJson
-import com.getlokalapp.paymentsdk.json.toJsonObject
 import com.getlokalapp.paymentsdk.model.CancelReason
 import com.getlokalapp.paymentsdk.model.PaymentGatewayEvent.PaymentResult
 import com.getlokalapp.paymentsdk.webview.JsBridgeHandler
 import com.getlokalapp.util.Log
-import kotlinx.serialization.SerialName
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
@@ -59,18 +56,20 @@ internal const val REACT_NATIVE_BRIDGE_SHIM = """
  * `FAILED`/`EXPIRED`/`GATEWAY_ERROR` to `Failure`; `CANCELLED` to `Cancelled`.
  */
 private val EVENT_MAPPERS: Map<String, (JsonObject) -> PaymentResult> = mapOf(
-    EVENT_SUCCESS to { p ->
-        PaymentResult.Success(
-            WebCheckoutSuccessResult(
-                paymentId = p.str("paymentId").orEmpty()
-            ).toJsonObject()
+    EVENT_SUCCESS to { payload -> PaymentResult.Success(payload) },
+    EVENT_FAILED to { p ->
+        PaymentResult.Failure(
+            code = p.str("status") ?: "failed",
+            message = "payment_failed",
+            gatewayData = p,
         )
     },
-    EVENT_FAILED to { p ->
-        PaymentResult.Failure(code = p.str("status") ?: "failed", message = "payment_failed")
-    },
-    EVENT_EXPIRED to {
-        PaymentResult.Failure(code = "expired", message = "payment_expired")
+    EVENT_EXPIRED to { payload ->
+        PaymentResult.Failure(
+            code = "expired",
+            message = "payment_expired",
+            gatewayData = payload,
+        )
     },
     EVENT_PROCESSING to ::pendingResult,
     EVENT_PENDING to ::pendingResult,
@@ -78,34 +77,15 @@ private val EVENT_MAPPERS: Map<String, (JsonObject) -> PaymentResult> = mapOf(
         PaymentResult.Cancelled(CancelReason.USER_DISMISSED)
     },
     EVENT_ERROR to { p ->
-        PaymentResult.Failure(code = p.str("reason") ?: "gateway_error", message = "payment_gateway_error")
+        PaymentResult.Failure(
+            code = p.str("reason") ?: "gateway_error",
+            message = "payment_gateway_error",
+            gatewayData = p,
+        )
     },
 )
 
-private fun pendingResult(p: JsonObject): PaymentResult =
-    PaymentResult.Pending(
-        WebCheckoutPendingResult(
-            txnRef = p.str("paymentId").orEmpty(),
-            clientHint = "UNKNOWN"
-        ).toJsonObject(),
-    )
-
-/** Success payload encoded into [PaymentResult.Success.gatewayData]; the host forwards it to its backend. */
-@Serializable
-private data class WebCheckoutSuccessResult(
-    @SerialName("payment_id") val paymentId: String,
-)
-
-/**
- * Pending payload encoded into [PaymentResult.Pending.gatewayData]. `client_hint`
- * is always `UNKNOWN` here — the hosted page's `PROCESSING`/`PENDING` events
- * carry no trustworthy client status, so only the host's backend resolves it.
- */
-@Serializable
-private data class WebCheckoutPendingResult(
-    @SerialName("txn_ref") val txnRef: String,
-    @SerialName("client_hint") val clientHint: String,
-)
+private fun pendingResult(payload: JsonObject): PaymentResult = PaymentResult.Pending(payload)
 
 /**
  * One [JsBridgeHandler] per web-app event (see [EVENT_MAPPERS]), each handing its

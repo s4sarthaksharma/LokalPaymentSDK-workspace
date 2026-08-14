@@ -141,7 +141,11 @@ sealed interface PaymentGatewayEvent { data object UiPresented : PaymentGatewayE
 sealed interface PaymentResult : PaymentGatewayEvent {
     data class Success(val gatewayData: JsonObject) : PaymentResult   // opaque per-gateway blob
     data class Cancelled(val reason: CancelReason) : PaymentResult
-    data class Failure(val code: String?, val message: String) : PaymentResult
+    data class Failure(
+        val code: String?,
+        val message: String,
+        val gatewayData: JsonObject? = null,
+    ) : PaymentResult
     data class Pending(val gatewayData: JsonObject) : PaymentResult   // opaque per-gateway blob
 }
 data class LokalPaymentResult(
@@ -154,18 +158,19 @@ data class LokalPaymentResult(
 Your module emits `PaymentResult`. Core wraps it into `LokalPaymentResult`. You
 never construct `LokalPaymentResult` yourself.
 
-`Success` and `Pending` each carry only an opaque, gateway-specific
-`gatewayData: JsonObject` — the fields your gateway returns (ids, a signature, a
-txn ref, …) that the frontend never acts on, only forwards to its own backend to
-verify (`Success`) or resolve (`Pending`). Each gateway module owns a
+`Success` and `Pending` carry an opaque, gateway-specific `gatewayData:
+JsonObject`; `Failure` carries one optionally when the gateway supplied a raw
+result object. These are the fields your gateway returns (ids, a signature, a
+txn ref, diagnostic status, …) that the frontend forwards to its own backend.
+Each gateway module owns a
 `@Serializable` output type it encodes into that blob — the output-side mirror of
 your `FooConfig` — so the blob's keys are effectively your backend's verify
 contract. Keep out of the blob anything the frontend genuinely branches on; that
 belongs in the typed core.
 
-`Failure` and `Cancelled` stay typed on purpose: the frontend *does* act on them
-without a backend hop — render an error message/code (`Failure`), or route a
-user-cancel away from a failure UI (`Cancelled`).
+`Failure` and `Cancelled` stay typed on purpose: the frontend *does* act on the
+failure code/message or routes user cancellation separately. Optional failure
+`gatewayData` is backend/debug context, not frontend branching state.
 
 `Pending` exists for gateways whose outcome isn't known synchronously — UPI
 Intent is the only gateway that emits it today, once control hands off to an
@@ -466,8 +471,9 @@ nothing for it. Add a `private const val TAG = "Foo"` to your SDK object and:
 - `Log.w`/`Log.e(err, tag) { ... }` for error branches
 - Never log the full `gatewayConfig`/init-payload `JsonObject` or raw card/
   customer data — only ids, codes, and structural facts. (The terminal
-  `Success`/`Pending` `gatewayData` blob *is* logged in full by `describeForLog()`,
-  signature included — a deliberate choice on the output path; it does not license
+  Success/Pending and gateway-originated Failure `gatewayData` blobs *are*
+  logged in full by `describeForLog()`, signature included — a deliberate
+  choice on the output path; it does not license
   logging the *input* config or card data.) `LokalPaymentSdk.pay()` already logs
   every gateway's `UiPresented`/terminal events uniformly; your gateway's own
   logging should add detail the orchestrator can't see (vendor SDK internals),

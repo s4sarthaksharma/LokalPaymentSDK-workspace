@@ -127,9 +127,9 @@ internal object JuspayGatewayHandler : TypedPaymentGatewayHandler<JuspayConfig> 
                 sendUi(PaymentGatewayEvent.GatewayUi.Presented)
             }
 
-            override fun onResult(data: JuspayResultData) {
+            override fun onResult(data: JsonObject) {
                 Log.d {
-                    "[$TAG] result received, status=${data.status}, errorCode=${data.errorCode}, errorMessage=${data.errorMessage}"
+                    "[$TAG] result received, status=${data.juspayStatus()}, errorCode=${data.juspayErrorCode()}"
                 }
                 sendTerminal(juspayResultToPaymentResult(data))
             }

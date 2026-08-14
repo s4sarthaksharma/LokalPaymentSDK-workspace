@@ -13,7 +13,7 @@ internal interface JuspayResultListener {
     fun onUiPresented() {}
 
     /** Terminal: exactly one call per pay(), maps to exactly one PaymentResult. */
-    fun onResult(data: JuspayResultData)
+    fun onResult(data: JsonObject)
 }
 
 /**

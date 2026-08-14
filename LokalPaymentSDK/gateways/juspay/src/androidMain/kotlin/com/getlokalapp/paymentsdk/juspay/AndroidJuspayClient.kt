@@ -4,12 +4,16 @@ import androidx.fragment.app.FragmentActivity
 import android.os.Handler
 import android.os.Looper
 import com.getlokalapp.paymentsdk.hostcontext.ActivityTracker
+import com.getlokalapp.paymentsdk.json.lenientJson
 import com.getlokalapp.paymentsdk.json.toOrgJson
 import com.getlokalapp.util.Log
 import `in`.juspay.hyperinteg.HyperServiceHolder
 import `in`.juspay.hypersdk.data.JuspayResponseHandler
 import `in`.juspay.hypersdk.ui.HyperPaymentsCallbackAdapter
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.put
 import org.json.JSONObject
 import java.lang.ref.WeakReference
 
@@ -122,15 +126,9 @@ internal class AndroidJuspayClient : JuspayClient {
                     val status = payload?.optString("status").orEmpty()
                     val errorCode = json.optString("errorCode").ifEmpty { null }
                     Log.d { "[$TAG] PROCESS_RESULT, status=$status, errorCode=$errorCode" }
-                    listener?.onResult(
-                        JuspayResultData(
-                            status = status,
-                            orderId = json.optString("orderId").ifEmpty { payload?.optString("orderId") },
-                            txnId = json.optString("epgTxnId").ifEmpty { payload?.optString("epgTxnId") },
-                            errorCode = errorCode,
-                            errorMessage = json.optString("errorMessage").ifEmpty { null },
-                        ),
-                    )
+                    val result = runCatching { json.toKotlinJsonObject() }
+                        .getOrElse { errorData("invalid_process_result") }
+                    listener?.onResult(result)
                 }
 
                 JuspayEvents.HIDE_LOADER -> {
@@ -244,6 +242,11 @@ internal class AndroidJuspayClient : JuspayClient {
         if (this.listener === listener) this.listener = null
     }
 
-    private fun errorData(code: String) =
-        JuspayResultData(status = code, orderId = null, txnId = null, errorCode = code, errorMessage = null)
+    private fun errorData(code: String): JsonObject = buildJsonObject {
+        put("status", code)
+        put("errorCode", code)
+    }
+
+    private fun JSONObject.toKotlinJsonObject(): JsonObject =
+        lenientJson.parseToJsonElement(toString()).jsonObject
 }

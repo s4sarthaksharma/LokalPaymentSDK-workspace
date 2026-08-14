@@ -7,7 +7,7 @@ internal object JuspayEvents {
     const val PROCESS_RESULT = "process_result"
 }
 
-/** Payment statuses inside a process_result event. Verified against matrimony (D6). */
+/** Payment statuses inside a process_result event, classified using Juspay's documented semantics. */
 internal enum class JuspayStatus(val wire: String) {
     CHARGED("charged"),
     AUTHORIZING("authorizing"),

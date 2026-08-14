@@ -55,9 +55,10 @@ sealed interface PaymentGatewayEvent {
      * dismissing the checkout sheet is not an error and should not route to
      * a failure UI.
      *
-     * Success carries an opaque, gateway-specific blob ([Success.gatewayData]),
-     * not a validated outcome — the SDK never calls a validate endpoint itself.
-     * The host forwards that blob straight to its own backend's validation call.
+     * Success and Pending carry opaque gateway-specific blobs; Failure carries
+     * one when the gateway supplied raw result data. These are not validated
+     * outcomes — the SDK never calls a validate endpoint itself. The host
+     * forwards available gateway data to its own backend.
      *
      * Each `PaymentResult` **is** a terminal [PaymentGatewayEvent] (the only other
      * events are the non-terminal [PaymentGatewayEvent.GatewayUi] signals),
@@ -76,7 +77,16 @@ sealed interface PaymentGatewayEvent {
 
         data class Cancelled(val reason: CancelReason) : PaymentResult
 
-        data class Failure(val code: String?, val message: String) : PaymentResult
+        /**
+         * A failed attempt. [gatewayData] preserves the gateway's complete raw
+         * result object when one exists; SDK-generated and typed native errors
+         * leave it `null` rather than manufacturing a provider payload.
+         */
+        data class Failure(
+            val code: String?,
+            val message: String,
+            val gatewayData: JsonObject? = null,
+        ) : PaymentResult
 
         /**
          * Outcome not yet known. The flow handed off to an external app — a UPI
@@ -89,9 +99,8 @@ sealed interface PaymentGatewayEvent {
          * Distinct from [Success] on purpose: both carry only an opaque
          * gateway-specific blob the host forwards to its backend, but [Pending]
          * obliges the host to poll-until-terminal rather than confirm in one shot.
-         * No non-UPI gateway emits this, so its handlers' `when` branches are
-         * unreachable — but exhaustiveness forces every consumer to decide how to
-         * route it.
+         * UPI Intent, Juspay and Web Checkout can emit this; exhaustiveness
+         * forces every consumer to decide how to route an unresolved outcome.
          */
         data class Pending(val gatewayData: JsonObject) : PaymentResult
     }
@@ -120,14 +129,14 @@ data class LokalPaymentEvent(
 )
 
 /**
- * Summary of a [PaymentResult] for logs. [PaymentResult.Success] and
- * [PaymentResult.Pending] dump their full [PaymentResult.Success.gatewayData]
- * blob — including any gateway-specific ids or signatures it carries — so a
- * log sink receives verbatim whatever the gateway returned.
+ * Summary of a [PaymentResult] for logs. Success, Pending and gateway-originated
+ * Failure dump their complete gateway blob — including any gateway-specific
+ * ids or signatures it carries — so a configured debug log sink receives
+ * verbatim whatever the gateway returned.
  */
 fun PaymentResult.describeForLog(): String = when (this) {
     is PaymentResult.Success -> "Success(gatewayData=$gatewayData)"
     is PaymentResult.Cancelled -> "Cancelled(reason=$reason)"
-    is PaymentResult.Failure -> "Failure(code=$code, message=$message)"
+    is PaymentResult.Failure -> "Failure(code=$code, message=$message, gatewayData=$gatewayData)"
     is PaymentResult.Pending -> "Pending(gatewayData=$gatewayData)"
 }

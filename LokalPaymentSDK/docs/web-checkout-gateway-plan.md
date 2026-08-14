@@ -73,13 +73,13 @@ Not doing for v1: an `onBackPressed` hook (provider-specific back handling). Use
 ## Event → PaymentResult mapping
 | Web event | PaymentResult |
 |---|---|
-| `PAYMENT_SUCCESS` | `Success(paymentId)` |
-| `PAYMENT_FAILED` | `Failure(code, message)` |
-| `PAYMENT_EXPIRED` | `Failure(code = "expired", …)` |
-| `PAYMENT_PROCESSING` | `Pending` (verify with backend) |
-| `PAYMENT_PENDING` | `Pending` (verify with backend) |
+| `PAYMENT_SUCCESS` | `Success` carrying the page's complete JSON payload unchanged |
+| `PAYMENT_FAILED` | `Failure(code, message)` carrying the complete JSON payload unchanged |
+| `PAYMENT_EXPIRED` | `Failure(code = "expired", …)` carrying the complete JSON payload unchanged |
+| `PAYMENT_PROCESSING` | `Pending` carrying the complete JSON payload unchanged (verify with backend) |
+| `PAYMENT_PENDING` | `Pending` carrying the complete JSON payload unchanged (verify with backend) |
 | `PAYMENT_CANCELLED` | `Cancelled` |
-| `PAYMENT_GATEWAY_ERROR` | `Failure(code = reason, …)` |
+| `PAYMENT_GATEWAY_ERROR` | `Failure(code = reason, …)` carrying the complete JSON payload unchanged |
 | (webview closed, no event) | `Cancelled` |
 
 ## `:gateways:web-checkout` module shape

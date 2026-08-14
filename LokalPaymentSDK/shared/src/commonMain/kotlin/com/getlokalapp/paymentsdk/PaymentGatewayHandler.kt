@@ -174,8 +174,9 @@ class GatewayResultScope internal constructor(
         val delivery = producerScope.trySend(result)
         if (delivery.isFailure) {
             val error = IllegalStateException("Terminal PaymentResult could not be delivered to the gateway flow.")
-            // Do not include `result`: success/pending gatewayData can contain
-            // signatures, transaction references or other sensitive values.
+            // Do not include `result`: gatewayData on success, pending or
+            // failure can contain signatures, transaction references or other
+            // sensitive values.
             runCatching {
                 Log.e(err = error, tag = TERMINAL_DELIVERY_FAILED) {
                     "Gateway terminal result could not be delivered"

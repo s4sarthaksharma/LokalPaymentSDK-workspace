@@ -113,8 +113,8 @@ sealed class PaymentResult {
 | D3 | `gateway_config` shape | Backend sends a **ready-made HyperSDK `process` payload** — opaque passthrough, decode only outer wrapper, never inspect/reshape (rulebook #5) |
 | D4 | Native SDK packaging | **Host app applies the Juspay `hypersdk` Gradle plugin**; the `:gateways:juspay` module compiles against HyperSDK APIs via **`compileOnly`** so it stays generic across hosts (see Risk R2) |
 | D5 | clientId + init payload | **Host drives `initiate()`.** `JuspaySdk` exposes `initiate(initPayload)`; the host calls it from its bootstrap. **Android:** this only caches the payload — no `onResume()` re-forwarding needed (D10, a fresh engine boots per payment). **iOS:** the engine is longer-lived, so a production host should still re-call it from `onResume()`. `clientId` is a build-time Gradle-plugin value owned by the host (Android) / a `JuspayPlatformHandle` constructor param (iOS, R5). |
-| D6 | Success status set | **`charged`, `authorizing`, `pending_vbv` → Success** (matches matrimony); `backpressed`, `user_aborted` → Cancelled; everything else → Failure |
-| D7 | `signature` in Success | **Empty string `""`** — Juspay's SDK callback returns no signature; the host validates server-side (rulebook #4). `paymentId = epgTxnId`, `orderId = orderId`. |
+| D6 | Result status mapping | **`charged` → Success**; `authorizing`, `pending_vbv` → Pending with status/transaction/order identifiers for backend polling; `backpressed`, `user_aborted` → Cancelled; everything else → Failure. This intentionally corrects the Matrimony reference mapping to match Juspay's documented non-terminal semantics. |
+| D7 | Result data | Success, Pending, and Failure carry Juspay's complete `process_result` JSON object unchanged. The SDK reads only status/error fields needed for classification; it does not select, rename, or reconstruct gateway fields. Juspay returns no client signature; the host validates server-side (rulebook #4). |
 | D8 | Back-press forwarding to the *host* | **Not implemented — no host obligation on either platform.** Confirmed dead code: matrimony's `AndroidJuspayPaymentClient.onBackPressed()` exists but is never called from its `MainActivity` (only `onResume()` is wired). The iOS HyperSDK Objective-C API has no back-press method at all. `JuspaySdk`/`JuspayClient` expose no `onBackPressed()` to the host. (Internally, D10's `JuspayActivity` *does* forward to `HyperServiceHolder.onBackPressed()` — but that's the SDK's own proxy Activity, not a host obligation.) |
 | D9 | iOS pod build gate | **Set `SKIP_HYPERSDK_VALIDATION=true`** (via `launchctl setenv` in local/CI shells, or the CocoaPods pod's documented mechanism) when compiling `:gateways:juspay` generically. The `HyperSDK` pod's own `[CP-User] Validate Mandatory Files` script phase fails without it — it expects merchant assets from a client-specific `MerchantConfig.txt` + `Fuse.rb` `post_install` step that only the host's real Podfile runs. Confirmed via a live cinterop spike: with the flag set, `iosSimulatorArm64` cinterop against the real pod succeeds and produces a working `cocoapods.HyperSDK` package; without it, the synthetic Xcode build fails at that script phase. The host's real app build still runs the real asset pipeline unaffected. |
 | D10 | Android: SDK-owned proxy Activity (revised) | **`JuspayActivity`** (internal, mirrors `RazorpayCheckoutActivity`'s bridge pattern) satisfies `HyperServiceHolder`'s `FragmentActivity` requirement — the host's own Activity is never touched or cast. `JuspayPlatformHandle`'s Android `actual` only needs a plain `Activity` to call `startActivity()` on. Each `pay()` launches a fresh `JuspayActivity`, which boots its own `HyperServiceHolder`, calls `initiate()` then `process()`, delivers the result, and finishes — `AndroidJuspayClient.initiate()` now just caches the payload. Trade-off: a fresh-initiate latency cost per payment (vs. matrimony's persistent-holder design) in exchange for full host encapsulation and dropping the `onResume()` obligation entirely on Android. iOS is unaffected (no `FragmentActivity`-equivalent constraint exists there). |
@@ -164,7 +164,8 @@ Key facts extracted from matrimony (verify versions still current when you build
   `in.juspay.hypersdk.ui.HyperPaymentsCallbackAdapter`.
 - Event strings (lowercase): `initiate_result`, `hide_loader`, `process_result`;
   statuses: `charged`, `authorizing`, `pending_vbv`, `backpressed`, `user_aborted`.
-- Success payload fields: `orderId`, `epgTxnId` (→ our `paymentId`), `status`.
+- `process_result` contains provider-owned status and reconciliation fields. The
+  SDK preserves the complete object instead of defining its own result schema.
 
 ---
 
@@ -451,33 +452,24 @@ import com.getlokalapp.paymentsdk.model.CancelReason
 import com.getlokalapp.paymentsdk.model.PaymentError
 import com.getlokalapp.paymentsdk.model.PaymentResult
 
-/** Raw, already-extracted fields from a Juspay process_result event. */
-internal data class JuspayResultData(
-    val status: String,
-    val orderId: String?,
-    val txnId: String?,        // epgTxnId
-    val errorCode: String?,
-    val errorMessage: String?,
-)
-
-internal fun juspayResultToPaymentResult(data: JuspayResultData): PaymentResult =
-    when (data.status.lowercase()) {
-        JuspayStatus.CHARGED, JuspayStatus.AUTHORIZING, JuspayStatus.PENDING_VBV ->
-            PaymentResult.Success(
-                paymentId = data.txnId.orEmpty(),   // D7: paymentId = epgTxnId
-                orderId = data.orderId,
-                signature = "",                      // D7: Juspay returns no signature
-            )
+internal fun juspayResultToPaymentResult(data: JsonObject): PaymentResult {
+    val status = data["payload"]?.jsonObject?.get("status")?.jsonPrimitive?.content.orEmpty()
+    return when (status.lowercase()) {
+        JuspayStatus.CHARGED ->
+            PaymentResult.Success(gatewayData = data)
+        JuspayStatus.AUTHORIZING, JuspayStatus.PENDING_VBV ->
+            PaymentResult.Pending(gatewayData = data)
         JuspayStatus.BACKPRESSED, JuspayStatus.USER_ABORTED ->
             PaymentResult.Cancelled(CancelReason.USER_DISMISSED)
         else ->
             PaymentResult.Failure(
-                PaymentError(
-                    code = data.errorCode ?: data.status,
-                    message = data.errorMessage ?: "Juspay payment failed (status=${data.status})",
-                ),
+                code = data["errorCode"]?.jsonPrimitive?.content ?: status,
+                message = data["errorMessage"]?.jsonPrimitive?.content
+                    ?: "Juspay payment failed (status=$status)",
+                gatewayData = data,
             )
     }
+}
 ```
 
 ### Step 6 — `JuspayClient.kt` + `JuspayPlatformHandle.kt` (commonMain)
@@ -489,7 +481,7 @@ import kotlinx.serialization.json.JsonObject
 
 /** Absorbs Juspay's callback so the host never implements a Juspay interface (rulebook #8, partial). */
 internal interface JuspayResultListener {
-    fun onResult(data: JuspayResultData)   // terminal: maps to exactly one PaymentResult
+    fun onResult(data: JsonObject)   // complete process_result; terminal and first-wins
 }
 
 internal interface JuspayClient {
@@ -539,7 +531,7 @@ class JuspaySdk(handle: JuspayPlatformHandle) : PaymentGatewayHandler {
     override fun pay(gatewayConfig: JsonObject): Flow<PaymentResult> = callbackFlow {
         val config = gatewayConfig.toJuspayConfig()
         client.setResultListener(object : JuspayResultListener {
-            override fun onResult(data: JuspayResultData) {
+            override fun onResult(data: JsonObject) {
                 trySend(juspayResultToPaymentResult(data))   // exactly one terminal result
                 close()
             }
@@ -695,10 +687,12 @@ Android and iOS) at one point in this build, then removed at the user's request 
 wanted; the shapes below are what they covered:
 - `JuspayConfigTest` — decodes a representative `gateway_config` (use the real R3
   sample) into `JuspayConfig`; tolerates unknown sibling fields.
-- `JuspayResultMapperTest` — table test over statuses: `charged`/`authorizing`/
-  `pending_vbv` → `Success` (paymentId=epgTxnId, signature==""), `backpressed`/
-  `user_aborted` → `Cancelled(USER_DISMISSED)`, an arbitrary failure status →
-  `Failure` with code/message. (These are pure-common, no Android/iOS deps.)
+- `JuspayResultMapperTest` — table test over statuses: `charged` → `Success`;
+  `authorizing`/`pending_vbv` → `Pending`, with the complete input object
+  preserved field-for-field in `gatewayData` for Success, Pending, and Failure;
+  `backpressed`/`user_aborted` → `Cancelled(USER_DISMISSED)`; an arbitrary
+  failure status → `Failure` with code/message. (These are pure-common, no
+  Android/iOS deps.)
 
 ### Step 12 — Publish + host wiring (in `LokalPaymentSDKDemo`) — implemented, R4 resolved
 The SDK code needs **zero** host-dispatch edits, and — after D10 — **zero**
@@ -897,8 +891,9 @@ Then, in `LokalPaymentSDKDemo`:
   constructing `JuspaySdk`.
 - Run a **real Juspay sandbox** payment end-to-end and confirm all three paths:
   **Success** (`charged`), **Cancelled** (back-press → `backpressed`/`user_aborted`),
-  **Failure** (a declined/failed status). Verify `paymentId`(=epgTxnId)/`orderId`
-  extraction on a live transaction.
+  **Failure** (a declined/failed status), plus both **Pending** states
+  (`authorizing`/`pending_vbv`). Verify the shared `status`/`txn_id`/`order_id`
+  reconciliation blob on a live transaction.
 - Confirm **re-initiate on resume** works (background the app mid-flow, return).
 - **iOS:** confirm the same three paths against a live transaction — this is the
   least-proven path (R1); do not mark iOS done on a compile-only basis.

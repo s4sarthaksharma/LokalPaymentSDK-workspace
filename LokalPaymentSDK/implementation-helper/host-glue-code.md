@@ -217,6 +217,9 @@ fun render(payment: LokalPaymentEvent): HostPaymentState =
 ```
 
 `Success` and `Pending` contain gateway-specific data for backend verification;
+`Failure.gatewayData` optionally contains the gateway's raw failure object for
+backend reconciliation or controlled debugging. Frontend failure behavior must
+still branch on the typed code/message rather than inspecting that blob.
 the client event is not authoritative financial status.
 
 ### 3.4 Discovery APIs (optional)
