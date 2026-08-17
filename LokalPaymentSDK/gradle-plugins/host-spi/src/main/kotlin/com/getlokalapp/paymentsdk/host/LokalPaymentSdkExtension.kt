@@ -2,16 +2,31 @@ package com.getlokalapp.paymentsdk.host
 
 /**
  * Backs the host's `lokalPaymentSdk { }` DSL and is handed to every
- * [LokalGatewayHostContributor]. The SPM-flavored sibling of
- * [LokalPaymentSdkExtension] (that one drives the CocoaPods-flavored
- * `lokal-payment` plugin) — kept as its own type rather than shared, so the two
- * plugins stay fully independent: a host picks one or the other (see
- * docs/cocoapods-to-spm-migration-plan.md, D5).
+ * [LokalGatewayHostContributor].
+ *
+ * [gateways] is the host's **complete** gateway selection, and the only supported way to get
+ * gateway modules onto the classpath. The host names the entries directly —
+ * `import com.getlokalapp.paymentsdk.host.LokalGateway.*` once at the top of its build script,
+ * then `gateways = listOf(JUSPAY, UPI_INTENT)`. [LokalGateway] is deliberately *not* mirrored as
+ * properties of this extension: that would put six non-settings into this DSL's autocomplete and
+ * make every new gateway two edits instead of one. The umbrella plugin adds one Maven coordinate per entry
+ * (plus `:shared` unconditionally) to the applying module's `commonMain`, at the plugin's own
+ * version. A host does not — and must not — declare
+ * `implementation("com.getlokalapp.paymentsdk:<gateway>")` itself; doing so alongside an empty
+ * [gateways] is detected and fails the build with a migration message, since the alternative
+ * is a silent "no handler registered for gateway X" at runtime. Selecting here rather than
+ * declaring coordinates is what makes every gateway's version equal to the plugin's by
+ * construction instead of by convention. The same list drives the iOS gate below, so a gateway
+ * left out of it contributes nothing to `Package.swift` either.
  *
  * [xcFrameworkName] must match the name the host's own Kotlin Multiplatform build
  * passes to the KMP `XCFramework(...)` DSL — the umbrella plugin needs it to locate
  * the assembled `.xcframework` under `build/XCFrameworks/` and wrap it as the
- * generated package's binary target.
+ * generated package's binary target. Required only when the applying module has Apple
+ * Kotlin/Native targets — an Android-only host applies this plugin for [gateways] alone and
+ * leaves it unset, which skips the iOS half entirely (`Package.swift`, the plist merge, the
+ * `pbxproj` wiring, the scheme pre-actions). With iOS targets present it is still a hard
+ * error to leave unset.
  *
  * [iosInfoPlist] optionally points the plugin at the host app's `Info.plist` so it can
  * merge in the entries active gateways contribute (e.g. UPI apps'
@@ -73,8 +88,39 @@ package com.getlokalapp.paymentsdk.host
  * without guessing. A scheme shared at the workspace level still works, listed explicitly.
  */
 open class LokalPaymentSdkExtension {
+    var gateways: List<LokalGateway> = emptyList()
+
     var xcFrameworkName: String? = null
     var iosInfoPlist: String? = null
     var iosXcodeProject: String? = null
     var iosXcodeSchemes: List<String>? = null
+}
+
+/**
+ * Every gateway module a host can ship, and the Maven artifactId it publishes under (group
+ * `com.getlokalapp.paymentsdk`, version supplied by the umbrella plugin). How a host selects from
+ * these is [LokalPaymentSdkExtension.gateways]'s concern, documented there.
+ *
+ * The single source of truth for "which gateways exist" — a list that was previously implicit in
+ * three places free to silently disagree (`settings.gradle.kts`'s `include(":gateways:…")` lines,
+ * each host's version-catalog entries, and every contributor's generated `OWNED_MODULE`). A
+ * gateway absent from here is unreachable by every host, so **adding an entry is a required step
+ * when adding a gateway** (see docs/adding-a-new-gateway.md).
+ *
+ * [artifactId] must match the gateway's Gradle project name, since that is what it publishes as
+ * and what each contributor's `OWNED_MODULE` resolves to (the umbrella plugins gate by comparing
+ * the two). Nothing validates the match at configuration time — a mismatch surfaces as an
+ * unresolved dependency naming a coordinate the host never wrote.
+ *
+ * Not listed, deliberately: `:shared`, which the umbrella plugin adds unconditionally (a host
+ * with no gateways still needs `LokalPaymentSdk`), and `:webview`, which is an `implementation`
+ * detail of [WEB_CHECKOUT] and never host-facing.
+ */
+enum class LokalGateway(val artifactId: String) {
+    RAZORPAY_CHECKOUT("razorpay-checkout"),
+    RAZORPAY_CUSTOMUI("razorpay-customui"),
+    UPI_INTENT("upi-intent"),
+    NATIVE_IAP("native-iap"),
+    JUSPAY("juspay"),
+    WEB_CHECKOUT("web-checkout"),
 }

@@ -1,3 +1,4 @@
+import com.getlokalapp.paymentsdk.host.LokalGateway.*
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.plugin.mpp.apple.XCFramework
 
@@ -12,6 +13,14 @@ plugins {
 val hostXcFrameworkName = "LokalPaymentSDKDemo"
 
 lokalPaymentSdk {
+    gateways = listOf(
+        RAZORPAY_CHECKOUT,
+        RAZORPAY_CUSTOMUI,
+        UPI_INTENT,
+        NATIVE_IAP,
+        JUSPAY,
+        WEB_CHECKOUT,
+    )
     xcFrameworkName = hostXcFrameworkName
     iosInfoPlist = "../iosApp/iosApp/Info.plist"
 }
@@ -38,13 +47,6 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
-            implementation(libs.lokalpaymentsdk.shared)
-            implementation(libs.lokalpaymentsdk.razorpay.checkout)
-            implementation(libs.lokalpaymentsdk.razorpay.customui)
-            implementation(libs.lokalpaymentsdk.upi.intent)
-            implementation(libs.lokalpaymentsdk.native.iap)
-            implementation(libs.lokalpaymentsdk.juspay)
-            implementation(libs.lokalpaymentsdk.web.checkout)
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
             implementation(compose.runtime)

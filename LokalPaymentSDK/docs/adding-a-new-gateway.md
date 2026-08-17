@@ -341,9 +341,20 @@ This is the *only* edit to `:shared` source a gateway is allowed to make.
   - keep `api(project(":shared"))`, the `serialization` plugin, `maven-publish`,
     `group = "com.getlokalapp.paymentsdk"`, and `freeCompilerArgs.add("-Xexpect-actual-classes")`.
 - `settings.gradle.kts` (root): add `include(":foo")`.
+- **`LokalGateway` (`:gradle-plugins:host-spi`): add an entry** —
+  `FOO("foo")`, where the string is this Gradle project's name. Not optional:
+  hosts select gateways via `lokalPaymentSdk { gateways = listOf(FOO, …) }` and
+  the umbrella plugin adds the coordinates from that list, so a gateway missing
+  from the enum is unreachable by every host no matter what else you build. The
+  `artifactId` must match the project name exactly — that's what the gateway
+  publishes as and what your contributors' `OWNED_MODULE` resolves to, and the
+  umbrella plugins gate by comparing the two. A mismatch shows up as an
+  unresolved dependency for a coordinate no host ever wrote.
 - `gradle/libs.versions.toml`: add a `[versions]` entry + a `[libraries]` entry
   for the gateway's native SDK (Android artifact coordinate, and the iOS vendor
-  SDK's version string used by the fetch task above).
+  SDK's version string used by the fetch task above). Note this is for the
+  *vendor* SDK only — the gateway module itself never gets a catalog entry in a
+  host, since hosts don't declare SDK coordinates.
 - If the gateway needs a **vendor SPM package or first-party Swift** linked into
   the host's iOS build (most do — see `razorpay-checkout/host-contributor/` and
   `native-iap/host-contributor/`), add a `foo/host-contributor` module
@@ -509,7 +520,10 @@ a unique name.
 
 ### Step 8 — host wiring (in `LokalPaymentSDKDemo`, or the real host)
 The host does **zero** SDK-code changes and writes **zero** setup lines. It:
-1. adds the module dependency + publishes it (`./gradlew :foo:publishToMavenLocal`),
+1. adds your enum entry to its selection — `lokalPaymentSdk { gateways = listOf(…, FOO) }` —
+   after you publish (`./gradlew publishToMavenLocal`). The host never writes an
+   `implementation("com.getlokalapp.paymentsdk:foo")` line; the umbrella plugin
+   derives the coordinate from the list, at its own version.
 2. keeps calling `LokalPaymentSdk.pay(order)` — registration happened at app
    startup via the module's own triggers, and routing is automatic. (Only a
    setup-data gateway like Juspay needs one host line:

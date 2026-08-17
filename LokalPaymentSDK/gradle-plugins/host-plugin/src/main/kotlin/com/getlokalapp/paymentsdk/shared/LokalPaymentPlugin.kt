@@ -4,15 +4,33 @@ import com.getlokalapp.paymentsdk.host.BundledResource
 import com.getlokalapp.paymentsdk.host.InfoPlistEntries
 import com.getlokalapp.paymentsdk.host.LokalGatewayHostContributor
 import com.getlokalapp.paymentsdk.host.LokalPaymentSdkExtension
+import org.gradle.api.GradleException
 import org.gradle.api.Plugin
 import org.gradle.api.Project
+import org.gradle.api.artifacts.Dependency
+import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
+import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
 import java.util.ServiceLoader
 
 /**
- * The sole iOS umbrella plugin (`com.getlokalapp.paymentsdk.lokal-payment`); it took
+ * The shared-module umbrella plugin (`com.getlokalapp.paymentsdk.lokal-payment`); it took
  * over the plain `lokal-payment` id when the CocoaPods umbrella was removed in Phase 3
- * — see docs/cocoapods-to-spm-migration-plan.md (D5). Applied to the module that
- * declares the host's `XCFramework("<name>")` and produces the umbrella framework.
+ * — see docs/cocoapods-to-spm-migration-plan.md (D5). Applied to the host's shared KMP
+ * module: the one that declares `XCFramework("<name>")` and produces the umbrella framework,
+ * and whose `commonMain` consumes the gateways.
+ *
+ * It has two halves:
+ *
+ * 1. **Gateway selection (every platform).** The host lists what it ships as
+ *    `lokalPaymentSdk { gateways = listOf(JUSPAY, …) }` and this plugin adds the matching
+ *    Maven coordinates to `commonMainImplementation` itself, at its own version — so gateway
+ *    versions equal the plugin's by construction, and a host never writes an SDK coordinate.
+ *    Modeled on Juspay's `hypersdk.plugin`, which likewise resolves `in.juspay:*` from a
+ *    `clientId` + `sdkVersion` rather than from host-declared `implementation` lines; unlike
+ *    it, this needs no network, because the gateway list is a host decision rather than a
+ *    server-side one.
+ * 2. **The iOS half**, below — everything from `xcFrameworkName` onward. Skipped entirely on a
+ *    module with no Apple targets, so an Android-only host can apply this plugin for (1) alone.
  *
  * Generates `build/lokal/spmPackage/Package.swift`: a `binaryTarget` wrapping the
  * host's own XCFramework (named via [LokalPaymentSdkExtension.xcFrameworkName]),
@@ -55,33 +73,57 @@ class LokalPaymentPlugin : Plugin<Project> {
             LokalPaymentSdkExtension::class.java,
         )
 
+        // The host's gateway selection, turned into real dependencies on the applying module's
+        // commonMain. Registered eagerly so the listener is in place before the KMP plugin
+        // applies, but every coordinate is built inside a provider — so `gateways = …` can still
+        // be assigned after this apply() returns, and `addAllLater` merely *stores* the provider:
+        // no coordinate is built, and nothing is resolved, until something queries the dependency
+        // set. That is what keeps this free at configuration time.
+        val gatewayDependencies = project.provider { gatewayDependencies(project, config) }
+        project.plugins.withId(KOTLIN_MULTIPLATFORM_PLUGIN) {
+            // matching{}.configureEach{} rather than named(): a live, lazy view, so this works
+            // whether or not KMP has created commonMain's configurations by the time it runs.
+            project.configurations
+                .matching { it.name == COMMON_MAIN_IMPLEMENTATION }
+                .configureEach { it.dependencies.addAllLater(gatewayDependencies) }
+        }
+
         // afterEvaluate so contributors see the host's fully-declared dependency set
         // (their import self-gate), same timing as LokalPaymentPlugin.
         project.afterEvaluate {
+            failIfGatewaysDeclaredByHand(project, config)
+
+            // Everything below is the iOS half, and it is skipped wholesale for a module that
+            // has no Apple targets — an Android-only host applies this plugin purely to select
+            // gateways (`lokalPaymentSdk { gateways = … }`) and has no .xcframework to wrap. The
+            // hasPlugin check comes first so KotlinMultiplatformExtension is only ever loaded on
+            // a project that actually has the KMP plugin on its buildscript classpath.
+            if (!project.plugins.hasPlugin(KOTLIN_MULTIPLATFORM_PLUGIN)) return@afterEvaluate
+            if (!project.hasAppleTargets()) return@afterEvaluate
+
+            // With Apple targets present, a missing xcFrameworkName stays a hard error — exactly
+            // as before; only the no-Apple-targets case is newly tolerated.
             val xcFrameworkName = requireNotNull(config.xcFrameworkName) {
                 "Host applies 'com.getlokalapp.paymentsdk.lokal-payment' but has " +
                     "not set 'lokalPaymentSdk { xcFrameworkName = \"...\" }' — " +
                     "required to locate the assembled .xcframework this plugin wraps."
             }
             // Gate once, here — not once per contributor. Discover every contributor keyed by
-            // the module it owns, then scan the host's declared dependencies a single time:
-            // group `com.getlokalapp.paymentsdk` narrows the host's whole dependency set down to
-            // our gateway modules, keyed by module name. Call only the contributor whose module
-            // the host actually imports, handing it the resolved Dependency (native-iap reads its
-            // version/coordinate off it). A contributor may still return an empty list for a
-            // present-but-inapplicable case (e.g. a missing artifact). Every gateway's
-            // contributions land in one flat list, which each writer below filters by the kinds
-            // it owns — see HostContribution.
+            // the module it owns, then match it against the host's `gateways` selection. The
+            // selection is authoritative (see LokalPaymentSdkExtension.gateways): a host cannot
+            // declare a gateway coordinate by hand, so there is nothing to scan for. Each
+            // contributor is handed the same Dependency this plugin adds to commonMain —
+            // native-iap reads group/name/version off it to build its `:iossrc@jar` coordinate,
+            // so it stays a real Dependency rather than a hand-assembled string. A contributor
+            // may still return an empty list for a present-but-inapplicable case (e.g. a missing
+            // artifact). Every gateway's contributions land in one flat list, which each writer
+            // below filters by the kinds it owns — see HostContribution.
             val contributors = ServiceLoader.load(
                 LokalGatewayHostContributor::class.java,
                 LokalGatewayHostContributor::class.java.classLoader,
             ).associateBy { it.module }
-            val sdkDependencies = project.configurations.asSequence()
-                .flatMap { it.dependencies.asSequence() }
-                .filter { it.group == SDK_GROUP }
-                .associateBy { it.name }
-            val contributions = sdkDependencies.flatMap { (name, dep) ->
-                contributors[name]?.contribute(project, config, dep).orEmpty()
+            val contributions = gatewayDependencies(project, config).flatMap { dep ->
+                contributors[dep.name]?.contribute(project, config, dep).orEmpty()
             }
 
             // Sort the flat list into its kinds exactly once, here, so each writer below is handed
@@ -144,10 +186,81 @@ class LokalPaymentPlugin : Plugin<Project> {
         }
     }
 
+    /**
+     * The SDK coordinates the host's [LokalPaymentSdkExtension.gateways] selection resolves to:
+     * `:shared` unconditionally plus one per selected gateway, all at this plugin's own
+     * [SDK_VERSION] (generated — see host-plugin/build.gradle.kts). `:shared` is added even for
+     * an empty selection, since a host with no gateways still needs `LokalPaymentSdk`; every
+     * gateway also `api`s it, so that entry is belt-and-braces rather than load-bearing.
+     *
+     * Pure object construction — `dependencies.create` neither resolves nor touches the network,
+     * so calling this from both the lazy provider and the iOS gate below costs nothing and avoids
+     * having to memoize across the two.
+     */
+    private fun gatewayDependencies(
+        project: Project,
+        config: LokalPaymentSdkExtension,
+    ): List<Dependency> =
+        (listOf(SHARED_ARTIFACT) + config.gateways.distinct().map { it.artifactId })
+            .map { project.dependencies.create("$SDK_GROUP:$it:$SDK_VERSION") }
+
+    /**
+     * Fails a host that still declares gateway coordinates by hand instead of selecting them
+     * through [LokalPaymentSdkExtension.gateways], which is the only supported path.
+     *
+     * Checked only when the selection is *empty* — i.e. the "never migrated" case, which is the
+     * one that matters: without this the build succeeds and the failure surfaces at runtime as
+     * "no handler registered" for a gateway the developer can plainly see in their build file.
+     * An empty selection also means this plugin has contributed nothing but `:shared` (filtered
+     * below), so the scan cannot mistake our own additions for the host's.
+     */
+    private fun failIfGatewaysDeclaredByHand(project: Project, config: LokalPaymentSdkExtension) {
+        if (config.gateways.isNotEmpty()) return
+        val declared = project.configurations.asSequence()
+            .flatMap { it.dependencies.asSequence() }
+            .filter { it.group == SDK_GROUP && it.name != SHARED_ARTIFACT }
+            .map { it.name }
+            .distinct()
+            .sorted()
+            .toList()
+        if (declared.isEmpty()) return
+        throw GradleException(
+            "Gateway modules are selected through 'lokalPaymentSdk { gateways = listOf(…) }', " +
+                "not declared as dependencies. Remove these from ${project.path}'s " +
+                "dependencies and list them in the extension instead: " +
+                declared.joinToString(", ") { "com.getlokalapp.paymentsdk:$it" },
+        )
+    }
+
+    /**
+     * Whether the applying module builds for an Apple platform, and so has an `.xcframework` for
+     * the iOS half of this plugin to wrap. Read-only use of the KMP extension (compileOnly — see
+     * host-plugin/build.gradle.kts); only ever called behind a
+     * `plugins.hasPlugin(`[KOTLIN_MULTIPLATFORM_PLUGIN]`)` guard, so the Kotlin Gradle plugin
+     * classes it references are guaranteed loadable.
+     */
+    private fun Project.hasAppleTargets(): Boolean {
+        val kotlin = extensions.findByType(KotlinMultiplatformExtension::class.java) ?: return false
+        return kotlin.targets.any {
+            it is KotlinNativeTarget && it.konanTarget.family.isAppleFamily
+        }
+    }
+
     private companion object {
         // The Maven group shared by every Lokal Payment SDK gateway module. Gating the host's
         // dependency scan on it is what isolates "which of our gateways did the host import".
         const val SDK_GROUP = "com.getlokalapp.paymentsdk"
+
+        // The core runtime module, added for every host regardless of gateway selection.
+        const val SHARED_ARTIFACT = "shared"
+
+        // The KMP plugin id: this plugin adds the selected gateways to commonMain, and reads the
+        // KMP extension to decide whether the iOS half applies at all.
+        const val KOTLIN_MULTIPLATFORM_PLUGIN = "org.jetbrains.kotlin.multiplatform"
+
+        // The configuration behind KMP's `commonMain.dependencies { implementation(…) }`, which
+        // is where the host would have declared these gateways by hand.
+        const val COMMON_MAIN_IMPLEMENTATION = "commonMainImplementation"
 
         /**
          * The UPI apps the SDK checks for with `canOpenURL` before offering a UPI-intent

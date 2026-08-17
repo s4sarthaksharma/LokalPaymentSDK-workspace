@@ -39,6 +39,12 @@ kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-c
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinx-coroutines" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization-json" }
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
+# compileOnly on :gradle-plugins:host-plugin only, so LokalPaymentPlugin can ask the KMP
+# extension whether the applying module has Apple targets (deciding whether the iOS half runs
+# at all). compileOnly, never published: the host already has the KMP plugin on its buildscript
+# classpath — it applies it — and the class is touched only inside a
+# `plugins.withId("org.jetbrains.kotlin.multiplatform")` guard.
+kotlin-gradle-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
 razorpay-checkout = { module = "com.razorpay:checkout", version.ref = "razorpay-checkout" }
 # Separate Maven artifact from razorpay-checkout — this is where the
 # Razorpay class (submit()/setWebView(), used by the UPI Intent flow) lives,

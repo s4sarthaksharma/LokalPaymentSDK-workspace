@@ -70,8 +70,8 @@ dependencyResolutionManagement {
 
 ### The KMP module's `build.gradle.kts`
 
-Apply the `lokal-payment` plugin, declare the framework name via `lokalPaymentSdk { }`,
-export an `XCFramework` with that name, and depend on the gateways you need:
+Apply the `lokal-payment` plugin, list the gateways you need and the framework name via
+`lokalPaymentSdk { }`, and export an `XCFramework` with that name:
 
 ```kotlin
 plugins {
@@ -82,6 +82,8 @@ plugins {
 val hostXcFrameworkName = "MyAppPayments" // demo: "LokalPaymentSDKDemo"
 
 lokalPaymentSdk {
+    // The gateways this app ships. No import needed — these resolve against the block.
+    gateways = listOf(RAZORPAY_CHECKOUT, UPI_INTENT, JUSPAY)
     xcFrameworkName = hostXcFrameworkName   // MUST match the XCFramework(...) name below
 }
 
@@ -94,23 +96,27 @@ kotlin {
             xcf.add(this)
         }
     }
-    sourceSets {
-        commonMain.dependencies {
-            implementation(libs.lokalpaymentsdk.shared)          // core — required
-            implementation(libs.lokalpaymentsdk.razorpay.checkout) // opt-in gateways ↓
-            implementation(libs.lokalpaymentsdk.razorpay.customui)
-            implementation(libs.lokalpaymentsdk.upi.intent)
-            implementation(libs.lokalpaymentsdk.native.iap)
-            implementation(libs.lokalpaymentsdk.juspay)
-            implementation(libs.lokalpaymentsdk.web.checkout)
-        }
-    }
+    // No SDK dependencies to declare — see below.
 }
 ```
 
-Depend only on the gateways you actually use — each one you add contributes its vendor
-package (and any per-gateway setup, §5) to the generated Swift package; ones you omit cost
-nothing.
+**You never declare an SDK coordinate.** The plugin adds `com.getlokalapp.paymentsdk:shared`
+plus one artifact per selected gateway to this module's `commonMain`, all at the plugin's own
+version. That's why the `plugins { … } version "<sdkVersion>"` above is the single SDK knob in
+your build: there are no `libs.versions.toml` library entries to add and no gateway versions to
+keep aligned. (Hosts migrating from an older SDK: delete your
+`implementation(libs.lokalpaymentsdk.*)` lines and their catalog entries. Leaving them while
+`gateways` is empty fails the build with a message naming them, rather than letting you find
+out at runtime.)
+
+List only the gateways you actually use — each one contributes its vendor package (and any
+per-gateway setup, §5) to the generated Swift package; ones you omit cost nothing. The full set
+is `RAZORPAY_CHECKOUT`, `RAZORPAY_CUSTOMUI`, `UPI_INTENT`, `NATIVE_IAP`, `JUSPAY`,
+`WEB_CHECKOUT`.
+
+An **Android-only** host applies this same plugin for the `gateways` list alone and leaves
+`xcFrameworkName` unset; the entire iOS half is skipped. With Apple targets present it stays a
+hard error to omit it.
 
 ---
 
