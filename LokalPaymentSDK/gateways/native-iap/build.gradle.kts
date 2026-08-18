@@ -1,3 +1,5 @@
+import com.getlokalapp.paymentsdk.buildsrc.paymentSdkTestConventions
+import com.getlokalapp.paymentsdk.buildsrc.skipIosTestBinaries
 import com.getlokalapp.paymentsdk.buildsrc.registerIosPodSourcePublication
 import com.getlokalapp.paymentsdk.buildsrc.registerModuleVersionTask
 import com.getlokalapp.paymentsdk.buildsrc.registerVendorVersionTask
@@ -11,6 +13,18 @@ plugins {
 }
 
 group = "com.getlokalapp.paymentsdk"
+
+// commonTest gets kotlin-test + kotlinx-coroutines-test from one shared place.
+paymentSdkTestConventions()
+
+skipIosTestBinaries(
+    reason = "This module deliberately builds no Swift binary — NativeIapBridge is " +
+        "compiled and linked on the consumer side via the SPM source target (see the " +
+        "SPM note below and :native-iap:host-contributor). cinterop needs only the " +
+        "generated Objective-C interface, but linking a test executable needs the real " +
+        "symbols, so linkDebugTestIos* fails on an undefined " +
+        "_OBJC_CLASS_\$__TtC15NativeIapBridge15NativeIapBridge.",
+)
 
 // Native platform in-app purchase. iOS ships a real StoreKit 2 implementation
 // today; Android is a stub (registerUnavailable) until Play Billing lands —
@@ -159,10 +173,6 @@ kotlin {
                 implementation(libs.kotlinx.coroutines.core)
                 implementation(libs.kotlinx.serialization.json)
             }
-        }
-        commonTest.dependencies {
-            implementation(libs.kotlin.test)
-            implementation(libs.kotlinx.coroutines.test)
         }
         iosMain {
             kotlin.srcDir(generateIosVendorVersion)

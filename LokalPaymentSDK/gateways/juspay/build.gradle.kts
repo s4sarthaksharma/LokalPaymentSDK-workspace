@@ -1,3 +1,5 @@
+import com.getlokalapp.paymentsdk.buildsrc.paymentSdkTestConventions
+import com.getlokalapp.paymentsdk.buildsrc.skipIosTestBinaries
 import com.getlokalapp.paymentsdk.buildsrc.registerModuleVersionTask
 import com.getlokalapp.paymentsdk.buildsrc.registerVendorVersionTask
 import com.getlokalapp.paymentsdk.buildsrc.installZipDirectory
@@ -11,6 +13,10 @@ plugins {
 }
 
 group = "com.getlokalapp.paymentsdk"
+
+// commonTest gets kotlin-test + kotlinx-coroutines-test from one shared place.
+// Before this, :juspay carried no commonTest wiring at all and could not host a test.
+paymentSdkTestConventions()
 
 // Single source for the iOS HyperSDK version under SPM — drives the
 // fetchHyperSdkXcFramework task below (the xcframework the cinterops compile against)

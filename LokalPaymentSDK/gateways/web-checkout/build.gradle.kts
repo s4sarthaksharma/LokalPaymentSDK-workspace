@@ -1,3 +1,4 @@
+import com.getlokalapp.paymentsdk.buildsrc.paymentSdkTestConventions
 import com.getlokalapp.paymentsdk.buildsrc.registerModuleVersionTask
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
@@ -9,6 +10,9 @@ plugins {
 }
 
 group = "com.getlokalapp.paymentsdk"
+
+// commonTest gets kotlin-test + kotlinx-coroutines-test from one shared place.
+paymentSdkTestConventions()
 
 // Hosted web-checkout gateway. Wraps no vendor SDK and needs no platform code of
 // its own — it runs the backend-built hosted gateway page inside the :webview
@@ -56,10 +60,6 @@ kotlin {
                 implementation(libs.kotlinx.coroutines.core)
                 implementation(libs.kotlinx.serialization.json)
             }
-        }
-        commonTest.dependencies {
-            implementation(libs.kotlin.test)
-            implementation(libs.kotlinx.coroutines.test)
         }
     }
 }

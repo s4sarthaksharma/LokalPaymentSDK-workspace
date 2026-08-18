@@ -50,6 +50,12 @@ include(":gradle-plugins:host-android-plugin")
 include(":shared")
 include(":webview")
 
+// Test-only fixtures shared by every module's commonTest (RecordingLogger, the
+// gateway test scope, JSON fixtures, and later the gateway contract suite).
+// Deliberately never published — see test-kit/build.gradle.kts and
+// docs/TESTING_01_FOUNDATION_AND_GUARD.md.
+include(":test-kit")
+
 // Payment gateways / methods. Each gateway's own build-time contributors nest under it.
 include(":gateways:razorpay-checkout")
 include(":gateways:razorpay-checkout:host-contributor")

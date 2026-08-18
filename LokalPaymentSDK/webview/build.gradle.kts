@@ -1,3 +1,4 @@
+import com.getlokalapp.paymentsdk.buildsrc.paymentSdkTestConventions
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -8,6 +9,9 @@ plugins {
 }
 
 group = "com.getlokalapp.paymentsdk"
+
+// commonTest gets kotlin-test + kotlinx-coroutines-test from one shared place.
+paymentSdkTestConventions()
 
 kotlin {
     compilerOptions {
@@ -39,9 +43,6 @@ kotlin {
             // (ActivityTracker / topmostViewController) — same as every gateway.
             api(project(":shared"))
             implementation(libs.kotlinx.serialization.json)
-        }
-        commonTest.dependencies {
-            implementation(libs.kotlin.test)
         }
         androidMain.dependencies {
             // Window-insets / edge-to-edge handling for the proxy Activity's

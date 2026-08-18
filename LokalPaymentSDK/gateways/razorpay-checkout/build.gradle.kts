@@ -1,3 +1,5 @@
+import com.getlokalapp.paymentsdk.buildsrc.paymentSdkTestConventions
+import com.getlokalapp.paymentsdk.buildsrc.skipIosTestBinaries
 import com.getlokalapp.paymentsdk.buildsrc.registerModuleVersionTask
 import com.getlokalapp.paymentsdk.buildsrc.registerVendorVersionTask
 import com.getlokalapp.paymentsdk.buildsrc.installTarGzDirectory
@@ -11,6 +13,15 @@ plugins {
 }
 
 group = "com.getlokalapp.paymentsdk"
+
+// commonTest gets kotlin-test + kotlinx-coroutines-test from one shared place.
+paymentSdkTestConventions()
+
+skipIosTestBinaries(
+    reason = "iosMain binds to the vendored Razorpay.xcframework. The framework search " +
+        "path is passed to cinterop only, so linking a test executable fails with " +
+        "\"Could not find or use auto-linked framework 'Razorpay'\".",
+)
 
 // Single source for the iOS Razorpay SDK version — feeds fetchRazorpayXcFramework
 // (the xcframework the cinterops compile against) and generateIosVendorVersion below,
@@ -143,10 +154,6 @@ kotlin {
                 implementation(libs.kotlinx.coroutines.core)
                 implementation(libs.kotlinx.serialization.json)
             }
-        }
-        commonTest.dependencies {
-            implementation(libs.kotlin.test)
-            implementation(libs.kotlinx.coroutines.test)
         }
         androidMain {
             kotlin.srcDir(generateAndroidVendorVersion)

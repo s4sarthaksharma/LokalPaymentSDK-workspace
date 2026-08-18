@@ -1,3 +1,4 @@
+import com.getlokalapp.paymentsdk.buildsrc.paymentSdkTestConventions
 import com.getlokalapp.paymentsdk.buildsrc.registerModuleVersionTask
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
@@ -9,6 +10,9 @@ plugins {
 }
 
 group = "com.getlokalapp.paymentsdk"
+
+// commonTest gets kotlin-test + kotlinx-coroutines-test from one shared place.
+paymentSdkTestConventions()
 
 // Bakes this build's version (root gradle.properties) into commonMain as the
 // constant behind LokalPaymentSdk.VERSION, so the runtime-visible SDK version
@@ -50,10 +54,6 @@ kotlin {
                 implementation(libs.kotlinx.coroutines.core)
                 implementation(libs.kotlinx.serialization.json)
             }
-        }
-        commonTest.dependencies {
-            implementation(libs.kotlin.test)
-            implementation(libs.kotlinx.coroutines.test)
         }
         androidMain.dependencies {
             // api, not implementation: :shared's public GatewayInitializer

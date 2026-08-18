@@ -1,3 +1,4 @@
+import com.getlokalapp.paymentsdk.buildsrc.paymentSdkTestConventions
 import com.getlokalapp.paymentsdk.buildsrc.registerModuleVersionTask
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
@@ -9,6 +10,9 @@ plugins {
 }
 
 group = "com.getlokalapp.paymentsdk"
+
+// commonTest gets kotlin-test + kotlinx-coroutines-test from one shared place.
+paymentSdkTestConventions()
 
 // Generic UPI-intent gateway. Unlike the Razorpay/Juspay modules it wraps no
 // vendor SDK: the backend hands back a ready-to-launch `upi://…` deep link in
@@ -60,10 +64,6 @@ kotlin {
                 implementation(libs.kotlinx.coroutines.core)
                 implementation(libs.kotlinx.serialization.json)
             }
-        }
-        commonTest.dependencies {
-            implementation(libs.kotlin.test)
-            implementation(libs.kotlinx.coroutines.test)
         }
         androidMain.dependencies {
             // Draggable UPI-app-chooser BottomSheetDialog. Android-only; Views, not

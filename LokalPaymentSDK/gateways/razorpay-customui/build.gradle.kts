@@ -1,3 +1,4 @@
+import com.getlokalapp.paymentsdk.buildsrc.paymentSdkTestConventions
 import com.getlokalapp.paymentsdk.buildsrc.registerModuleVersionTask
 import com.getlokalapp.paymentsdk.buildsrc.registerVendorVersionTask
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
@@ -10,6 +11,9 @@ plugins {
 }
 
 group = "com.getlokalapp.paymentsdk"
+
+// commonTest gets kotlin-test + kotlinx-coroutines-test from one shared place.
+paymentSdkTestConventions()
 
 // This module drives Razorpay's Custom UI SDK (com.razorpay:customui) via
 // Razorpay.submit() — the backend puts whatever payment-method payload it
@@ -89,10 +93,6 @@ kotlin {
                 implementation(libs.kotlinx.coroutines.core)
                 implementation(libs.kotlinx.serialization.json)
             }
-        }
-        commonTest.dependencies {
-            implementation(libs.kotlin.test)
-            implementation(libs.kotlinx.coroutines.test)
         }
         androidMain {
             kotlin.srcDir(generateVendorVersion)
