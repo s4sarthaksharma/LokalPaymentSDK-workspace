@@ -26,19 +26,20 @@ internal class AndroidRazorpayCheckoutClient : RazorpayCheckoutClient {
             listener?.onPaymentError(ACTIVITY_UNAVAILABLE_ERROR, "razorpay_activity_unavailable")
             return
         }
-        val request = PendingCheckout(
-            key = config.razorpayKey,
-            data = config.data.toOrgJson(),
-            listener = listener,
-        )
-        if (!razorpayCheckoutHandoff.tryInstall(request)) {
+        val launch = CheckoutLaunch(key = config.razorpayKey, data = config.data.toOrgJson())
+        // Refused while a checkout is still unsettled, not merely while one is being launched — the
+        // operation slot tracks the payment now, so this also stops a second sheet opening over one
+        // whose result has yet to arrive.
+        val entry = razorpayCheckoutOperation.tryInstall(launch, listener)
+        if (entry == null) {
             listener?.onPaymentError(BRIDGE_BUSY_ERROR, BridgeErrorCodes.HANDOFF_IN_PROGRESS)
             return
         }
         try {
             activity.startActivity(Intent(activity, RazorpayCheckoutActivity::class.java))
         } catch (t: Throwable) {
-            razorpayCheckoutHandoff.clearIfOwned(request)
+            // Nothing was started, so abandon the slot rather than settling a payment that never was.
+            razorpayCheckoutOperation.clearIfOwned(entry)
             listener?.onPaymentError(ACTIVITY_LAUNCH_ERROR, BridgeErrorCodes.ACTIVITY_LAUNCH_FAILED)
         }
     }

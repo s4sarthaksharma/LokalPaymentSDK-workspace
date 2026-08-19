@@ -36,6 +36,15 @@ class RazorpayResultMapperTest {
     }
 
     @Test
+    fun `a destroyed checkout UI is a cancellation with its own reason, not a dismissal`() {
+        val result = razorpayUiDestroyed()
+
+        // Not USER_DISMISSED: the user declined nothing and may have paid in the app Razorpay
+        // handed off to, so the reason has to stay distinguishable for the host's reconciliation.
+        assertEquals(PaymentResult.Cancelled(CancelReason.UI_DESTROYED), result)
+    }
+
+    @Test
     fun `any other code is a failure carrying the vendor code as a string`() {
         val result = razorpayErrorToResult(2, "Network error")
 

@@ -47,6 +47,11 @@ internal object RazorpayCheckoutGatewayHandler : TypedPaymentGatewayHandler<Razo
                 Log.w { "[$TAG] payment error, code=$code, description=$description" }
                 sendTerminal(razorpayErrorToResult(code, description))
             }
+
+            override fun onCheckoutUiDestroyed() {
+                Log.w { "[$TAG] checkout UI destroyed before any result, settling as cancelled" }
+                sendTerminal(razorpayUiDestroyed())
+            }
         }
         runUntilClosed(
             start = {

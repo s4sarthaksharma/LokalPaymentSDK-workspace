@@ -62,6 +62,12 @@ kotlin {
             // transitively — they subclass GatewayInitializer without declaring
             // androidx.startup themselves.
             api(libs.androidx.startup)
+            // api for the same reason: OperationProxy takes the ComponentActivity it observes, so
+            // androidx.activity is part of :shared's API and every proxy-Activity gateway inherits it
+            // transitively rather than declaring it itself. ComponentActivity is what makes the
+            // lifecycle observable per instance — see OperationProxy's kdoc for why that beats an
+            // Application-level listener.
+            api(libs.androidx.activity)
         }
     }
 }

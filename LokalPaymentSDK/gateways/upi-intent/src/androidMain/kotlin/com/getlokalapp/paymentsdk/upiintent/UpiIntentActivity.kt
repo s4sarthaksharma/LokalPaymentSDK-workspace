@@ -1,14 +1,16 @@
 package com.getlokalapp.paymentsdk.upiintent
 
-import android.app.Activity
 import android.app.Dialog
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
+import androidx.activity.ComponentActivity
 import androidx.core.view.WindowCompat
 import com.getlokalapp.paymentsdk.LokalPaymentSdk
+import com.getlokalapp.paymentsdk.infrastructure.OperationProxy
+import com.getlokalapp.util.Log
 
 /**
  * Internal transparent proxy Activity that owns the UPI launch and its
@@ -28,25 +30,49 @@ import com.getlokalapp.paymentsdk.LokalPaymentSdk
  * backend. A [com.getlokalapp.paymentsdk.model.PaymentResult.Failure] is
  * emitted only when no UPI app could be launched at all.
  */
-internal class UpiIntentActivity : Activity() {
+internal class UpiIntentActivity : ComponentActivity() {
 
     private var dialog: Dialog? = null
-    private var request: PendingUpiIntent? = null
+
+    /**
+     * Owns when this launch is settled, including what the platform cannot report: the system
+     * destroying this proxy while the launch is still live — which on this gateway is the *expected*
+     * shape of the flow, since paying means leaving for a UPI app and coming back.
+     *
+     * Reports Pending or a cancellation depending on which side of the handoff we reached, since only
+     * the former may already be moving money. Runs at most once, so dismissing the picker here cannot
+     * re-enter [deliver] as a user cancellation.
+     */
+    private val proxy = OperationProxy(
+        activity = this,
+        operation = upiIntentOperation,
+        tag = TAG,
+        // The one field that makes an interrupted launch triageable: after the handoff the outcome is
+        // unknown and a debit may already have happened, before it no payment existed at all.
+        diagnostics = { mapOf(EXTRA_HANDED_OFF to handedOff.toString()) },
+    ) { listener ->
+        dismissPicker()
+        Log.w { "[$TAG] settling interrupted UPI intent, handedOff=$handedOff" }
+        listener.onUiDestroyed(handedOff)
+    }
+
+    /**
+     * Whether control already went to a UPI app. Saved into the instance state because a recreated
+     * instance has to know it: after the handoff an interruption may already be moving money and is
+     * Pending, before it no payment ever started. A recreation that arrives without saved state is
+     * treated as "before", the same conservative reading the other proxies take.
+     */
+    private var handedOff: Boolean = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         makeInvisible()
 
-        val owned = upiIntentHandoff.take()
-        if (owned == null) {
-            // No in-flight request — e.g. the process was recreated after death
-            // mid-payment and the listener is gone. Nothing to drive; bail.
-            finish()
-            return
-        }
-        request = owned
+        handedOff = savedInstanceState?.getBoolean(KEY_HANDED_OFF) == true
 
-        val url = owned.intentUrl
+        val launch = proxy.takeLaunchOrSettle() ?: return
+
+        val url = launch.intentUrl
         // An app-specific scheme (phonepe://…) already names its target — launch
         // directly, no chooser.
         if (!url.isGenericUpiScheme()) {
@@ -54,7 +80,7 @@ internal class UpiIntentActivity : Activity() {
             return
         }
         val installed = LokalPaymentSdk.installedUpiApps().filter { it.packageName != null }
-        val allowed = owned.allowedApps
+        val allowed = launch.allowedApps
         val apps = installed.toChooserApps(allowed)
         when {
             // Backend restricted the chooser but none of those apps are installed:
@@ -81,6 +107,9 @@ internal class UpiIntentActivity : Activity() {
             val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
             if (targetPackage != null) intent.setPackage(targetPackage)
             startActivityForResult(intent, REQ_UPI)
+            // From here on the outcome is the UPI app's, so an interruption is Pending, not a
+            // payment that never happened.
+            handedOff = true
         } catch (e: ActivityNotFoundException) {
             deliver { onFailure(NO_UPI_APP, "no_upi_app_installed") }
         } catch (t: Throwable) {
@@ -120,20 +149,30 @@ internal class UpiIntentActivity : Activity() {
 
     /**
      * Delivers to the parked listener at most once, clears the slot, and
-     * finishes. Detaches the dialog's cancel listener first so dismissing it
-     * here doesn't re-enter [deliver].
+     * finishes. Dismissing the picker first is what keeps that dismissal from
+     * re-entering [deliver] as a cancellation.
      */
-    private inline fun deliver(action: UpiIntentResultListener.() -> Unit) {
+    private fun deliver(action: UpiIntentResultListener.() -> Unit) {
+        dismissPicker()
+        proxy.deliverTerminal { listener -> listener.action() }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(KEY_HANDED_OFF, handedOff)
+    }
+
+    /** Detaches the cancel listener first so dismissing here never re-enters [deliver]. */
+    private fun dismissPicker() {
         dialog?.setOnCancelListener(null)
         dialog?.dismiss()
         dialog = null
-        val owned = request ?: return
-        request = null
-        owned.listener?.action()
-        finish()
     }
 
     private companion object {
+        const val TAG = "UpiIntent"
+        const val KEY_HANDED_OFF = "lokal_upi_handed_off"
+        const val EXTRA_HANDED_OFF = "handed_off"
         const val REQ_UPI = 4001
         const val EXTRA_RESPONSE = "response"
         const val NO_UPI_APP = "no_upi_app"

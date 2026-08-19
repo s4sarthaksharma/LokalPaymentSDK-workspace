@@ -3,21 +3,20 @@ package com.getlokalapp.paymentsdk.upiintent
 import android.content.Intent
 import com.getlokalapp.paymentsdk.hostcontext.ActivityTracker
 import com.getlokalapp.paymentsdk.infrastructure.BridgeErrorCodes
-import com.getlokalapp.paymentsdk.infrastructure.SinglePendingHandoff
+import com.getlokalapp.paymentsdk.infrastructure.SinglePendingOperation
 
 /**
- * Handoff for the single in-flight UPI intent. Same reasoning as
- * `:razorpay-customui`'s process-local handoff slot — the listener isn't
- * Parcelable so it can't ride in the launch Intent; it's parked here for
- * [UpiIntentActivity] to pick up. Only one UPI intent can be in flight at a
- * time, so a single slot suffices.
+ * The single in-flight UPI intent: its launch payload for [UpiIntentActivity] to pick up (a listener
+ * isn't Parcelable, so it can't ride in the launch Intent), and the listener waiting for the result
+ * until the launch is settled. See [SinglePendingOperation] for why those two lifetimes are tracked
+ * separately.
  */
-internal val upiIntentHandoff = SinglePendingHandoff<PendingUpiIntent>()
+internal val upiIntentOperation = SinglePendingOperation<UpiIntentLaunch, UpiIntentResultListener>()
 
-internal class PendingUpiIntent(
+/** What the proxy needs to launch a UPI app, and nothing that outlives launching it. */
+internal class UpiIntentLaunch(
     val intentUrl: String,
     val allowedApps: List<AllowedApp>,
-    val listener: UpiIntentResultListener?,
 )
 
 /**
@@ -38,12 +37,11 @@ internal class AndroidUpiIntentClient : UpiIntentClient {
             listener?.onFailure(ACTIVITY_UNAVAILABLE, "upi_intent_activity_unavailable")
             return
         }
-        val request = PendingUpiIntent(
-            intentUrl = config.intentUrl,
-            allowedApps = config.allowedApps,
-            listener = listener,
-        )
-        if (!upiIntentHandoff.tryInstall(request)) {
+        val launch = UpiIntentLaunch(intentUrl = config.intentUrl, allowedApps = config.allowedApps)
+        // Refused while a launch is still unsettled, not merely while one is starting — the operation
+        // slot tracks the payment now.
+        val entry = upiIntentOperation.tryInstall(launch, listener)
+        if (entry == null) {
             listener?.onFailure(BridgeErrorCodes.HANDOFF_IN_PROGRESS, BridgeErrorCodes.HANDOFF_IN_PROGRESS)
             return
         }
@@ -54,7 +52,8 @@ internal class AndroidUpiIntentClient : UpiIntentClient {
                 Intent(activity, UpiIntentActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION),
             )
         } catch (t: Throwable) {
-            upiIntentHandoff.clearIfOwned(request)
+            // Nothing was started, so abandon the slot rather than settling a launch that never was.
+            upiIntentOperation.clearIfOwned(entry)
             listener?.onFailure(BridgeErrorCodes.ACTIVITY_LAUNCH_FAILED, BridgeErrorCodes.ACTIVITY_LAUNCH_FAILED)
         }
     }

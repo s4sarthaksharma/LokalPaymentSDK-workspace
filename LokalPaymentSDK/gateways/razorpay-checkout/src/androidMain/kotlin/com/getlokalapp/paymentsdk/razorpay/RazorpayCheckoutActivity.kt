@@ -1,26 +1,26 @@
 package com.getlokalapp.paymentsdk.razorpay
 
-import android.app.Activity
 import android.os.Bundle
-import com.getlokalapp.paymentsdk.infrastructure.SinglePendingHandoff
+import androidx.activity.ComponentActivity
+import com.getlokalapp.paymentsdk.infrastructure.OperationProxy
+import com.getlokalapp.paymentsdk.infrastructure.SinglePendingOperation
 import com.razorpay.Checkout
 import com.razorpay.PaymentData
 import com.razorpay.PaymentResultWithDataListener
 import org.json.JSONObject
 
 /**
- * Handoff for the single in-flight checkout. Razorpay's result is delivered to
- * the Activity that called Checkout.open(), so the config + listener can't ride
- * along in the launch Intent (a listener isn't Parcelable) — they're parked
- * here for [RazorpayCheckoutActivity] to pick up. Only one checkout can be in
- * flight at a time, so a single slot is sufficient.
+ * The single in-flight checkout: its launch payload for [RazorpayCheckoutActivity] to pick up (a
+ * listener isn't Parcelable, so none of this can ride along in the launch Intent), and the listener
+ * waiting for the result until the checkout is settled. See [SinglePendingOperation] for why those
+ * two lifetimes are tracked separately.
  */
-internal val razorpayCheckoutHandoff = SinglePendingHandoff<PendingCheckout>()
+internal val razorpayCheckoutOperation = SinglePendingOperation<CheckoutLaunch, RazorpayPaymentResultListener>()
 
-internal class PendingCheckout(
+/** What the proxy needs to open Razorpay's sheet, and nothing that outlives opening it. */
+internal class CheckoutLaunch(
     val key: String,
     val data: JSONObject,
-    val listener: RazorpayPaymentResultListener?,
 )
 
 /**
@@ -29,34 +29,31 @@ internal class PendingCheckout(
  * interface here means host apps never implement a gateway interface
  * themselves. Runs translucent so only Razorpay's own sheet is visible.
  */
-internal class RazorpayCheckoutActivity : Activity(), PaymentResultWithDataListener {
+internal class RazorpayCheckoutActivity : ComponentActivity(), PaymentResultWithDataListener {
 
-    private var request: PendingCheckout? = null
+    /**
+     * Owns when this checkout is settled, including the case Razorpay itself cannot report: the system
+     * destroying this proxy mid-checkout while the process lives on — backgrounded during a UPI
+     * hand-off and reclaimed, or "don't keep activities".
+     */
+    private val proxy = OperationProxy(this, razorpayCheckoutOperation, TAG) { listener ->
+        listener.onCheckoutUiDestroyed()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // This proxy handles normal configuration changes itself in the merged
-        // manifest, so onCreate is expected once for a live checkout. Process
-        // recreation cannot restore the non-Parcelable listener and exits safely.
-        val owned = razorpayCheckoutHandoff.take()
-        if (owned == null) {
-            // No in-flight request — e.g. the process was recreated after death
-            // mid-payment and the listener is gone. Nothing to drive; bail.
-            finish()
-            return
-        }
-        request = owned
+        val launch = proxy.takeLaunchOrSettle() ?: return
 
         try {
-            Checkout().apply { setKeyID(owned.key) }.open(this, owned.data)
+            Checkout().apply { setKeyID(launch.key) }.open(this, launch.data)
         } catch (t: Throwable) {
             deliverError(GENERIC_ERROR, t.message)
         }
     }
 
     override fun onPaymentSuccess(razorpayPaymentId: String?, paymentData: PaymentData?) {
-        deliverOnce { listener ->
+        proxy.deliverTerminal { listener ->
             listener.onPaymentSuccess(
                 paymentId = razorpayPaymentId.orEmpty(),
                 orderId = paymentData?.orderId,
@@ -70,17 +67,12 @@ internal class RazorpayCheckoutActivity : Activity(), PaymentResultWithDataListe
     }
 
     private fun deliverError(code: Int, description: String?) {
-        deliverOnce { listener -> listener.onPaymentError(code, description) }
-    }
-
-    private inline fun deliverOnce(deliver: (RazorpayPaymentResultListener) -> Unit) {
-        val owned = request ?: return
-        request = null
-        owned.listener?.let(deliver)
-        finish()
+        proxy.deliverTerminal { listener -> listener.onPaymentError(code, description) }
     }
 
     private companion object {
+        const val TAG = "RazorpayCheckout"
+
         // Non-zero so the orchestrator classifies it as a failure, not a cancel
         // (cancel is Razorpay's own code 0).
         const val GENERIC_ERROR = 1

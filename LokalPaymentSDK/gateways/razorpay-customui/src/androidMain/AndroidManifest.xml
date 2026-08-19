@@ -6,10 +6,13 @@
          Merged into the host app so the SDK is self-contained: consumers don't
          register anything. -->
     <application>
+        <!-- configChanges is wide on purpose: every recreation avoided is a payment that
+             would otherwise have to be settled without a real result, since the platform
+             reports only to the instance that launched. -->
         <activity
             android:name="com.getlokalapp.paymentsdk.razorpay.RazorpayCustomUiActivity"
             android:exported="false"
-            android:configChanges="orientation|keyboardHidden|screenSize|screenLayout|smallestScreenSize"
+            android:configChanges="orientation|keyboardHidden|screenSize|screenLayout|smallestScreenSize|uiMode|locale|layoutDirection|density|fontScale"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
         <!-- Auto-init: registers RazorpayCustomUiSdk with LokalPaymentSdk at

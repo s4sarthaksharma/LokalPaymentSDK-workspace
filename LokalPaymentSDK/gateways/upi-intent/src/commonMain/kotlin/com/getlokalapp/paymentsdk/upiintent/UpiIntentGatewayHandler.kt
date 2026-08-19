@@ -77,6 +77,25 @@ internal object UpiIntentGatewayHandler : TypedPaymentGatewayHandler<UpiIntentCo
                 Log.d { "[$TAG] cancelled by user" }
                 sendTerminal(PaymentResult.Cancelled(CancelReason.USER_DISMISSED))
             }
+
+            override fun onUiDestroyed(afterHandoff: Boolean) {
+                if (afterHandoff) {
+                    // Indistinguishable from a normal return, and for the same reason: control was
+                    // with a UPI app, so only the backend knows whether money moved.
+                    Log.w { "[$TAG] UI destroyed after handoff, txnRef=$txnRef, resolving as pending" }
+                    sendTerminal(
+                        PaymentResult.Pending(
+                            UpiIntentPendingResult(
+                                txnRef = txnRef,
+                                clientHint = ClientStatus.UNKNOWN.name,
+                            ).toJsonObject()
+                        )
+                    )
+                } else {
+                    Log.w { "[$TAG] UI destroyed before any UPI app was launched, txnRef=$txnRef" }
+                    sendTerminal(PaymentResult.Cancelled(CancelReason.UI_DESTROYED))
+                }
+            }
         }
         runUntilClosed(
             start = {

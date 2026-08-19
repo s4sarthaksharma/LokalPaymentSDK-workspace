@@ -43,6 +43,13 @@ internal fun razorpaySuccess(paymentId: String, orderId: String?, signature: Str
         ).toJsonObject(),
     )
 
+/**
+ * The checkout UI died before Razorpay reported anything. Cancelled rather than Failure: nothing
+ * failed, we simply cannot know the outcome - see [CancelReason.UI_DESTROYED] for why the host must
+ * reconcile instead of trusting this as a decline.
+ */
+internal fun razorpayUiDestroyed(): PaymentResult = PaymentResult.Cancelled(CancelReason.UI_DESTROYED)
+
 internal fun razorpayErrorToResult(code: Int, description: String?): PaymentResult =
     if (code == RazorpayErrorCodes.PAYMENT_CANCELLED) {
         PaymentResult.Cancelled(CancelReason.USER_DISMISSED)

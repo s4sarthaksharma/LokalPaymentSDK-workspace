@@ -3,12 +3,15 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Proxy Activity that fronts Razorpay Checkout. Merged into the host app
-         so the SDK is self-contained: consumers don't register anything. -->
+         so the SDK is self-contained: consumers don't register anything.
+         configChanges is deliberately wide: this window draws nothing, and every
+         recreation it avoids is a checkout that would otherwise have to be settled
+         as UI-destroyed (Razorpay only reports to the instance that opened it). -->
     <application>
         <activity
             android:name="com.getlokalapp.paymentsdk.razorpay.RazorpayCheckoutActivity"
             android:exported="false"
-            android:configChanges="orientation|keyboardHidden|screenSize|screenLayout|smallestScreenSize"
+            android:configChanges="orientation|keyboardHidden|screenSize|screenLayout|smallestScreenSize|uiMode|locale|layoutDirection|density|fontScale"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
         <!-- Auto-init: registers RazorpayCheckoutSdk with LokalPaymentSdk at

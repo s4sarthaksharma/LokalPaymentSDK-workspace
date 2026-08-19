@@ -30,7 +30,7 @@ import com.getlokalapp.util.Log
  * here means host apps never supply or receive a WebView — mirrors
  * `:razorpay-checkout`'s RazorpayCheckoutActivity, except this one shows the
  * WebView full-screen (it's the actual UI, not an invisible bridge). Picks up
- * the in-flight [AndroidWebViewSession] from [webViewLaunchHandoff] and binds
+ * the in-flight [AndroidWebViewSession] from [webViewLaunchOperation] and binds
  * itself back to it so the session can drive the live WebView.
  */
 @SuppressLint("SetJavaScriptEnabled")
@@ -44,10 +44,15 @@ internal class WebViewActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val current = webViewLaunchHandoff.take()
+        val entry = webViewLaunchOperation.live()
+        val current = entry?.takeData()
         if (current == null) {
-            // No in-flight launch — e.g. process recreated after death. Nothing
-            // to drive; bail.
+            // No launch data: either nothing is in flight (e.g. process recreated after death), or a
+            // predecessor instance already took it and this is a recreation. In the latter case the
+            // WebView it drove is gone and this instance's own onDestroy has no session to report for,
+            // so settle through the slot — otherwise the presentation would hold it forever and every
+            // later load() would be refused.
+            entry?.deliverTerminalOnce { listener -> listener.safeClosed() }
             finish()
             return
         }
@@ -198,7 +203,7 @@ internal class WebViewActivity : ComponentActivity() {
     override fun onDestroy() {
         val current = session
         if (current?.activity === this) current.activity = null
-        current?.let(webViewLaunchHandoff::clearIfOwned)
+        current?.operationEntry?.let(webViewLaunchOperation::clearIfOwned)
         current?.pendingRequest = null
         if (!terminalFailureReported && current?.closeRequested != true) {
             current?.config?.listener?.safeClosed()

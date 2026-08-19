@@ -26,6 +26,15 @@ internal object RazorpayCustomUiErrorCodes {
 internal interface RazorpayCustomUiResultListener {
     fun onPaymentSuccess(paymentId: String, orderId: String?, signature: String)
     fun onPaymentError(code: Int, description: String?)
+
+    /**
+     * Not a Razorpay callback: reported by the platform client itself when the UI it handed the
+     * payment to was destroyed before Razorpay could call either of the above, which makes a real
+     * result impossible (Razorpay reports only to the exact Activity that called submit(), and this
+     * flow's WebView bridge dies with it). Its own callback rather than an `onPaymentError` code so
+     * the classification stays below, with the rest - see [razorpayCustomUiUiDestroyed].
+     */
+    fun onUiDestroyed()
 }
 
 /**
@@ -54,6 +63,15 @@ internal fun razorpayCustomUiSuccess(paymentId: String, orderId: String?, signat
             signature = signature
         ).toJsonObject(),
     )
+
+/**
+ * The Custom UI payment's host UI died before Razorpay reported anything. Cancelled rather than
+ * Failure: nothing failed, we simply cannot know the outcome - and because this flow hands off to
+ * external UPI apps, the user may well have paid. See [CancelReason.UI_DESTROYED] for why the host
+ * must reconcile instead of treating it as a decline.
+ */
+internal fun razorpayCustomUiUiDestroyed(): PaymentResult =
+    PaymentResult.Cancelled(CancelReason.UI_DESTROYED)
 
 internal fun razorpayCustomUiErrorToResult(code: Int, description: String?): PaymentResult =
     if (code == RazorpayCustomUiErrorCodes.PAYMENT_CANCELLED) {

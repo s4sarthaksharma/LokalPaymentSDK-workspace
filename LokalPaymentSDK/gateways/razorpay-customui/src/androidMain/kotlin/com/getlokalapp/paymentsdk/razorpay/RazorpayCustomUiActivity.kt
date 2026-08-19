@@ -1,12 +1,13 @@
 package com.getlokalapp.paymentsdk.razorpay
 
-import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
+import androidx.activity.ComponentActivity
 import android.webkit.WebView
 import com.getlokalapp.paymentsdk.hostcontext.ActivityTracker
 import com.getlokalapp.paymentsdk.infrastructure.BridgeErrorCodes
-import com.getlokalapp.paymentsdk.infrastructure.SinglePendingHandoff
+import com.getlokalapp.paymentsdk.infrastructure.OperationProxy
+import com.getlokalapp.paymentsdk.infrastructure.SinglePendingOperation
 import com.getlokalapp.paymentsdk.json.toOrgJson
 import com.razorpay.PaymentData
 import com.razorpay.PaymentResultWithDataListener
@@ -14,18 +15,18 @@ import com.razorpay.Razorpay
 import org.json.JSONObject
 
 /**
- * Handoff for the single in-flight Custom UI payment. Same reasoning as
- * `:razorpay-checkout`'s process-local handoff slot — the listener isn't
- * Parcelable, so it can't ride along in the launch Intent; it's parked here
- * for [RazorpayCustomUiActivity] to pick up. Only one Custom UI payment
- * can be in flight at a time, so a single slot is sufficient.
+ * The single in-flight Custom UI payment: its launch payload for [RazorpayCustomUiActivity] to pick up
+ * (a listener isn't Parcelable, so none of it can ride along in the launch Intent), and the listener
+ * waiting for the result until the payment is settled. See [SinglePendingOperation] for why those two
+ * lifetimes are tracked separately.
  */
-internal val razorpayCustomUiHandoff = SinglePendingHandoff<PendingCustomUiCheckout>()
+internal val razorpayCustomUiOperation =
+    SinglePendingOperation<CustomUiLaunch, RazorpayCustomUiResultListener>()
 
-internal class PendingCustomUiCheckout(
+/** What the proxy needs to submit the payment, and nothing that outlives submitting it. */
+internal class CustomUiLaunch(
     val key: String,
     val data: JSONObject,
-    val listener: RazorpayCustomUiResultListener?,
 )
 
 /**
@@ -49,19 +50,19 @@ internal class AndroidRazorpayCustomUiClient {
             listener?.onPaymentError(ACTIVITY_UNAVAILABLE_ERROR, "razorpay_activity_unavailable")
             return
         }
-        val request = PendingCustomUiCheckout(
-            key = config.razorpayKey,
-            data = config.data.toOrgJson(),
-            listener = listener,
-        )
-        if (!razorpayCustomUiHandoff.tryInstall(request)) {
+        val launch = CustomUiLaunch(key = config.razorpayKey, data = config.data.toOrgJson())
+        // Refused while a payment is still unsettled, not merely while one is being launched — the
+        // operation slot tracks the payment now.
+        val entry = razorpayCustomUiOperation.tryInstall(launch, listener)
+        if (entry == null) {
             listener?.onPaymentError(BRIDGE_BUSY_ERROR, BridgeErrorCodes.HANDOFF_IN_PROGRESS)
             return
         }
         try {
             activity.startActivity(Intent(activity, RazorpayCustomUiActivity::class.java))
         } catch (t: Throwable) {
-            razorpayCustomUiHandoff.clearIfOwned(request)
+            // Nothing was started, so abandon the slot rather than settling a payment that never was.
+            razorpayCustomUiOperation.clearIfOwned(entry)
             listener?.onPaymentError(ACTIVITY_LAUNCH_ERROR, BridgeErrorCodes.ACTIVITY_LAUNCH_FAILED)
         }
     }
@@ -91,27 +92,28 @@ internal class AndroidRazorpayCustomUiClient {
  * appears. Methods needing in-app UI (card fields, OTP/3DS) aren't rendered
  * yet — that would be added in a later version.
  */
-internal class RazorpayCustomUiActivity : Activity(), PaymentResultWithDataListener {
+internal class RazorpayCustomUiActivity : ComponentActivity(), PaymentResultWithDataListener {
 
     private var razorpay: Razorpay? = null
-    private var request: PendingCustomUiCheckout? = null
+
+    /**
+     * Owns when this payment is settled, including the case Razorpay cannot report: the system
+     * destroying this proxy mid-payment while the process lives on. This flow hands off to external UPI
+     * apps, so being backgrounded and reclaimed is an ordinary thing to happen.
+     */
+    private val proxy = OperationProxy(this, razorpayCustomUiOperation, TAG) { listener ->
+        listener.onUiDestroyed()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val owned = razorpayCustomUiHandoff.take()
-        if (owned == null) {
-            // No in-flight request — e.g. the process was recreated after death
-            // mid-payment and the listener is gone. Nothing to drive; bail.
-            finish()
-            return
-        }
-        request = owned
+        val launch = proxy.takeLaunchOrSettle() ?: return
 
         try {
             val webView = WebView(this)
-            razorpay = Razorpay(this, owned.key).apply { setWebView(webView) }
-                .also { it.submit(owned.data, this) }
+            razorpay = Razorpay(this, launch.key).apply { setWebView(webView) }
+                .also { it.submit(launch.data, this) }
         } catch (t: Throwable) {
             deliverError(GENERIC_ERROR, t.message)
         }
@@ -126,7 +128,7 @@ internal class RazorpayCustomUiActivity : Activity(), PaymentResultWithDataListe
     }
 
     override fun onPaymentSuccess(razorpayPaymentId: String?, paymentData: PaymentData?) {
-        deliverOnce { listener ->
+        proxy.deliverTerminal { listener ->
             listener.onPaymentSuccess(
                 paymentId = razorpayPaymentId.orEmpty(),
                 orderId = paymentData?.orderId,
@@ -140,17 +142,12 @@ internal class RazorpayCustomUiActivity : Activity(), PaymentResultWithDataListe
     }
 
     private fun deliverError(code: Int, description: String?) {
-        deliverOnce { listener -> listener.onPaymentError(code, description) }
-    }
-
-    private inline fun deliverOnce(deliver: (RazorpayCustomUiResultListener) -> Unit) {
-        val owned = request ?: return
-        request = null
-        owned.listener?.let(deliver)
-        finish()
+        proxy.deliverTerminal { listener -> listener.onPaymentError(code, description) }
     }
 
     private companion object {
+        const val TAG = "RazorpayCustomUi"
+
         // Non-zero so the orchestrator classifies it as a failure, not a cancel.
         const val GENERIC_ERROR = 1
     }

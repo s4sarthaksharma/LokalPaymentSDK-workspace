@@ -61,6 +61,11 @@ internal object RazorpayCustomUiGatewayHandler : TypedPaymentGatewayHandler<Razo
                 Log.w { "[$TAG] payment error, code=$code, description=$description" }
                 sendTerminal(razorpayCustomUiErrorToResult(code, description))
             }
+
+            override fun onUiDestroyed() {
+                Log.w { "[$TAG] payment UI destroyed before any result, settling as cancelled" }
+                sendTerminal(razorpayCustomUiUiDestroyed())
+            }
         }
         runUntilClosed(
             start = {

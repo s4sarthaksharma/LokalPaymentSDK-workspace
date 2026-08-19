@@ -43,6 +43,19 @@ internal interface UpiIntentResultListener {
      * `upi://` intent to the OS chooser, so any return is already a handoff.
      */
     fun onCancelled()
+
+    /**
+     * Not a platform callback: reported by the client itself when the UI driving this launch was
+     * destroyed before it could report anything, which makes a real result impossible (Android
+     * delivers `onActivityResult` only to the exact Activity instance that called
+     * `startActivityForResult`).
+     *
+     * [afterHandoff] is the whole point of this callback. `true` means a UPI app already had
+     * control, so the user may have paid and the outcome is unknown - the same situation as a
+     * normal return, and it maps to Pending like one. `false` means nothing was ever launched (the
+     * app picker was still up), so no payment exists to reconcile.
+     */
+    fun onUiDestroyed(afterHandoff: Boolean)
 }
 
 internal expect fun createUpiIntentClient(): UpiIntentClient

@@ -29,6 +29,15 @@ class RazorpayCustomUiResultTest {
     }
 
     @Test
+    fun `a destroyed payment UI is a cancellation with its own reason, not a dismissal`() {
+        val result = razorpayCustomUiUiDestroyed()
+
+        // Not USER_DISMISSED: the user declined nothing, and this flow hands off to external UPI
+        // apps, so they may have paid. The reason has to stay distinguishable for reconciliation.
+        assertEquals(PaymentResult.Cancelled(CancelReason.UI_DESTROYED), result)
+    }
+
+    @Test
     fun `the cancellation code for Custom UI is 5`() {
         assertEquals(5, RazorpayCustomUiErrorCodes.PAYMENT_CANCELLED)
     }

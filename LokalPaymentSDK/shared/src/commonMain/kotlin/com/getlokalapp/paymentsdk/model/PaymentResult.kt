@@ -11,6 +11,21 @@ import kotlinx.serialization.json.JsonObject
 enum class CancelReason {
     USER_DISMISSED,
     UNKNOWN,
+
+    /**
+     * The gateway's UI went away before it could report anything, so no result will ever arrive -
+     * the system destroyed the Activity/ViewController driving the payment (backgrounded during a
+     * UPI hand-off and reclaimed under memory pressure, "don't keep activities", ...) and the
+     * gateway delivers its result only to that exact instance.
+     *
+     * Distinct from [USER_DISMISSED] because the user did not decline anything: they may well have
+     * completed the payment in the app the gateway handed off to, so a host should treat this as
+     * "outcome unknown, reconcile with the backend" rather than showing a cancelled or failed
+     * payment. What it is *not* is a reason to keep waiting - this reason exists precisely because
+     * the SDK can prove no terminal result is coming, and a host that stays pending here would
+     * block the user out of paying at all.
+     */
+    UI_DESTROYED,
 }
 
 /**
